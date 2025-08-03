@@ -1,0 +1,11 @@
+# Arduino
+*.ino~
+*.o
+*.elf
+*.hex
+build/
+.DS_Store
+
+# Backup
+*.bak
+*.tmp

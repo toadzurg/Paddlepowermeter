@@ -3,6 +3,6 @@
 
 void initBattery();
 void updateBattery();
-int getBatteryLevel();  // Returns % from 0–100
+int getBatteryLevel();
 
 #endif

@@ -4,13 +4,13 @@
 SFE_MAX1704X lipo;
 
 void initBattery() {
-    lipo.begin();
+  lipo.begin();
 }
 
 void updateBattery() {
-    lipo.quickStart();
+  lipo.quickStart();
 }
 
 int getBatteryLevel() {
-    return (int)lipo.getSOC();
+  return (int)lipo.getSOC();
 }

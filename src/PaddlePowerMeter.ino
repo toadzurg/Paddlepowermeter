@@ -1,26 +1,31 @@
 #include "Scale.h"
 #include "IMU.h"
-#include "BLEManager.h"
+#include "Kalman.h"
 #include "PowerModel.h"
 #include "Battery.h"
+#include "BLEManager.h"
+
+PowerModel powerModel(1.0f, 0.01f, 1.0f, 0.001f, 0.1f, 1.0f);
 
 void setup() {
-    Serial.begin(115200);
-
-    initScale();
-    initIMU();
-    initBattery();
-    initBLE();
+  Serial.begin(115200);
+  initScale();
+  initIMU();
+  initBattery();
+  initBLE();
 }
 
 void loop() {
-    updateScale();
-    updateIMU();
-    float strokeRate = calculateStrokeRate();
-    float power = calculatePower();
+  uint32_t now = millis();
+  updateScale();
+  updateIMU();
+  powerModel.update(now);
 
-    updateBattery();
-    sendBLEData(power, strokeRate, getBatteryLevel());
+  float instW = powerModel.getInstantaneousPower();
+  float strokeW = powerModel.getStrokePower();
+  float spm = powerModel.getStrokeRate();
+  int batt = getBatteryLevel();
 
-    delay(100);
+  sendBLEData(instW, spm, batt);
+  delay(50);
 }
