@@ -1,17 +1,17 @@
 #ifndef IMU_H
 #define IMU_H
 
-#include <MadgwickAHRS.h>
-#include <SparkFun_BMI270_Arduino_Library.h>
+#include "PowerModel.h"  // ImuReading
 
-extern Madgwick filter1;
-extern Madgwick filter2;
-extern float lastGx, lastGy, lastGz;
+// Two BMI270s on the shaft (see Config.h for addresses, positions and axes).
+// Returns a bitmask of the IMUs that started: bit 0 = IMU1, bit 1 = IMU2.
+uint8_t initIMU();
 
-void initIMU();
-void updateIMU();
-void getIMU1Quat(float &qw, float &qx, float &qy, float &qz);
-void getIMU2Quat(float &qw, float &qx, float &qy, float &qz);
-void getIMUGyro(float &gx, float &gy, float &gz);
+// Average the gyros for `samples` readings to remove bias. Paddle must be
+// still. Returns false (and keeps zero bias) if it was moving.
+bool calibrateGyroBias(int samples = 200);
 
-#endif
+// Read both IMUs, converted to SI units and rotated into the paddle frame.
+void readIMU(ImuReading out[2]);
+
+#endif  // IMU_H

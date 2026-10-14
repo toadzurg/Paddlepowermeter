@@ -1,10 +1,19 @@
 #ifndef SCALE_H
 #define SCALE_H
 
-#include <SparkFun_Qwiic_Scale_NAU7802_Arduino_Library.h>
+#include <stdint.h>
 
-void initScale();
-void updateScale();
-float getForce();
+// NAU7802 strain-gauge amplifier. Force is reported in newtons at the blade
+// centre of pressure, using a zero offset and calibration factor that are
+// kept in flash (see PaddlePowerMeter.ino serial commands).
+bool initScale(int32_t zeroOffset, float countsPerN);
 
-#endif
+// Returns true and sets forceN when a new conversion is ready. Otherwise
+// leaves forceN unchanged (the ADC runs slower than the main loop).
+bool readForce(float &forceN);
+
+// Blocking calibration helpers (paddle must be held still).
+int32_t tareScale();                    // returns new zero offset
+float calibrateScale(float knownForceN); // returns new counts per newton
+
+#endif  // SCALE_H

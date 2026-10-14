@@ -1,20 +1,39 @@
 #include "Scale.h"
 #include <Wire.h>
+#include <SparkFun_Qwiic_Scale_NAU7802_Arduino_Library.h>
 
-NAU7802 myScale;
-
-void initScale() {
-  Wire.begin();
-  myScale.begin();
-  myScale.setGain(128);
-  myScale.setSampleRate(NAU7802_SPS_40);
-  myScale.calibrateAFE();
+namespace {
+NAU7802 scale;
+bool ok = false;
 }
 
-void updateScale() {
-  // No-op or future filtering
+bool initScale(int32_t zeroOffset, float countsPerN) {
+  ok = scale.begin(Wire);
+  if (!ok) return false;
+  scale.setGain(NAU7802_GAIN_128);
+  scale.setSampleRate(NAU7802_SPS_80);
+  scale.calibrateAFE();
+  scale.setZeroOffset(zeroOffset);
+  scale.setCalibrationFactor(countsPerN);
+  return true;
 }
 
-float getForce() {
-  return myScale.getReading();
+bool readForce(float &forceN) {
+  if (!ok || !scale.available()) return false;
+  float cal = scale.getCalibrationFactor();
+  if (cal == 0) return false;
+  forceN = (scale.getReading() - scale.getZeroOffset()) / cal;
+  return true;
+}
+
+int32_t tareScale() {
+  if (!ok) return 0;
+  scale.calculateZeroOffset(64, 2000);  // 64 samples @ 80 SPS = 0.8 s
+  return scale.getZeroOffset();
+}
+
+float calibrateScale(float knownForceN) {
+  if (!ok || knownForceN <= 0) return scale.getCalibrationFactor();
+  scale.calculateCalibrationFactor(knownForceN, 64, 2000);
+  return scale.getCalibrationFactor();
 }
