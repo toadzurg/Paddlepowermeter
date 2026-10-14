@@ -114,6 +114,28 @@ impeller magnets → Hall switch → boat node ESP32 ──ESP-NOW 20 Hz──�
 Impellers add drag and catch weeds, so fit it for training and take it off
 for racing. Check your race's rules on speed devices.
 
+### Useful vs slip power
+
+With a calibrated impeller, each stroke's power is split in two. The
+`debug` output shows both parts and the efficiency:
+
+```
+total  = F · v_blade                (what you put out; sent over BLE)
+useful = F · cosθ · v_boat          (what pushes the boat forward)
+slip   = total − useful             (lost churning water)
+efficiency = useful / total
+```
+
+`cosθ` is the horizontal share of the blade force, taken from the paddle's
+orientation. At the catch and the exit the angled blade partly lifts or
+sinks the boat rather than driving it forward. The calculation assumes the
+blade moves straight aft, so sweep and steering strokes read slightly high.
+A stroke gets no split if boat speed dropped out at any point during its
+drive.
+
+Efficiency is not capped at 100%. A reading above 100% means a calibration
+(force, lever arm or impeller) is off.
+
 ## Tests
 
 The signal processing is tested on a PC against a physics simulation. The

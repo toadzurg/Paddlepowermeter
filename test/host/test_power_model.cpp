@@ -9,6 +9,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <deque>
 #include <random>
 
 #include "Config.h"
@@ -40,6 +41,12 @@ struct SimConfig {
   double gyroBias = 0.003;
   double seconds = 30;
   double stopAfter = 1e9;    // stop paddling after this time
+  // Impeller: mean boat speed through the water (0 = no impeller). The
+  // surge above modulates it consistently. The reading arrives late (radio)
+  // and noisy, and drops out entirely from boatLostAt onward.
+  double boatSpeed = 0;
+  double boatLatencyS = 0.05, boatNoise = 0.02;
+  double boatLostAt = 1e9;
 };
 
 struct SimResult {
@@ -49,6 +56,10 @@ struct SimResult {
   double pivot = 0;
   double finalPower = 0, finalRate = 0;
   int strokes = 0;
+  double trueUseful = 0, trueEfficiency = 0;
+  double meanUseful = 0, meanEfficiency = 0;
+  double maxSplitMismatch = 0;  // |useful + slip − stroke power|
+  bool splitValidAtEnd = false;
 };
 
 static SimResult simulate(const SimConfig &c, unsigned seed = 1) {
@@ -62,9 +73,10 @@ static SimResult simulate(const SimConfig &c, unsigned seed = 1) {
   const double g = cfg::GRAVITY_MS2;
   const double imuPos[2] = {0.0, cfg::IMU2_POS_M};
 
-  double trueEnergy = 0, truePaddleTime = 0;
-  double sumP = 0;
-  int nP = 0;
+  double trueEnergy = 0, trueUsefulEnergy = 0, truePaddleTime = 0;
+  double sumP = 0, sumU = 0, sumE = 0, maxMismatch = 0;
+  int nP = 0, nU = 0;
+  std::deque<double> boatPipe;  // models the radio latency
 
   for (int step = 0; step * dt < c.seconds; step++) {
     double t = step * dt;
@@ -89,6 +101,12 @@ static SimResult simulate(const SimConfig &c, unsigned seed = 1) {
       trueEnergy += force * thd * L * dt;
       truePaddleTime += dt;
     }
+
+    // Boat speed consistent with the surge acceleration used below.
+    double cycleW = 2 * M_PI / cycle;
+    double vBoat = c.boatSpeed - c.surgeAmp / cycleW * std::cos(cycleW * t);
+    // Only the horizontal part of the blade force drives the boat.
+    if (paddling) trueUsefulEnergy += force * std::cos(th) * vBoat * dt;
 
     // World frame: X forward, Y left, Z up. Paddle axes in world:
     double ex[3] = {-std::sin(th), 0, -std::cos(th)};  // toward blade
@@ -118,12 +136,27 @@ static SimResult simulate(const SimConfig &c, unsigned seed = 1) {
       }
     }
 
+    boatPipe.push_back(vBoat + c.boatNoise * N01(rng));
+    size_t lag = (size_t)std::lround(c.boatLatencyS / dt);
+    s.boatSpeedValid = c.boatSpeed > 0 && t < c.boatLostAt &&
+                       boatPipe.size() > lag;
+    s.boatSpeedMps = s.boatSpeedValid ? (float)boatPipe.front() : 0;
+    if (boatPipe.size() > lag) boatPipe.pop_front();
+
     if (step == 0) model.begin(s);
     model.update(s);
 
     if (t > 10 && t < c.stopAfter) {  // after the filters have converged
       sumP += model.strokePower();
       nP++;
+      if (model.hasPowerSplit()) {
+        sumU += model.usefulPower();
+        sumE += model.efficiency();
+        nU++;
+        maxMismatch = std::fmax(maxMismatch,
+            std::fabs(model.usefulPower() + model.slipPower() -
+                      model.strokePower()));
+      }
     }
   }
 
@@ -135,6 +168,12 @@ static SimResult simulate(const SimConfig &c, unsigned seed = 1) {
   r.finalPower = model.strokePower();
   r.finalRate = model.strokeRate();
   r.strokes = model.strokeCount();
+  r.trueUseful = truePaddleTime > 0 ? trueUsefulEnergy / truePaddleTime : 0;
+  r.trueEfficiency = trueEnergy > 0 ? trueUsefulEnergy / trueEnergy : 0;
+  r.meanUseful = nU ? sumU / nU : 0;
+  r.meanEfficiency = nU ? sumE / nU : 0;
+  r.maxSplitMismatch = maxMismatch;
+  r.splitValidAtEnd = model.hasPowerSplit();
   return r;
 }
 
@@ -258,6 +297,38 @@ int main() {
   SimConfig oneImu;
   oneImu.imu2Ok = false;
   reportSim("Simulated stroke: IMU2 failed", oneImu, 0.07);
+
+  std::printf("\nPower split: no impeller\n");
+  {
+    SimResult r = simulate(SimConfig());
+    CHECK_NEAR("no split without boat speed", r.splitValidAtEnd, 0, 0);
+  }
+
+  struct SplitCase { const char *title; double speed, surge; };
+  for (SplitCase sc : {SplitCase{"Power split: 2.5 m/s, 50 ms radio delay", 2.5, 0},
+                       SplitCase{"Power split: 2.0 m/s with boat surge", 2.0, 0.8}}) {
+    std::printf("\n%s\n", sc.title);
+    SimConfig c;
+    c.boatSpeed = sc.speed;
+    c.surgeAmp = sc.surge;
+    SimResult r = simulate(c);
+    CHECK_NEAR("split reported", r.splitValidAtEnd, 1, 0);
+    CHECK_NEAR("useful power (W)", r.meanUseful, r.trueUseful,
+               0.05 * r.trueUseful);
+    CHECK_NEAR("efficiency", r.meanEfficiency, r.trueEfficiency, 0.03);
+    CHECK_NEAR("useful + slip = stroke power (W)", r.maxSplitMismatch, 0, 1e-3);
+  }
+
+  std::printf("\nPower split: impeller signal lost mid-session\n");
+  {
+    SimConfig c;
+    c.boatSpeed = 2.5;
+    c.boatLostAt = 20;
+    SimResult r = simulate(c);
+    CHECK_NEAR("split withdrawn, not stale", r.splitValidAtEnd, 0, 0);
+    CHECK_NEAR("total power unaffected (W)", r.meanModelPower, r.truePower,
+               0.05 * r.truePower);
+  }
 
   std::printf("\nSimulated stroke: paddler stops\n");
   SimConfig stop;

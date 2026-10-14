@@ -140,6 +140,9 @@ PaddleSample readSample(uint32_t nowUs) {
   readForce(forceN);  // holds the last value between 80 Hz conversions
   s.forceN = forceN;
   readIMU(s.imu);
+  BoatSpeed b = readBoatSpeed(pulsesPerM);
+  s.boatSpeedValid = b.fresh && pulsesPerM > 0;
+  s.boatSpeedMps = b.speedMps;
   return s;
 }
 }  // namespace
@@ -221,5 +224,9 @@ void loop() {
                   model.leverArm(), model.instantaneousPower(),
                   model.strokePower(), model.strokeRate(),
                   b.fresh ? "" : "--", b.speedMps, b.pulseHz);
+    if (model.hasPowerSplit())
+      Serial.printf("  useful %.0f W  slip %.0f W  efficiency %.0f%%\n",
+                    model.usefulPower(), model.slipPower(),
+                    100 * model.efficiency());
   }
 }
