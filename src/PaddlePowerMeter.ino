@@ -8,6 +8,7 @@
 #include "PowerModel.h"
 #include "Battery.h"
 #include "BLEManager.h"
+#include "BoatLink.h"
 
 // Serial commands (115200 baud, newline terminated):
 //   tare          zero the force sensor (paddle unloaded)
@@ -15,6 +16,9 @@
 //                 pressure, in newtons (e.g. a 5 kg weight: cal 49.03)
 //   debug         toggle 10 Hz telemetry
 //   status        print calibration and sensor state
+//   boat pair     pair with the next boat node heard (away from other boats)
+//   boat cal start   then paddle a measured distance on still water ...
+//   boat cal <m>     ... and enter it, e.g. boat cal 500
 
 namespace {
 PowerModel model;
@@ -33,6 +37,9 @@ String line;
 
 int32_t zeroOffset = 0;
 float countsPerN = cfg::DEFAULT_COUNTS_PER_N;
+float pulsesPerM = 0;        // impeller calibration, 0 = uncalibrated
+bool boatCalRunning = false;
+uint32_t boatCalStartCount = 0;
 
 void saveCalibration() {
   prefs.putInt("zero", zeroOffset);
@@ -46,6 +53,43 @@ void printStatus() {
                 countsPerN, prefs.isKey("cal") ? "" : " (UNCALIBRATED default)");
   Serial.printf("pivot %.3f m, lever arm %.3f m, battery %u%%\n",
                 model.pivotPosition(), model.leverArm(), getBatteryLevel());
+  BoatSpeed b = readBoatSpeed(pulsesPerM);
+  Serial.printf("boat node %s, %s, %.2f pulses/m%s\n",
+                boatLinkPaired() ? "paired" : "NOT PAIRED",
+                b.fresh ? "receiving" : "no signal", pulsesPerM,
+                pulsesPerM > 0 ? "" : " (UNCALIBRATED)");
+}
+
+void handleBoatCommand(const String &arg) {
+  if (arg == "pair") {
+    startBoatPairing();
+    Serial.println("pairing: waiting for a boat node...");
+    return;
+  }
+  BoatSpeed b = readBoatSpeed(pulsesPerM);
+  if (arg == "cal start") {
+    if (!b.fresh) {
+      Serial.println("no signal from boat node");
+      return;
+    }
+    boatCalRunning = true;
+    boatCalStartCount = b.pulseCount;
+    Serial.println("paddle the measured distance, then: boat cal <metres>");
+  } else if (arg.startsWith("cal ")) {
+    float metres = arg.substring(4).toFloat();
+    uint32_t pulses = b.pulseCount - boatCalStartCount;
+    if (!boatCalRunning || !b.fresh || metres <= 0 || pulses == 0) {
+      Serial.println("usage: boat cal start, paddle, then boat cal <metres>");
+      return;
+    }
+    boatCalRunning = false;
+    pulsesPerM = pulses / metres;
+    prefs.putFloat("ppm", pulsesPerM);
+    Serial.printf("impeller: %lu pulses over %.1f m = %.3f pulses/m\n",
+                  (unsigned long)pulses, metres, pulsesPerM);
+  } else {
+    Serial.println("boat commands: pair | cal start | cal <metres>");
+  }
 }
 
 void handleCommand(const String &cmd) {
@@ -66,8 +110,12 @@ void handleCommand(const String &cmd) {
     debug = !debug;
   } else if (cmd == "status") {
     printStatus();
+  } else if (cmd.startsWith("boat")) {
+    String arg = cmd.substring(4);
+    arg.trim();
+    handleBoatCommand(arg);
   } else if (cmd.length()) {
-    Serial.println("commands: tare | cal <newtons> | debug | status");
+    Serial.println("commands: tare | cal <newtons> | debug | status | boat ...");
   }
 }
 
@@ -104,6 +152,9 @@ void setup() {
   prefs.begin("paddle", false);
   zeroOffset = prefs.getInt("zero", 0);
   countsPerN = prefs.getFloat("cal", cfg::DEFAULT_COUNTS_PER_N);
+  pulsesPerM = prefs.getFloat("ppm", 0);
+  uint8_t boatMac[6];
+  bool haveBoatMac = prefs.getBytes("boatmac", boatMac, 6) == 6;
 
   if (!initScale(zeroOffset, countsPerN)) Serial.println("NAU7802 not found");
   imuMask = initIMU();
@@ -111,6 +162,8 @@ void setup() {
   if (!(imuMask & 2)) Serial.println("IMU2 not found (running on IMU1 only)");
   if (!initBattery()) Serial.println("MAX17048 not found");
   initBLE();
+  if (!initBoatLink(haveBoatMac ? boatMac : nullptr))
+    Serial.println("ESP-NOW init failed: no boat speed");
 
   // Boot with the paddle lying still: remove gyro bias and re-zero the
   // strain gauge (its offset drifts with temperature between sessions).
@@ -141,6 +194,13 @@ void loop() {
 
   model.update(readSample(nowUs));
 
+  uint8_t mac[6];
+  if (takeNewPairing(mac)) {
+    prefs.putBytes("boatmac", mac, 6);
+    Serial.printf("paired with boat node %02X:%02X:%02X:%02X:%02X:%02X\n",
+                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  }
+
   uint32_t nowMs = millis();
   if (nowMs - lastNotifyMs >= cfg::BLE_NOTIFY_MS) {
     lastNotifyMs = nowMs;
@@ -153,10 +213,13 @@ void loop() {
   }
   if (debug && nowMs - lastDebugMs >= 100) {
     lastDebugMs = nowMs;
+    BoatSpeed b = readBoatSpeed(pulsesPerM);
     Serial.printf("F %.1f N  w %.2f rad/s  a %.1f rad/s2  L %.3f m  "
-                  "P %.0f W  stroke %.0f W  %.1f spm\n",
+                  "P %.0f W  stroke %.0f W  %.1f spm  boat %s %.2f m/s "
+                  "(%.1f Hz)\n",
                   forceN, model.angularVelocity(), model.angularAccel(),
                   model.leverArm(), model.instantaneousPower(),
-                  model.strokePower(), model.strokeRate());
+                  model.strokePower(), model.strokeRate(),
+                  b.fresh ? "" : "--", b.speedMps, b.pulseHz);
   }
 }
