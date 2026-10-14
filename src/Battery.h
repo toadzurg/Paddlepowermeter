@@ -1,8 +1,9 @@
 #ifndef BATTERY_H
 #define BATTERY_H
 
-void initBattery();
-void updateBattery();
-int getBatteryLevel();
+#include <stdint.h>
 
-#endif
+bool initBattery();
+uint8_t getBatteryLevel();  // 0–100 %
+
+#endif  // BATTERY_H

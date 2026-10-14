@@ -9,3 +9,7 @@ build/
 # Backup
 *.bak
 *.tmp
+
+# PlatformIO / host tests
+.pio/
+test/host/build/
