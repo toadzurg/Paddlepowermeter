@@ -50,9 +50,11 @@ console.log("\nStroke simulator physics");
         `${pct(base.efficiency)} vs ${pct(fast.efficiency)}`);
   check("speed at equal effort independent of rate", Math.abs(fast.speedAt(150) - base.speedAt(150)) < 0.01);
 
-  const clean = S.simulate({ leanDeg: 2, handOutM: 0.38 });
-  const lean = S.simulate({ leanDeg: 30, handOutM: 0.55 });
-  const sweep = S.simulate({ leanDeg: 40, sweepDeg: 70, handOutM: 0.5, catchDeg: 25, exitDeg: 25 });
+  // Drag only (the stricter blade model) for the technique comparisons;
+  // lift is tested on its own below.
+  const clean = S.simulate({ leanDeg: 2, handOutM: 0.38, bladeLift: 0 });
+  const lean = S.simulate({ leanDeg: 30, handOutM: 0.55, bladeLift: 0 });
+  const sweep = S.simulate({ leanDeg: 40, sweepDeg: 70, handOutM: 0.5, catchDeg: 25, exitDeg: 25, bladeLift: 0 });
   check("clean vertical beats a leaning shaft", clean.efficiency > lean.efficiency,
         `${pct(clean.efficiency)} vs ${pct(lean.efficiency)}`);
   check("leaning shaft beats a wide sweep", lean.efficiency > sweep.efficiency, `${pct(lean.efficiency)} vs ${pct(sweep.efficiency)}`);
@@ -214,6 +216,22 @@ console.log("\nStroke simulator physics");
         Math.abs(calmF.wanderDeg - f10.headingWanderDeg) < 1e-6);
   const galeF = S.race(f10, f10, 10000, 150, 150, { windSpeed: 45 / 3.6, windAngle: 90 }).legsA[0];
   check("fixed count: a gale still means steering", galeF.steer);
+
+  // Blade lift: a flat plate's normal force follows the sine law.
+  const SW = { leanDeg: 40, sweepDeg: 70, handOutM: 0.5, catchDeg: 25, exitDeg: 25 }, CL = { leanDeg: 2, handOutM: 0.38 };
+  const sim = (p, extra) => S.simulate(Object.assign({}, p, extra));
+  const liftGain = (p) => sim(p, { bladeLift: 1 }).efficiency - sim(p, { bladeLift: 0 }).efficiency;
+  check("lift never makes a stroke worse", liftGain(CL) >= 0 && liftGain(SW) >= 0 && liftGain({}) >= 0);
+  check("lift helps a sideways-slicing sweep much more than a clean stroke", liftGain(SW) > 5 * liftGain(CL),
+        `+${pct(liftGain(SW))} vs +${pct(liftGain(CL))}`);
+  check("a sweep's blade force is mostly lift; a clean stroke's mostly not", sim(SW, {}).liftShare > 0.4 && sim(CL, {}).liftShare < 0.25,
+        `${pct(sim(SW, {}).liftShare)} vs ${pct(sim(CL, {}).liftShare)}`);
+  const lb = sim(SW, { pitchDeg: -15 }), bal = lb.hullPower + lb.leewayPower + lb.slipPower - lb.paddlerPower;
+  check("energy still balances with lift and pitch", Math.abs(bal) < 1e-3 * lb.paddlerPower);
+  const pe = (d) => sim(CL, { pitchDeg: d }).efficiency;
+  check("clean stroke: square blade is best", pe(0) > pe(15) && pe(0) > pe(-15));
+  const ps = (d) => sim(SW, { pitchDeg: d }).efficiency;
+  check("sweep: turning the face in toward the hull helps", ps(-15) > ps(0) && ps(0) > ps(15));
 }
 
 (async () => {
@@ -249,7 +267,21 @@ console.log("\nStroke simulator physics");
 
     // Efficiency comparison
     check(`${tag}: A and B efficiencies`, (await cellVal("eff", 2)) > 50 && (await cellVal("eff", 3)) > 50);
-    check(`${tag}: defaults beat the wide sweep`, (await cellVal("eff", 2)) > (await cellVal("eff", 3)));
+    // With lift, the wide sweep slices sideways and wins; drag only, the defaults win.
+    check(`${tag}: lift on by default`, JSON.stringify(await pressed("#lift-mode")) === '["1"]');
+    const sweepLift = await cellVal("eff", 3);
+    await page.click("#boats [data-boat=b]");
+    await page.click("#lift-mode >> text=Drag only"); await settle();
+    check(`${tag}: drag only lowers the sweep below the defaults`, (await cellVal("eff", 3)) < sweepLift &&
+          (await cellVal("eff", 2)) > (await cellVal("eff", 3)) && /Drag only/.test(await text("#why-b")));
+    await page.click("#presets >> text=Long reach"); await settle();
+    check(`${tag}: presets keep the blade force model`, JSON.stringify(await pressed("#lift-mode")) === '["0"]');
+    await page.click("#presets >> text=Wide sweep"); await settle();
+    await page.click("#boats [data-boat=a]"); await settle();
+    check(`${tag}: lift share in the details`, /% of the blade force is lift/.test(await text("#why-a")));
+    await slide("#c-pitchDeg", -15); await settle();
+    check(`${tag}: pitch readout`, (await text("#o-pitchDeg")) === "15° face turned in, toward the hull");
+    await slide("#c-pitchDeg", 0); await settle();
     const peakRow = await page.$eval('#cmp tr[data-row="peak"]', (e) => ({ d: e.querySelector("td.d").textContent, wins: e.querySelectorAll("td.win").length }));
     check(`${tag}: peak force has no winner, difference adds up`, peakRow.wins === 0 &&
           peakRow.d === `A pulls ${(await cellVal("peak", 2)) - (await cellVal("peak", 3))} N harder`, peakRow.d);
@@ -281,6 +313,15 @@ console.log("\nStroke simulator physics");
     check(`${tag}: forward push mode`, JSON.stringify(await pressed("#curve-mode")) === '["forward"]' &&
           /impulse/.test(await text("#curve-sub")));
     check(`${tag}: curve table rows`, (await page.$$("#curve-table tr")).length === 12);
+    // Live trace follows the animation.
+    await page.click("#curve-live");
+    await page.waitForFunction(() => document.querySelectorAll("#curve path.trace").length >= 1, null, { timeout: 5000 });
+    check(`${tag}: live trace on`, (await page.$eval("#curve-live", (e) => e.getAttribute("aria-pressed"))) === "true" &&
+          (await page.$eval("#curve", (e) => e.classList.contains("live"))) &&
+          /^A (\d+ N|recovery) · B (\d+ N|recovery)$/.test(await text(".live-read")), await text(".live-read"));
+    await page.click("#curve-live"); await settle();
+    check(`${tag}: live trace off`, (await page.$$("#curve path.trace")).length === 0 &&
+          !(await page.$eval("#curve", (e) => e.classList.contains("live"))));
     await page.click("#curve-mode >> text=Blade force");
 
     // Boats and presets
@@ -340,7 +381,7 @@ console.log("\nStroke simulator physics");
 
     // Race
     const verdict = () => text("#verdict");
-    check(`${tag}: race verdict`, /^Boat A wins by (\d+(\.\d)? s|\d+:\d\d), \d+ m ahead/.test(await verdict()), await verdict());
+    check(`${tag}: race verdict`, /^Boat [AB] wins by (\d+(\.\d)? s|\d+:\d\d), \d+ m ahead/.test(await verdict()), await verdict());
     check(`${tag}: point to point by default`, JSON.stringify(await pressed("#course")) === '["point"]');
     const t0 = await text("#t-a");
     await slide("#effB", 250);

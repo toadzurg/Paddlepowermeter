@@ -212,6 +212,12 @@
   svg.curve .cross { stroke: var(--text-secondary); stroke-width: 1; }
   svg.curve .dot { stroke: var(--surface-1); stroke-width: 2; }
   svg.curve .dot.a { fill: var(--series-1); } svg.curve .dot.b { fill: var(--series-2); }
+  /* Live: the full curves fade and each boat's trace follows the animation. */
+  svg.curve.live .ln { opacity: 0.25; }
+  svg.curve .trace { fill: none; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+  svg.curve .trace.a { stroke: var(--series-1); } svg.curve .trace.b { stroke: var(--series-2); stroke-dasharray: 6 4; }
+  svg.curve.same .trace.b { stroke-dasharray: 6 6; stroke-linecap: butt; }
+  svg.curve .live-read { fill: var(--text-primary); font-weight: 600; }
   .tip { position: absolute; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border);
     border-radius: 8px; padding: 6px 8px; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap;
     box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
@@ -279,7 +285,10 @@
       <section class="card" id="curve-card">
         <div class="card-head">
           <h2>Force curve</h2>
-          <div class="row chips" id="curve-mode" role="group" aria-label="Force shown"></div>
+          <div class="row">
+            <div class="row chips" id="curve-mode" role="group" aria-label="Force shown"></div>
+            <div class="row chips" id="curve-live-ctl"><button type="button" id="curve-live" aria-pressed="false">Live</button></div>
+          </div>
         </div>
         <div class="sub" id="curve-sub"></div>
         <div class="curve-legend" id="curve-legend"></div>
@@ -394,7 +403,13 @@
       <h3>Presets for <span id="editing-name">Boat A</span></h3>
       <div class="row chips" id="presets" role="group" aria-label="Presets"></div>
       <details class="group" open><summary>Stroke shape</summary><div id="ctl-stroke"></div></details>
-      <details class="group" open><summary>Paddle</summary><div id="ctl-paddle"></div></details>
+      <details class="group" open><summary>Paddle</summary><div id="ctl-paddle"></div>
+        <div class="ctl"><div class="top"><span>Blade force</span></div>
+          <div class="row chips" id="lift-mode" role="group" aria-label="Blade force model" style="margin-top:6px"></div>
+          <div class="help">With lift: a flat blade's force stays square to its face even when the water meets it at
+            an angle (the plate's sine law), so a blade slicing sideways still pushes hard. Drag only counts just the
+            water coming straight at the face, a stricter bound.</div></div>
+      </details>
       <details class="group"><summary>Paddler</summary><div id="ctl-paddler"></div></details>
       <details class="group"><summary>Switching sides</summary><div id="ctl-switch"></div></details>
       <details>
@@ -402,8 +417,11 @@
         <p>The paddle swings about a pivot point on the shaft. Your top hand rises or drops so
           the blade stays buried to the throat through the drive, as good technique does, so
           strokes differ by direction and placement rather than by blade depth.</p>
-        <p>Water pushes on the blade face with drag that grows with the square of the blade's speed
-          through the water. The boat settles where the average forward push equals hull drag. The
+        <p>Water pushes on the blade face with a force that grows with the square of the blade's speed
+          through the water. Because the boat moves too, the water meets the blade at an angle; a flat
+          blade's force stays square to its face, and at an angle it is the plate's sine law (Hoerner), so
+          part of it is lift. Turning the blade (pitch) changes that angle. "Drag only" counts just the
+          water coming straight at the face. The boat settles where the average forward push equals hull drag. The
           hull is a C1 marathon canoe, calibrated from Shawn Burke's coast-down measurement of a
           USCA C-1 (The Science of Paddling, Part 14) plus wave drag at race pace.</p>
         <p>Pushing off the boat's centreline turns it: paddling on the right turns the bow left.
@@ -450,8 +468,8 @@ const PRESETS = {
   "Short reach, pull behind": { catchDeg: 12, exitDeg: 45 },
   "Defaults": {},
 };
-// Presets set the technique; the paddler's weight stays.
-const KEEP = ["effortW", "massKg"];
+// Presets set the technique; the paddler's weight and the blade force model stay.
+const KEEP = ["effortW", "massKg", "bladeLift"];
 const boats = {
   a: Object.assign({}, S.DEFAULTS),
   b: Object.assign({}, S.DEFAULTS, PRESETS["Wide sweep"]),
@@ -482,6 +500,9 @@ const CONTROLS = [
   { group: "ctl-paddle", key: "bendDeg", label: "Bent shaft", min: -14, max: 14, step: 1, unit: "°",
     fmt: (v) => v === 0 ? "straight" : `${Math.abs(v)}° ${v > 0 ? "toward bow" : "toward power face"}`,
     help: "Which way and how far the blade is angled off the shaft." },
+  { group: "ctl-paddle", key: "pitchDeg", label: "Blade pitch", min: -30, max: 30, step: 1, unit: "°",
+    fmt: (v) => v === 0 ? "square" : `${Math.abs(v)}° face turned ${v > 0 ? "out" : "in, toward the hull"}`,
+    help: "The blade turned about the shaft. Square pushes straight back; turned, the blade slices through the water and uses lift." },
   { group: "ctl-paddler", key: "handOutM", label: "Top hand from centreline", min: 0.15, max: 0.9, step: 0.01, unit: " m",
     help: "The gunwale is about 0.36 m out on a C1." },
   { group: "ctl-paddler", key: "handTravelM", label: "Hand travel during the drive", min: 0, max: 0.4, step: 0.01, unit: " m",
@@ -517,8 +538,23 @@ const showValue = (c) => {
   const v = boats[editing][c.key];
   $(`o-${c.key}`).textContent = c.fmt ? c.fmt(v) : `${+v.toFixed(c.step < 1 ? 2 : 0)}${c.unit}`;
 };
+const LIFT_MODES = [["1", "With lift"], ["0", "Drag only"]];
+function renderLift() {
+  $("lift-mode").innerHTML = "";
+  $("lift-mode").classList.toggle("b", editing === "b");
+  for (const [v, label] of LIFT_MODES) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    b.dataset.value = v;
+    b.setAttribute("aria-pressed", String(String(boats[editing].bladeLift) === v));
+    b.addEventListener("click", () => { boats[editing].bladeLift = +v; changed(editing); });
+    $("lift-mode").append(b);
+  }
+}
 function syncControls() {
   for (const c of CONTROLS) { $(`c-${c.key}`).value = boats[editing][c.key]; showValue(c); }
+  renderLift();
   // A fixed stroke count replaces switching by heading.
   const fixed = boats[editing].switchStrokes > 0;
   $("c-switchHeadingDeg").disabled = fixed;
@@ -539,7 +575,7 @@ for (const [name, p] of Object.entries(PRESETS)) {
   b.textContent = name;
   b.dataset.value = name;
   b.addEventListener("click", () => {
-    boats[editing] = Object.assign({}, S.DEFAULTS, { massKg: boats[editing].massKg }, p);
+    boats[editing] = Object.assign({}, S.DEFAULTS, { massKg: boats[editing].massKg, bladeLift: boats[editing].bladeLift }, p);
     changed(editing);
   });
   $("presets").append(b);
@@ -634,7 +670,29 @@ function showEfficiency() {
 // face; "Forward push" is its part along the boat, whose area is the
 // stroke's impulse.
 const CURVE_MODES = [["force", "Blade force"], ["forward", "Forward push"]];
-let curveMode = "force", curveData = null;
+let curveMode = "force", curveData = null, curveGeom = null, curveLive = false;
+// Live trace: each boat's curve up to where its paddle is now in the
+// animation (the stroke views' phase), with a dot and the force readout.
+function drawCurveLive(ph) {
+  const gEl = $("curve-live-g");
+  if (!gEl || !curveGeom) return;
+  if (!curveLive) { gEl.innerHTML = ""; return; }
+  const { C, k, X, Y, W, m } = curveGeom;
+  let h = "";
+  const read = [];
+  for (const x of BOATS) {
+    const r = results[x], df = r.params.driveFraction, c = C[x];
+    const inDrive = ph < df, t = inDrive ? (ph / df) * c.Td : c.Td;
+    const pts = c.pts.filter((p) => p.t <= t);
+    if (pts.length > 1)
+      h += `<path class="trace ${x}" d="${pts.map((p, i) => `${i ? "L" : "M"}${X(p.t).toFixed(1)},${Y(p[k]).toFixed(1)}`).join(" ")}"/>`;
+    const last = pts[pts.length - 1];
+    if (inDrive && last) h += `<circle class="dot ${x}" cx="${X(last.t)}" cy="${Y(last[k])}" r="4.5"/>`;
+    read.push(`${x.toUpperCase()} ${inDrive && last ? `${fmtNum(last[k], 0)} N` : "recovery"}`);
+  }
+  h += `<text class="live-read" x="${W - m.r}" y="${m.t + 10}" text-anchor="end">${read.join(" · ")}</text>`;
+  gEl.innerHTML = h;
+}
 function renderCurveModes() {
   $("curve-mode").innerHTML = "";
   for (const [v, label] of CURVE_MODES) {
@@ -708,11 +766,13 @@ function drawCurve() {
   }
   for (const p of peaks)
     g += `<text x="${Math.min(W - m.r - 4, p.px + 6)}" y="${Math.max(m.t + 10, p.py - 6)}" class="peak">${p.x.toUpperCase()}</text>`;
-  g += `<g id="curve-hover"></g>`;
+  g += `<g id="curve-live-g"></g><g id="curve-hover"></g>`;
   g += `<rect id="curve-hit" x="${m.l}" y="${m.t}" width="${pw}" height="${ph}" fill="transparent"/>`;
   svg.innerHTML = g;
   const hit = $("curve-hit"), tip = $("curve-tip"), hover = $("curve-hover");
   tip.hidden = true;   // a redraw drops the old hover
+  curveGeom = { C, k, X, Y, W, m, ph };
+  svg.classList.toggle("live", curveLive);
   const at = (pts, t) => {
     if (t > pts[pts.length - 1].t) return null;
     let i = 1; while (i < pts.length - 1 && pts[i].t < t) i++;
@@ -747,6 +807,12 @@ function drawCurve() {
   $("curve-table").innerHTML = `<tr><th>s</th><th>A (N)</th><th>B (N)</th></tr>${rows.join("")}`;
 }
 renderCurveModes();
+$("curve-live").addEventListener("click", () => {
+  curveLive = !curveLive;
+  $("curve-live").setAttribute("aria-pressed", String(curveLive));
+  $("curve").classList.toggle("live", curveLive);
+  if (!curveLive) $("curve-live-g").innerHTML = "";
+});
 addEventListener("resize", () => { if (results.a && results.b) drawCurve(); });
 
 function breakdown(id, names, a, b, digits) {
@@ -763,10 +829,13 @@ function why(r, at) {
     `Turns the bow ${yaw > 0 ? "away from" : "toward"} the paddle side (${fmtNum(Math.abs(yaw))} N·m), so you switch about ` +
     `every ${fmtNum(r.strokesPerSide, 1)} strokes and lose ${fmtNum((1 - r.switchDuty) * 100, 1)}% of your paddling time to switches. ` +
     `The boat wanders ±${fmtNum(r.headingWanderDeg, 1)}° off course, costing ${fmtNum((1 - r.courseFactor) * 100, 2)}% of its progress.`;
+  const liftNote = r.params.bladeLift
+    ? ` ${fmtNum(r.liftShare * 100, 0)}% of the blade force is lift (across the flow).`
+    : " Drag only: lift not counted.";
   const vert = Math.abs(lift) < 0.5 ? "Up and down push about cancels." :
     `${lift > 0 ? "Lifts the boat" : "Pulls the boat down"} by ${fmtNum(Math.abs(lift), 0)} N on average ` +
     `(${fmtNum(Math.abs(at.sinkMm), 1)} mm), ${lift > 0 ? "saving" : "costing"} ${fmtNum(Math.abs(sh.sink) * 100, 2)}% in hull drag.`;
-  return `${turn} ${vert} Bounce ±${fmtNum(at.bounceMm, 1)} mm (${fmtNum(sh.bounce * 100, 2)}%); ` +
+  return `${turn}${liftNote} ${vert} Bounce ±${fmtNum(at.bounceMm, 1)} mm (${fmtNum(sh.bounce * 100, 2)}%); ` +
     `speed swings ${fmtNum(at.surgeSwing * 100, 0)}% through each stroke (${fmtNum(sh.surge * 100, 2)}%).`;
 }
 
@@ -1124,6 +1193,7 @@ function frame(now) {
     // Both boats share one phase (each over its own drive and recovery), timed by the boat being edited.
     if (playing) phase = (((phase + dt / (results[editing].cycle * (slow ? 4 : 1))) % 1) + 1) % 1;
     for (const svg of document.querySelectorAll("svg.view")) drawView(svg, svg.closest(".pair").dataset.view, phase);
+    drawCurveLive(phase);
   }
   requestAnimationFrame(frame);
 }

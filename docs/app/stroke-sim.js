@@ -11,11 +11,16 @@
 //    drops so the blade stays buried to the throat, as a good paddler does.
 //    Strokes then differ by direction and placement, not by how deep the
 //    blade happens to be.
-//  - The blade face is kept square to its motion (best case), bent by β
-//    toward the bow side like PowerModel. Water pushes on the face with drag
-//    ½ρ·Cd·A·(normal speed)², using the blade's speed through the water
-//    (its motion in the boat plus the boat's own speed) and the immersed
-//    part of the blade only.
+//  - The blade face is square to its motion in the boat, bent by β toward
+//    the bow side like PowerModel, and can be pitched (turned about the
+//    shaft) by pitchDeg. Through the water the flow meets it at an angle α,
+//    because the boat is moving too. A flat plate's force stays normal to
+//    its face; at an angle it is ½ρ·Cd·A·|v|²·sin α (the plate's "sine law",
+//    Hoerner, Fluid-Dynamic Drag): the part across the flow is lift. With
+//    bladeLift off, only the flow's normal component counts, |v|²·sin²α
+//    (drag only), as a stricter bound. |v| is the blade's speed through the
+//    water (its motion in the boat plus the boat's own) and only the
+//    immersed part of the blade pushes.
 //  - Pushing off the boat's centreline turns it (paddling on the right
 //    turns the bow left). The paddler corrects by switching sides
 //    (hit and switch): the hull resists turning in proportion to its speed,
@@ -108,6 +113,8 @@
     handOutM: 0.40,       // top hand from the centreline
     handTravelM: 0.15,    // pivot moves aft this far during the drive
     bendDeg: 12,
+    pitchDeg: 0,          // blade turned about the shaft; + = face turned out, away from the hull
+    bladeLift: 1,         // 1: flat-plate force with lift; 0: drag only
     rateSpm: 60,
     driveFraction: DRIVE_FRACTION,  // share of each stroke spent in the drive
     massKg: 90,                // paddler + boat
@@ -151,7 +158,11 @@
   // Blade geometry given the shaft direction and the power-face direction.
   function blade(p, P, faceDir) {
     const b = rad(p.bendDeg);
-    const ey = unit(sub(faceDir, mul(P.d, dot(faceDir, P.d))));  // ⊥ shaft
+    let ey = unit(sub(faceDir, mul(P.d, dot(faceDir, P.d))));  // ⊥ shaft
+    if (p.pitchDeg) {   // turn the face about the shaft; + turns it away from the hull
+      const q = rad(p.pitchDeg), side = cross(P.d, ey);
+      ey = unit(sub(mul(ey, Math.cos(q)), mul(side, Math.sin(q))));
+    }
     const along = unit(add(mul(P.d, Math.cos(b)), mul(ey, -Math.sin(b))));
     const n = unit(add(mul(P.d, Math.sin(b)), mul(ey, Math.cos(b))));  // power face normal
     const throat = P.at(PADDLE.throat);
@@ -187,12 +198,15 @@
       const Ba = blade(p, Pa, face), Bb = blade(p, Pb, face);
       const vBlade = mul(sub(Bb.cop, Ba.cop), 1 / span);       // relative to the boat
       const vWater = add(vBlade, [V, 0, 0]);                   // through the water
-      const vn = dot(vWater, B.n);
-      const F = vn > 0 ? k * B.wet * vn * vn : 0;              // on the power face
+      const vn = dot(vWater, B.n), vmag = norm(vWater);
+      // Normal force on the power face: sine law (with lift) or drag only.
+      const F = vn > 0 ? k * B.wet * vn * (p.bladeLift ? vmag : vn) : 0;
+      // Of that force, the part across the flow is lift: cos α of it.
+      const lift = vn > 0 && vmag > 0 ? F * Math.sqrt(Math.max(0, 1 - (vn / vmag) * (vn / vmag))) : 0;
       const thrust = mul(B.n, -F);                             // on the boat
       out.push({
         u, t: u * Td, dt: i === 0 || i === steps ? dt / 2 : dt,
-        P, B, F, thrust,
+        P, B, F, thrust, lift,
         paddler: F * dot(B.n, vBlade),
         useful: thrust[0] * V,
         slip: F * vn,
@@ -392,6 +406,8 @@
       turnPerStroke: sw.turnPerStroke,               // rad of heading per stroke
       switchDuty: sw.duty,
       forceShare: { forward: share(0), sideways: share(1), vertical: share(2) },
+      // Share of the blade force that is lift (across the flow), over the drive.
+      liftShare: sum((s) => s.lift) / Math.max(1e-9, sum((s) => s.F)),
       yawMoment: yawMean,  // N·m; > 0 turns the bow away from the paddle side
       peakForce,
       speedAt: (watts) => at(watts).speed,
