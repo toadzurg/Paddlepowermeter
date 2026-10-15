@@ -140,6 +140,42 @@ drive.
 Efficiency is not capped at 100%. A reading above 100% means a calibration
 (force, lever arm or impeller) is off.
 
+## Web app
+
+`docs/app/index.html` is a phone and laptop dashboard that connects to the
+paddle over Bluetooth. Your bike computer can stay connected at the same
+time (up to three devices).
+
+- **Paddle tab:**
+  - stroke power, with a 5-stroke average
+  - stroke rate, boat speed, efficiency (useful vs slip) and lever arm
+  - a live force curve: the latest stroke, with the previous four behind it
+  - power, force, shaft rate, pivot, battery and SD-log status right now
+- **Setup tab:** buttons for tare, force calibration (enter the mass in kg),
+  boat pairing and calibration, and SD logging, plus a console for any
+  serial command.
+- **Try demo** shows the whole interface with simulated strokes, no paddle
+  needed.
+
+**Opening it:**
+- iPhone: open the link in the free **Bluefy** browser. Safari, Chrome and
+  Edge on iPhone can't use Bluetooth.
+- Laptop: Chrome or Edge.
+
+The page is served by GitHub Pages at
+`https://toadzurg.github.io/Paddlepowermeter/app/`. To enable that, go to the
+repository's Settings → Pages, choose "Deploy from a branch", then `main` and
+`/docs`.
+
+**PIN:** viewing data needs no PIN. Changing anything (tare, calibration,
+pairing, logging) needs the paddle's 6-digit PIN, so nobody nearby can tare
+your paddle at a race start. Type `pin` in the serial console to see it, or
+`pin 123456` to change it. The browser remembers it. The PIN is a guard
+against accidents and pranks, not strong security: Bluetooth here is
+unencrypted, so someone with a radio sniffer could capture it.
+
+The Bluetooth protocol is defined in `src/BleProtocol.h`.
+
 ## Raw sensor logging
 
 With a microSD card fitted, the paddle records every sample (100 per second)
@@ -200,6 +236,7 @@ with gravity, boat surge, sensor noise and gyro bias:
 
 ```
 ./test/host/run.sh
+./test/web/run.sh     # web app in headless Chromium; needs Node + Playwright
 ```
 
 Scenarios: nominal, a wrong pivot prior, boat surge, 75 spm race pace, IMU2
@@ -222,7 +259,8 @@ src/
   IMU.{h,cpp}            BMI270 driver → paddle frame, SI units
   Scale.{h,cpp}          NAU7802 driver → newtons
   Battery.{h,cpp}        MAX17048 state of charge
-  BLEManager.{h,cpp}     Cycling Power + Battery services
+  BLEManager.{h,cpp}     Cycling Power + Battery + app services
+  BleProtocol.h          app Bluetooth packet format (shared with tests)
   BoatLink.{h,cpp}       receives boat speed from the boat node (ESP-NOW)
   boat/BoatNode.cpp      boat node firmware (impeller reader)
   Logger.{h,cpp}         microSD raw sensor logging (background writer)
@@ -231,5 +269,8 @@ lib/BoatSpeed/           impeller pulse timing + radio packet (shared)
 lib/                     vendored sensor libraries
 tools/log2csv.py         log → CSV
 tools/replay/            re-run the power model over a log
+docs/app/index.html      web app (Bluetooth dashboard and setup)
+docs/BENCH_TEST.md       hardware bench test checklist
 test/host/               PC simulation tests
+test/web/                browser test of the web app (simulated paddle)
 ```
