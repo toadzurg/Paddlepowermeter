@@ -136,13 +136,42 @@ console.log("\nStroke simulator physics");
   check("pulling outward loses forward force", out.forceShare.forward < base.forceShare.forward - 0.05);
   const noTravel = S.simulate({ handTravelM: 0 });
   check("hand travel speeds the blade (more power at the same rate)", base.paddlerPower > noTravel.paddlerPower);
+
+  // Shallow water (Burke, Part 4): deep below L/2 changes nothing; under 2 ft drag climbs.
+  const cA = S.simulate({});
+  const at = (env) => S.race(cA, cA, 10000, 150, 150, env);
+  const deep = at({}), d28 = at({ depth: 2.8 }), d14 = at({ depth: 1.4 }), d06 = at({ depth: 0.6 }), d03 = at({ depth: 0.3 });
+  check("deep water below L/2 barely matters", Math.abs(d28.vA - deep.vA) / deep.vA < 0.002);
+  check("shallower is slower", deep.vA > d14.vA && d14.vA > d06.vA && d06.vA > d03.vA,
+        [deep, d14, d06, d03].map((r) => r.vA.toFixed(2)).join(" > "));
+  check("2 ft of water costs 3–25% of speed", d06.vA < deep.vA * 0.97 && d06.vA > deep.vA * 0.75,
+        `${pct(1 - d06.vA / deep.vA)} slower`);
+  check("shallow factor capped", S.shallowFactor(2.7, 0.1) === 5 && S.shallowFactor(2.7, Infinity) === 1);
+
+  // Crosswind: crab, lopsided switching, slower; a gale out-turns the stroke.
+  const beam = at({ windSpeed: 20 / 3.6, windAngle: 90 }), calmL = deep.legsA[0], beamL = beam.legsA[0];
+  check("crosswind slows the boat a little", beam.vA < deep.vA && beam.vA > deep.vA * 0.9,
+        `${pct(1 - beam.vA / deep.vA)} slower`);
+  check("crosswind: the hull crabs a few degrees", beamL.leewayDeg > 1 && beamL.leewayDeg < 10, `${beamL.leewayDeg.toFixed(1)}°`);
+  check("crosswind: more strokes windward than lee", beamL.windward > beamL.lee + 1 && Math.abs(calmL.windward - calmL.lee) < 1e-9,
+        `${beamL.windward.toFixed(1)} / ${beamL.lee.toFixed(1)}`);
+  check("calm switching matches the stroke's own figure", Math.abs(calmL.windward - cA.strokesPerSide) < 1e-6);
+  const gale = at({ windSpeed: 45 / 3.6, windAngle: 90 }).legsA[0];
+  check("a gale out-turns the stroke: steer instead", gale.steer && gale.duty === 1);
+  const headOnly = at({ windSpeed: 5, windAngle: 0 }), signed = at({ headwind: 5 });
+  check("headwind as speed + angle = signed headwind", Math.abs(headOnly.vA - signed.vA) < 1e-9 && headOnly.legsA[0].leewayDeg === 0);
+  check("quartering tailwind beats quartering headwind",
+        at({ windSpeed: 5, windAngle: 135 }).vA > at({ windSpeed: 5, windAngle: 45 }).vA);
+  const obW = at({ course: "outback", windSpeed: 5, windAngle: 60 });
+  check("there and back: wind angle mirrors on the way home", obW.legsA[0].leewayDeg > 0.5 && obW.legsA[1].leewayDeg > 0.5 &&
+        obW.legsA[1].water > obW.legsA[0].water);
 }
 
 (async () => {
   console.log("\nStroke simulator page");
   const browser = await chromium.launch();
-  for (const scheme of ["light", "dark"]) {
-    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, colorScheme: scheme, deviceScaleFactor: 2 });
+  for (const [scheme, width] of [["light", 390], ["dark", 1200]]) {
+    const ctx = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: scheme, deviceScaleFactor: 2 });
     // Regression: an animation frame timestamp earlier than the page's own
     // clock read gave a negative time step and crashed the views. Make every
     // frame lag by 50 ms so that case always happens, instead of by chance.
@@ -155,126 +184,110 @@ console.log("\nStroke simulator physics");
     page.on("pageerror", (e) => errors.push(e.message));
     await page.goto("file://" + path.resolve(__dirname, "../../docs/app/simulator.html"));
     await page.waitForTimeout(500);
-    const eff = () => page.textContent("#r-eff");
-    const num = async (id) => parseFloat((await page.textContent(id)).replace("−", "-"));
-    check(`${scheme}: shows efficiency`, /^\d+\.\d%$/.test(await eff()), await eff());
-    check(`${scheme}: all three views drawn (with lagging frame timestamps)`,
-          (await page.$$("svg.view line.blade")).length === 3 && (await page.$$("svg.view path.path")).length === 3);
-
-    await page.click("#presets >> text=Clean vertical");
-    await page.waitForTimeout(150);
-    const cleanEff = await num("#r-eff");
-    await page.click("#save");
-    await page.click("#presets >> text=Wide sweep");
-    await page.waitForTimeout(150);
-    check(`${scheme}: sweep scores lower than clean vertical`, (await num("#r-eff")) < cleanEff);
-    check(`${scheme}: comparison shows the difference`, (await page.textContent("#d-eff")).includes("worse"),
-          await page.textContent("#d-eff"));
-    check(`${scheme}: power split has four parts`, (await page.$$("#bar-power span")).length === 4);
-    check(`${scheme}: switch-sides tile`, /\d/.test(await page.textContent("#r-side")), await page.textContent("#r-side"));
-    check(`${scheme}: no J-stroke wording`, !/J-stroke|steering/i.test(await page.textContent("body")));
-
-    check(`${scheme}: vertical note`, /lifts|pulls down|cancels/.test(await page.textContent("#vert-note")),
-          await page.textContent("#vert-note"));
-
-    // Presets highlight while the sliders match them.
-    const pressed = (sel) => page.$$eval(`${sel} button[aria-pressed="true"]`, (bs) => bs.map((b) => b.dataset.value));
-    check(`${scheme}: selected preset highlighted`, JSON.stringify(await pressed("#presets")) === '["Wide sweep"]');
-    await page.$eval("#c-catchDeg", (el) => { el.value = 26; el.dispatchEvent(new Event("input")); });
-    check(`${scheme}: no preset highlighted after a slider change`, (await pressed("#presets")).length === 0);
-
-    // Race: each boat picks a preset, the live sliders or its own save.
-    await page.click("#presets >> text=Clean vertical");
-    await page.waitForTimeout(150);
-    check(`${scheme}: race defaults (A sliders, B wide sweep)`,
-          JSON.stringify([await pressed("#chips-a"), await pressed("#chips-b")]) === '[["live"],["Wide sweep"]]');
-    const verdict = () => page.textContent("#verdict");
-    check(`${scheme}: race verdict A wins`, /^Boat A wins by (\d+(\.\d)? s|\d+:\d\d), \d+ m ahead/.test(await verdict()), await verdict());
-    check(`${scheme}: finishing times shown`, /\d+:\d\d/.test(await page.textContent("#t-a")) && /\d+:\d\d/.test(await page.textContent("#t-b")),
-          `${await page.textContent("#t-a")} / ${await page.textContent("#t-b")}`);
-    await page.click("#chips-b >> text=Clean vertical");
-    await page.waitForTimeout(50);
-    check(`${scheme}: B preset chip selects and highlights`, JSON.stringify(await pressed("#chips-b")) === '["Clean vertical"]');
-    check(`${scheme}: same stroke is a dead heat`, (await verdict()) === "Dead heat.");
-    await page.click("#chips-a >> text=Wide sweep");
-    await page.waitForTimeout(50);
-    check(`${scheme}: A preset chip`, /^Boat B wins/.test(await verdict()), await verdict());
-
-    // Save sliders for each boat, then move the sliders: saves stay put.
-    await page.click("#save-a");
-    check(`${scheme}: save A selects it`, JSON.stringify(await pressed("#chips-a")) === '["saved"]' &&
-          (await page.textContent("#saved-a")).includes("Clean vertical"), await page.textContent("#saved-a"));
-    await page.click("#presets >> text=Long reach");
-    await page.waitForTimeout(150);
-    await page.click("#save-b");
-    check(`${scheme}: save B selects it`, JSON.stringify(await pressed("#chips-b")) === '["saved"]');
-    await page.click("#presets >> text=Wide sweep");
-    await page.waitForTimeout(150);
-    check(`${scheme}: saved clean beats saved long reach`, /^Boat A wins/.test(await verdict()), await verdict());
-
-    await page.$eval("#c-effB", (el) => { el.value = 250; el.dispatchEvent(new Event("input")); });
-    check(`${scheme}: more effort for B flips the race`, /^Boat B wins/.test(await verdict()), await verdict());
-    await page.$eval("#c-effB", (el) => { el.value = 150; el.dispatchEvent(new Event("input")); });
-
-    // Conditions
-    const timeA = () => page.textContent("#t-a");
+    const tag = `${scheme} ${width}px`;
+    const settle = () => page.waitForTimeout(150);
+    const text = (sel) => page.textContent(sel);
+    const pressed = (sel) => page.$$eval(`${sel} button[aria-pressed="true"]`, (bs) => bs.map((b) => b.dataset.value || b.dataset.boat));
+    const cellVal = async (row, col) => parseFloat((await page.$eval(`#cmp tr[data-row="${row}"] td:nth-child(${col})`, (e) => e.textContent)).replace("−", "-"));
+    const slide = (sel, v) => page.$eval(sel, (el, v) => { el.value = v; el.dispatchEvent(new Event("input")); }, v);
     const secs = (t) => t.split(":").reduce((a, x) => a * 60 + +x, 0);
-    const calm = await timeA();
-    await page.$eval("#c-wind", (el) => { el.value = 20; el.dispatchEvent(new Event("input")); });
-    check(`${scheme}: wind readout`, (await page.textContent("#o-wind")) === "20 km/h headwind");
-    check(`${scheme}: headwind slows the race`, secs(await timeA()) > secs(calm), `${calm} → ${await timeA()}`);
-    await page.$eval("#c-wind", (el) => { el.value = 0; el.dispatchEvent(new Event("input")); });
-    await page.$eval("#c-current", (el) => { el.value = -10; el.dispatchEvent(new Event("input")); });
-    check(`${scheme}: current readout`, (await page.textContent("#o-current")) === "10.0 km/h against you");
-    for (const id of ["#c-effA", "#c-effB"]) await page.$eval(id, (el) => { el.value = 50; el.dispatchEvent(new Event("input")); });
-    check(`${scheme}: current too strong`, (await verdict()).startsWith("Neither boat") && (await timeA()) === "never",
-          await verdict());
-    await page.$eval("#c-current", (el) => { el.value = 0; el.dispatchEvent(new Event("input")); });
-    for (const id of ["#c-effA", "#c-effB"]) await page.$eval(id, (el) => { el.value = 150; el.dispatchEvent(new Event("input")); });
-    await page.click("#chips-a >> text=Current sliders");
-    await page.click("#chips-b >> text=Wide sweep");
 
-    // Course choice
-    check(`${scheme}: point to point by default`, JSON.stringify(await pressed("#chips-course")) === '["point"]');
-    const t1 = await timeA();
-    await page.$eval("#c-current", (el) => { el.value = 4; el.dispatchEvent(new Event("input")); });
-    const tWith = await timeA();
-    await page.click("#chips-course >> text=There and back");
-    check(`${scheme}: there and back selected`, JSON.stringify(await pressed("#chips-course")) === '["outback"]' &&
-          (await page.textContent("#o-current")).endsWith("going out"), await page.textContent("#o-current"));
-    check(`${scheme}: current helps one way, costs there and back`, secs(tWith) < secs(t1) && secs(await timeA()) > secs(t1),
-          `${t1} still, ${tWith} with current, ${await timeA()} there and back`);
-    await page.$eval("#c-current", (el) => { el.value = 0; el.dispatchEvent(new Event("input")); });
-    await page.click("#chips-course >> text=Point to point");
+    // Layout: phones put the sliders after the views, wide screens beside them.
+    const box = async (sel) => (await page.$(sel)).boundingBox();
+    const [views, ctl, raceBox] = [await box("#views-card"), await box("#controls"), await box("#race-card")];
+    if (width < 900) check(`${tag}: sliders between views and race`, ctl.y > views.y && ctl.y < raceBox.y);
+    else check(`${tag}: sliders in a column beside the results`, ctl.x > views.x + views.width - 1);
 
+    // Efficiency comparison
+    check(`${tag}: A and B efficiencies`, (await cellVal("eff", 2)) > 50 && (await cellVal("eff", 3)) > 50);
+    check(`${tag}: defaults beat the wide sweep`, (await cellVal("eff", 2)) > (await cellVal("eff", 3)));
+    check(`${tag}: winner highlighted`, (await page.$$('#cmp tr[data-row="eff"] td.win.a')).length === 1);
+    check(`${tag}: two power bars, four parts`, (await page.$$("#bars-power .bar")).length === 2 &&
+          (await page.$$("#leg-power tr")).length === 5);
+    check(`${tag}: details for both boats`, /switch|turning/i.test(await text("#why-a")) && /B:/.test(await text("#why-b")));
+    const s150 = await cellVal("speed", 2);
+    await slide("#c-effortW", 300); await settle();
+    check(`${tag}: compare-at effort raises speed`, (await cellVal("speed", 2)) > s150 && (await text("#o-effortW")) === "300 W");
+    await slide("#c-effortW", 150); await settle();
+
+    // Boats and presets
+    check(`${tag}: editing A, names shown`, JSON.stringify(await pressed("#boats")) === '["a"]' &&
+          (await text("#nm-a")) === "Defaults" && (await text("#nm-b")) === "Wide sweep");
+    check(`${tag}: A's preset highlighted`, JSON.stringify(await pressed("#presets")) === '["Defaults"]');
+    await page.click("#boats [data-boat=b]"); await settle();
+    check(`${tag}: switch to B`, JSON.stringify(await pressed("#presets")) === '["Wide sweep"]' &&
+          (await page.$eval("#c-sweepDeg", (e) => e.value)) === "70" && (await text("#editing-name")) === "Boat B");
+    await page.click("#presets >> text=Short reach, pull behind"); await settle();
+    check(`${tag}: preset applies to B only`, (await text("#nm-b")) === "Short reach, pull behind" && (await text("#nm-a")) === "Defaults");
+    await slide("#c-catchDeg", 14); await settle();
+    check(`${tag}: slider makes B custom`, (await text("#nm-b")) === "Custom" && (await pressed("#presets")).length === 0);
+    await page.click("#swap"); await settle();
+    check(`${tag}: swap`, (await text("#nm-a")) === "Custom" && (await text("#nm-b")) === "Defaults");
+    await page.click("#copy"); await settle();   // editing B: copy B to A
+    check(`${tag}: copy`, (await text("#nm-a")) === "Defaults" && (await cellVal("eff", 2)) === (await cellVal("eff", 3)));
+    await page.click("#boats [data-boat=a]");
+    await page.click("#presets >> text=Clean vertical");
+    await page.click("#boats [data-boat=b]");
+    await page.click("#presets >> text=Wide sweep");
+    await page.click("#boats [data-boat=a]"); await settle();
+    check(`${tag}: drive time readout`, (await text("#o-driveFraction")) === "50% of each stroke");
+    await page.$eval("#c-bendDeg", (el) => { el.value = -12; el.dispatchEvent(new Event("input")); });
+    check(`${tag}: bend readout shows direction`, (await text("#o-bendDeg")) === "12° toward power face");
+    await page.click("#presets >> text=Clean vertical"); await settle();
+
+    // Views: split, overlay, single
+    const svgs = () => page.$$eval("svg.view", (ss) => ss.map((s) => s.dataset.boats));
+    check(`${tag}: split shows A and B for each view (with lagging frame timestamps)`,
+          JSON.stringify(await svgs()) === '["a","b","a","b","a","b"]' && (await page.$$("svg.view line.blade")).length === 6);
+    await page.click("#view-mode >> text=Overlay"); await settle();
+    check(`${tag}: overlay draws both boats in one view`, JSON.stringify(await svgs()) === '["ba","ba","ba"]' &&
+          (await page.$$("svg.view line.blade.a")).length === 3 && (await page.$$("svg.view line.blade.b")).length === 3);
+    await page.click("#view-mode >> text=B only"); await settle();
+    check(`${tag}: single boat view`, JSON.stringify(await svgs()) === '["b","b","b"]' && (await page.$$("svg.view .path.b")).length === 3);
+    check(`${tag}: view mode highlighted`, JSON.stringify(await pressed("#view-mode")) === '["b"]');
+    await page.click("#view-mode >> text=Split");
+
+    // Race
+    const verdict = () => text("#verdict");
+    check(`${tag}: race verdict`, /^Boat A wins by (\d+(\.\d)? s|\d+:\d\d), \d+ m ahead/.test(await verdict()), await verdict());
+    check(`${tag}: point to point by default`, JSON.stringify(await pressed("#course")) === '["point"]');
+    const t0 = await text("#t-a");
+    await slide("#effB", 250);
+    check(`${tag}: more effort for B flips the race`, /^Boat B wins/.test(await verdict()), await verdict());
+    await slide("#effB", 150);
+    await slide("#wind", 20); await slide("#windDir", 90);
+    check(`${tag}: wind readouts`, (await text("#o-wind")) === "20 km/h" && (await text("#o-windDir")) === "the side");
+    check(`${tag}: crosswind slows and makes switching lopsided`, secs(await text("#t-a")) > secs(t0) &&
+          /crab; switching [\d.]+ strokes windward, [\d.]+ lee/.test(await text("#c-a")), await text("#c-a"));
+    await slide("#windDir", 0);
+    check(`${tag}: headwind readout`, (await text("#o-windDir")) === "dead ahead" && (await text("#c-a")) === "");
+    await slide("#wind", 0);
+    await slide("#depth", 0.6);
+    check(`${tag}: depth readout and shallow note`, (await text("#o-depth")) === "0.6 m (2.0 ft)" &&
+          /wave drag ×[\d.]+ in the shallows/.test(await text("#c-a")) && secs(await text("#t-a")) > secs(t0), await text("#c-a"));
+    await slide("#depth", 5);
+    check(`${tag}: deep`, (await text("#o-depth")) === "deep" && (await text("#t-a")) === t0);
+    await slide("#current", 4);
+    const tWith = await text("#t-a");
+    await page.click("#course >> text=There and back");
+    check(`${tag}: current helps one way, costs there and back`, secs(tWith) < secs(t0) && secs(await text("#t-a")) > secs(t0) &&
+          (await text("#o-current")).endsWith("going out"), `${t0} / ${tWith} / ${await text("#t-a")}`);
+    await slide("#current", -10);
+    for (const id of ["#effA", "#effB"]) await slide(id, 50);
+    check(`${tag}: current too strong`, (await verdict()).startsWith("Neither boat") && (await text("#t-a")) === "never");
+    await slide("#current", 0);
+    for (const id of ["#effA", "#effB"]) await slide(id, 150);
+    await page.click("#course >> text=Point to point");
     await page.click("#race-start");
     await page.waitForTimeout(600);
-    check(`${scheme}: race animates two boats`, (await page.$$("#race-view .boat-a, #race-view .boat-b")).length >= 2);
-    await page.click("#presets >> text=Short reach, pull behind");
-    await page.waitForTimeout(150);
-    check(`${scheme}: short-reach preset`, (await page.$eval("#c-catchDeg", (e) => e.value)) === "12");
-    await page.$eval("#c-massKg", (el) => { el.value = 120; el.dispatchEvent(new Event("input")); });
-    check(`${scheme}: weight slider keeps the preset highlighted`, JSON.stringify(await pressed("#presets")) === '["Short reach, pull behind"]');
-
-    // Slider moves the model: more lean, more turning.
-    await page.click("#presets >> text=Defaults");
-    await page.waitForTimeout(150);
-    const yaw = async () => parseFloat((await page.textContent("#r-yaw-sub")).replace(/[^\d.−-]/g, "").replace("−", "-"));
-    const yaw0 = await yaw();
-    await page.$eval("#c-leanDeg", (el) => { el.value = 35; el.dispatchEvent(new Event("input")); });
-    await page.waitForTimeout(150);
-    check(`${scheme}: lean slider increases turning`, (await yaw()) > yaw0);
-    check(`${scheme}: slider readout`, (await page.textContent("#o-leanDeg")) === "35°");
-    check(`${scheme}: drive time readout`, (await page.textContent("#o-driveFraction")) === "50% of each stroke");
-    await page.$eval("#c-bendDeg", (el) => { el.value = -12; el.dispatchEvent(new Event("input")); });
-    check(`${scheme}: bend readout shows direction`, (await page.textContent("#o-bendDeg")) === "12° toward power face");
+    check(`${tag}: race animates two boats`, (await page.$$("#race-view .boat-a, #race-view .boat-b")).length === 2);
+    check(`${tag}: no J-stroke wording`, !/J-stroke|steering stroke/i.test(await text("body")));
 
     if (process.argv[2]) {
-      await page.click("#presets >> text=Defaults");
       await page.waitForTimeout(400);
       await page.screenshot({ path: path.join(process.argv[2], `sim-${scheme}.png`), fullPage: true });
     }
-    check(`${scheme}: no page errors`, errors.length === 0, errors.join("; "));
+    check(`${tag}: no page errors`, errors.length === 0, errors.join("; "));
     await ctx.close();
   }
   await browser.close();
