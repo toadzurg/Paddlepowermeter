@@ -12,6 +12,11 @@ uint8_t initIMU();
 bool calibrateGyroBias(int samples = 200);
 
 // Read both IMUs, converted to SI units and rotated into the paddle frame.
-void readIMU(ImuReading out[2]);
+// If raw is given, it also receives the readings in each chip's own axes,
+// before bias removal (what the SD log records).
+void readIMU(ImuReading out[2], ImuReading *raw = nullptr);
+
+// Current gyro bias, rad/s, in each chip's own axes.
+void getGyroBias(float bias[2][3]);
 
 #endif  // IMU_H

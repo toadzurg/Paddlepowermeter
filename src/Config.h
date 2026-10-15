@@ -61,6 +61,11 @@ constexpr float AHRS_BETA          = 0.05f;  // Madgwick gain; low = trust gyro
 
 constexpr float GRAVITY_MS2 = 9.80665f;
 
+// --- Raw sensor log (microSD on the default SPI pins: SCK 18, MISO 19,
+// MOSI 23) ---------------------------------------------------------------
+constexpr int LOG_SD_CS_PIN = 5;
+constexpr bool LOG_AUTOSTART = true;  // start logging at boot if a card is in
+
 // --- Output ----------------------------------------------------------------
 constexpr uint32_t BLE_NOTIFY_MS    = 1000;  // Cycling Power typical rate
 constexpr uint32_t BATTERY_POLL_MS  = 10000;

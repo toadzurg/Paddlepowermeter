@@ -18,11 +18,13 @@ bool initScale(int32_t zeroOffset, float countsPerN) {
   return true;
 }
 
-bool readForce(float &forceN) {
+bool readForce(float &forceN, int32_t *rawCounts) {
   if (!ok || !scale.available()) return false;
   float cal = scale.getCalibrationFactor();
   if (cal == 0) return false;
-  forceN = (scale.getReading() - scale.getZeroOffset()) / cal;
+  int32_t counts = scale.getReading();
+  if (rawCounts) *rawCounts = counts;
+  forceN = (counts - scale.getZeroOffset()) / cal;
   return true;
 }
 

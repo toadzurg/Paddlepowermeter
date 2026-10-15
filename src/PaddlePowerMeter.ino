@@ -9,6 +9,7 @@
 #include "Battery.h"
 #include "BLEManager.h"
 #include "BoatLink.h"
+#include "Logger.h"
 
 // Serial commands (115200 baud, newline terminated):
 //   tare          zero the force sensor (paddle unloaded)
@@ -19,6 +20,7 @@
 //   boat pair     pair with the next boat node heard (away from other boats)
 //   boat cal start   then paddle a measured distance on still water ...
 //   boat cal <m>     ... and enter it, e.g. boat cal 500
+//   log start | log stop | log   raw sensor log on the microSD card
 
 namespace {
 PowerModel model;
@@ -41,6 +43,55 @@ float pulsesPerM = 0;        // impeller calibration, 0 = uncalibrated
 bool boatCalRunning = false;
 uint32_t boatCalStartCount = 0;
 
+logfmt::LogRecord rec = {};  // filled by readSample(), finished in loop()
+bool logRestartPending = false;
+
+logfmt::LogHeader makeLogHeader() {
+  logfmt::LogHeader h = {};
+  h.magic = logfmt::MAGIC;
+  h.version = logfmt::VERSION;
+  h.headerSize = sizeof h;
+  h.recordSize = sizeof(logfmt::LogRecord);
+  h.sampleHz = cfg::SAMPLE_HZ;
+  h.imu2PosM = cfg::IMU2_POS_M;
+  h.bladeCopPosM = cfg::BLADE_COP_POS_M;
+  h.pivotPriorPosM = cfg::PIVOT_PRIOR_POS_M;
+  const cfg::AxisMap *maps[2] = {&cfg::IMU1_AXES, &cfg::IMU2_AXES};
+  for (int i = 0; i < 2; i++)
+    for (int k = 0; k < 3; k++) {
+      h.axis[i][k] = maps[i]->axis[k];
+      h.sign[i][k] = maps[i]->sign[k];
+    }
+  getGyroBias(h.gyroBias);
+  h.forceZeroOffset = zeroOffset;
+  h.forceCountsPerN = countsPerN;
+  h.pulsesPerM = pulsesPerM;
+  h.startMillis = millis();
+  strncpy(h.firmware, __DATE__, sizeof h.firmware - 1);
+  return h;
+}
+
+// Calibration changed: roll over to a new file so each file's header
+// matches its data.
+void restartLogIfRunning() {
+  if (!logging()) return;
+  stopLog();
+  logRestartPending = true;
+}
+
+void printLogStatus() {
+  LoggerStats l = loggerStats();
+  if (!loggerCardPresent()) {
+    Serial.println("log: no SD card");
+  } else {
+    Serial.printf("log: %s %s, %lu records, %lu dropped, %lu KB%s\n",
+                  l.active ? "recording" : "stopped", l.path,
+                  (unsigned long)l.records, (unsigned long)l.dropped,
+                  (unsigned long)(l.bytesWritten / 1024),
+                  l.writeError ? ", WRITE ERROR" : "");
+  }
+}
+
 void saveCalibration() {
   prefs.putInt("zero", zeroOffset);
   prefs.putFloat("cal", countsPerN);
@@ -58,6 +109,7 @@ void printStatus() {
                 boatLinkPaired() ? "paired" : "NOT PAIRED",
                 b.fresh ? "receiving" : "no signal", pulsesPerM,
                 pulsesPerM > 0 ? "" : " (UNCALIBRATED)");
+  printLogStatus();
 }
 
 void handleBoatCommand(const String &arg) {
@@ -85,6 +137,7 @@ void handleBoatCommand(const String &arg) {
     boatCalRunning = false;
     pulsesPerM = pulses / metres;
     prefs.putFloat("ppm", pulsesPerM);
+    restartLogIfRunning();
     Serial.printf("impeller: %lu pulses over %.1f m = %.3f pulses/m\n",
                   (unsigned long)pulses, metres, pulsesPerM);
   } else {
@@ -96,6 +149,7 @@ void handleCommand(const String &cmd) {
   if (cmd == "tare") {
     zeroOffset = tareScale();
     saveCalibration();
+    restartLogIfRunning();
     Serial.printf("tared: zero offset %ld\n", (long)zeroOffset);
   } else if (cmd.startsWith("cal ")) {
     float n = cmd.substring(4).toFloat();
@@ -105,17 +159,27 @@ void handleCommand(const String &cmd) {
     }
     countsPerN = calibrateScale(n);
     saveCalibration();
+    restartLogIfRunning();
     Serial.printf("calibrated: %.3f counts/N\n", countsPerN);
   } else if (cmd == "debug") {
     debug = !debug;
   } else if (cmd == "status") {
     printStatus();
+  } else if (cmd == "log start") {
+    if (logging()) Serial.println("log: already recording");
+    else if (!startLog(makeLogHeader())) Serial.println("log: no SD card");
+  } else if (cmd == "log stop") {
+    stopLog();
+    logRestartPending = false;
+    Serial.println("log: stopped");
+  } else if (cmd == "log") {
+    printLogStatus();
   } else if (cmd.startsWith("boat")) {
     String arg = cmd.substring(4);
     arg.trim();
     handleBoatCommand(arg);
   } else if (cmd.length()) {
-    Serial.println("commands: tare | cal <newtons> | debug | status | boat ...");
+    Serial.println("commands: tare | cal <newtons> | debug | status | boat ... | log ...");
   }
 }
 
@@ -137,12 +201,27 @@ PaddleSample readSample(uint32_t nowUs) {
   s.timeMs = millis();
   s.dt = lastSampleUs ? (nowUs - lastSampleUs) * 1e-6f : 0;
   lastSampleUs = nowUs;
-  readForce(forceN);  // holds the last value between 80 Hz conversions
+  // Force holds its last value between the ADC's 80 Hz conversions.
+  bool forceFresh = readForce(forceN, &rec.forceRaw);
   s.forceN = forceN;
-  readIMU(s.imu);
+  ImuReading raw[2];
+  readIMU(s.imu, raw);
   BoatSpeed b = readBoatSpeed(pulsesPerM);
   s.boatSpeedValid = b.fresh && pulsesPerM > 0;
   s.boatSpeedMps = b.speedMps;
+
+  rec.tUs = nowUs;
+  rec.flags = (raw[0].valid ? logfmt::F_IMU1_VALID : 0) |
+              (raw[1].valid ? logfmt::F_IMU2_VALID : 0) |
+              (forceFresh ? logfmt::F_FORCE_FRESH : 0) |
+              (b.fresh ? logfmt::F_BOAT_FRESH : 0);
+  for (int i = 0; i < 2; i++)
+    for (int k = 0; k < 3; k++) {
+      rec.gyro[i][k] = raw[i].gyro[k];
+      rec.accel[i][k] = raw[i].accel[k];
+    }
+  rec.boatPulseHz = b.pulseHz;
+  rec.boatPulseCount = b.pulseCount;
   return s;
 }
 }  // namespace
@@ -179,6 +258,10 @@ void setup() {
   if (!prefs.isKey("cal"))
     Serial.println("force sensor UNCALIBRATED: hang a known weight and run 'cal <N>'");
 
+  // After zeroing, so the first file's header has this session's offsets.
+  if (!initLogger(cfg::LOG_SD_CS_PIN)) Serial.println("no SD card: not logging");
+  else if (cfg::LOG_AUTOSTART) startLog(makeLogHeader());
+
   model.begin(readSample(micros()));
   sendBattery(getBatteryLevel());
   nextSampleUs = micros() + SAMPLE_US;
@@ -196,6 +279,13 @@ void loop() {
     nextSampleUs = nowUs + SAMPLE_US;  // fell far behind: don't burst
 
   model.update(readSample(nowUs));
+
+  rec.forceN = forceN;
+  rec.omega = model.angularVelocity();
+  rec.pivotPosM = model.pivotPosition();
+  rec.instPowerW = model.instantaneousPower();
+  logRecord(rec);
+  if (logRestartPending && startLog(makeLogHeader())) logRestartPending = false;
 
   uint8_t mac[6];
   if (takeNewPairing(mac)) {
