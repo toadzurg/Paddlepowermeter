@@ -266,6 +266,25 @@
   #tip { position: fixed; z-index: 50; max-width: min(280px, calc(100vw - 24px)); padding: 8px 10px;
     background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border); border-radius: 8px;
     box-shadow: 0 4px 14px rgba(0,0,0,0.18); font-size: 13px; line-height: 1.35; font-weight: 400; }
+  /* Course builder */
+  svg.cmap, svg.strip { display: block; width: 100%; height: auto; margin-top: 8px; }
+  svg.cmap text, svg.strip text { font-size: 11px; fill: var(--text-secondary); }
+  svg.cmap text.strong { fill: var(--text-primary); font-weight: 600; }
+  svg.cmap .bank { fill: color-mix(in srgb, var(--series-3) 12%, var(--surface-1)); }
+  svg.cmap .riv { fill: none; stroke: var(--water-line); stroke-linecap: round; stroke-linejoin: round; opacity: 0.6; }
+  svg.cmap .numbg { fill: var(--text-primary); } svg.cmap .num { font-size: 10px; font-weight: 700; fill: var(--surface-1); }
+  svg.strip .axis { stroke: var(--axis); }
+  #cb-map, #cb-strip { cursor: pointer; }
+  .cb-editor { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-top: 10px; }
+  .cb-editor .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .cb-editor .head b { font-size: 15px; }
+  .warn { color: var(--series-2); }
+  table.secs { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  table.secs th { text-align: left; font-weight: 500; color: var(--text-secondary); padding: 4px; border-bottom: 1px solid var(--border); }
+  table.secs td { padding: 6px 4px; border-bottom: 1px solid var(--border); cursor: pointer; }
+  table.secs tr.on td { background: var(--water); font-weight: 600; }
+  table.secs .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+  .cb-scroll { max-height: 320px; overflow-y: auto; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -362,7 +381,7 @@
               <input type="range" id="effA" min="50" max="400" step="10" value="150" aria-label="Boat A effort"></div>
             <div class="ctl"><label class="top"><span><span class="b-dot"></span>Boat B effort</span><output id="o-effB"></output></label>
               <input type="range" id="effB" min="50" max="400" step="10" value="150" aria-label="Boat B effort"></div>
-            <div class="river-only" hidden>
+            <div class="river-only map-too" hidden>
               <div class="ctl"><div class="top"><span><span class="a-dot"></span>Boat A line</span></div>
                 <div class="row chips" id="line-a" role="group" aria-label="Boat A line" style="margin-top:6px"></div></div>
               <div class="ctl"><div class="top"><span><span class="b-dot"></span>Boat B line</span></div>
@@ -373,8 +392,8 @@
           <section>
             <h3>Course<button type="button" class="info" data-tip="River: current and depth vary across the channel and around bends. Point to point: one way. There and back: turn at halfway, so wind and current reverse." aria-label="What is this?">?</button></h3>
             <div class="row chips" id="water" role="group" aria-label="Water"></div>
-            <div class="row chips" id="course" role="group" aria-label="Course" style="margin-top:6px"></div>
-            <div class="ctl"><label class="top"><span>Distance</span><output id="o-dist"></output></label>
+            <div class="row chips simple-only" id="course" role="group" aria-label="Course" style="margin-top:6px"></div>
+            <div class="ctl simple-only"><label class="top"><span>Distance</span><output id="o-dist"></output></label>
               <input type="range" id="dist" min="0.2" max="40" step="0.1" value="10" aria-label="Race distance"></div>
             <div class="river-only" hidden>
               <div class="ctl"><label class="top"><span>River width</span><output id="o-width"></output></label>
@@ -383,7 +402,7 @@
                 <input type="range" id="bends" min="0" max="720" step="45" value="180" aria-label="Bends per km">
                 <div class="help">Inside of a bend: shorter but shallow and slack. Outside: deep and fast.</div></div>
             </div>
-            <div class="ctl"><label class="top"><span id="l-depth">Water depth</span><output id="o-depth"></output></label>
+            <div class="ctl simple-only"><label class="top"><span id="l-depth">Water depth</span><output id="o-depth"></output></label>
               <input type="range" id="depth" min="0.3" max="5" step="0.1" value="5" aria-label="Water depth">
               <div class="help">Under about 2.8 m the boat starts to drag more; under 2 ft, much more.</div></div>
           </section>
@@ -394,9 +413,32 @@
             <div class="ctl"><label class="top"><span>Wind from</span><output id="o-windDir"></output></label>
               <input type="range" id="windDir" min="0" max="180" step="15" value="0" aria-label="Wind direction">
               <div class="help">A crosswind turns the bow into the wind: more strokes on the windward side.</div></div>
-            <div class="ctl"><label class="top"><span id="l-current">Current</span><output id="o-current"></output></label>
+            <div class="ctl simple-only"><label class="top"><span id="l-current">Current</span><output id="o-current"></output></label>
               <input type="range" id="current" min="-10" max="10" step="0.5" value="0" aria-label="Current"></div>
           </section>
+        </div>
+        <div id="builder" hidden>
+          <h3>Your course<button type="button" class="info" data-tip="Load the AuSable or import a GPX track. Dams in waypoint names become portages. Each section gets its own width, current and depth; bends and heading come from the track. Your file stays on your device." aria-label="What is this?">?</button></h3>
+          <div class="row"><button id="cb-preset">AuSable Marathon</button><button id="cb-import">Import GPX</button>
+            <input type="file" id="cb-file" accept=".gpx,application/gpx+xml" hidden></div>
+          <div class="sub" id="cb-info" style="margin-top:6px">Loading the AuSable…</div>
+          <svg class="cmap" id="cb-map" role="img" aria-label="Course map: tap a section to edit it"></svg>
+          <div class="note">Colour: current. Tap a section to edit it.</div>
+          <svg class="strip" id="cb-strip" role="img" aria-label="Current and depth along the course"></svg>
+          <div class="cb-editor" id="cb-editor">
+            <div class="head"><b id="cb-sec-name"></b><span class="row chips"><button type="button" id="cb-split">Split</button><button type="button" id="cb-merge">Merge ▸</button></span></div>
+            <div class="sub" id="cb-sec-km"></div>
+            <div class="row chips" id="cb-kind" role="group" aria-label="Section kind" style="margin-top:6px"></div>
+            <div class="sub" id="cb-sec-geo" style="margin-top:6px"></div>
+            <div class="ctl paddled" id="cb-width-ctl"><label class="top"><span>Width</span><output id="o-cb-width"></output></label>
+              <input type="range" id="cb-width" min="10" max="200" step="5" aria-label="Section width"></div>
+            <div class="ctl paddled"><label class="top"><span>Current mid-channel</span><output id="o-cb-current"></output></label>
+              <input type="range" id="cb-current" min="0" max="8" step="0.1" aria-label="Section current"></div>
+            <div class="ctl paddled"><label class="top"><span>Depth</span><output id="o-cb-depth"></output></label>
+              <input type="range" id="cb-depth" min="0.3" max="5" step="0.1" aria-label="Section depth"></div>
+          </div>
+          <h3>Sections</h3>
+          <div class="cb-scroll"><table class="secs" id="cb-secs"><thead><tr><th>#</th><th>km</th><th>Section</th><th>km/h</th><th>Depth m</th></tr></thead><tbody></tbody></table></div>
         </div>
         <div class="result">
           <div class="times">
@@ -411,6 +453,7 @@
           </div>
           <svg class="race river-only" id="river-map" role="img" aria-label="The river from above: each boat on its line" hidden></svg>
           <svg class="race" id="race-view" role="img" aria-label="Race between boat A and boat B"></svg>
+          <svg class="race" id="course-view" role="img" aria-label="The race on the course map" hidden></svg>
           <div class="scrub">
             <button id="scrub-back" aria-label="Step back">◀</button>
             <input type="range" id="scrub" min="0" max="1000" step="1" value="1000" aria-label="Race time: drag to replay">
@@ -478,14 +521,14 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of stroke-sim.js (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. -->
-<script src="stroke-sim.js?v=dd75e8da27"></script>
+<script src="stroke-sim.js?v=68fb30e7bb"></script>
 <script>
 (() => {
 "use strict";
 const $ = (id) => document.getElementById(id);
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 25;
+const NEEDS_API = 26;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -902,7 +945,7 @@ let race = null, run = null, course = "point", water = "open";
 const lines = { a: "best", b: 0 };
 // [value, label] pairs, in display order.
 const COURSES = [["point", "Point to point"], ["outback", "There and back"]];
-const WATERS = [["open", "Open water"], ["river", "River"]];
+const WATERS = [["open", "Open water"], ["river", "River"], ["map", "Real course"]];
 const LINES = [["0", "Middle"], ["0.5", "Between"], ["1", "Edges"], ["best", "Best line"]];
 // A row of choice chips; `get`/`set` read and write the chosen value.
 function chips(id, options, get, set) {
@@ -922,11 +965,20 @@ function renderCourse() {
   chips("course", COURSES, () => course, (v) => { course = v; });
   for (const x of BOATS) chips(`line-${x}`, LINES, () => lines[x], (v) => { lines[x] = v === "best" ? "best" : +v; });
   // toggleAttribute, not .hidden: SVG elements have no hidden property.
-  for (const el of document.querySelectorAll(".river-only")) el.toggleAttribute("hidden", water !== "river");
-  $("race-view").toggleAttribute("hidden", water === "river");
+  const map = water === "map";
+  for (const el of document.querySelectorAll(".river-only"))
+    el.toggleAttribute("hidden", !(water === "river" || (map && el.classList.contains("map-too"))));
+  for (const el of document.querySelectorAll(".simple-only")) el.toggleAttribute("hidden", map);
+  $("builder").toggleAttribute("hidden", !map);
+  $("race-view").toggleAttribute("hidden", water !== "open");
+  $("course-view").toggleAttribute("hidden", !map);
+  // On a map the wind is a compass direction; otherwise it's off the bow.
+  $("windDir").max = map ? 345 : 180;
+  if (map && !cb) loadPreset(); else if (map) renderBuilder();
   $("l-depth").textContent = water === "river" ? "Depth mid-channel" : "Water depth";
   // Only mention a turn when the course has one.
-  $("race-sub").textContent = "A against B in the same conditions. Speed changes along the course; " +
+  $("race-sub").textContent = map ? "A against B on a real course. Portages are carried at a jog; the start isn't timed." :
+    "A against B in the same conditions. Speed changes along the course; " +
     (course === "outback" ? "the start and the turn at halfway aren't timed." : "the start isn't timed.");
   $("l-current").textContent = water === "river" ? "Current mid-channel" : "Current";
 }
@@ -972,14 +1024,18 @@ function updateRace() {
   $("o-dist").textContent = km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`;
   $("o-depth").textContent = depthText(depth);
   $("o-wind").textContent = wind === 0 ? "calm" : `${wind} km/h`;
-  $("o-windDir").textContent = wind === 0 ? "—" : dirText(dir) + out;
+  $("o-windDir").textContent = wind === 0 ? "—" : water === "map" ? compass(dir) : dirText(dir) + out;
   $("o-current").textContent = current === 0 ? "none" :
     `${fmtNum(Math.abs(current), 1)} km/h ${current > 0 ? "with you" : "against you"}${out}`;
   const riverOn = water === "river";
   const width = parseFloat($("width").value), bends = parseFloat($("bends").value);
   $("o-width").textContent = `${width} m`;
   $("o-bends").textContent = bends === 0 ? "straight" : `${fmtNum(bends / 90, 1)} bends per km (${bends}°/km)`;
-  race = S.race(results.a, results.b, km * 1000, effA, effB, {
+  const map = water === "map";
+  if (map && !cb) return;   // the course is still loading
+  race = map ? S.race(results.a, results.b, 0, effA, effB, {
+    windSpeed: wind / 3.6, windFrom: dir, sections: courseLegs(), lines: { A: lines.a, B: lines.b },
+  }) : S.race(results.a, results.b, km * 1000, effA, effB, {
     windSpeed: wind / 3.6, windAngle: dir, current: current / 3.6,
     // A river's mid-channel shallows toward the banks, so "deep" there is 5 m.
     depth: depth >= 5 ? (riverOn ? 5 : Infinity) : depth, course,
@@ -987,13 +1043,13 @@ function updateRace() {
   });
   $("t-a").textContent = clock(race.tA);
   $("t-b").textContent = clock(race.tB);
-  const avg = course === "outback" ? " average" : "";
+  const avg = course === "outback" || map ? " average" : "";
   const spd = (v) => v > 1e-3 ? `${fmtNum(v, 2)} m/s · ${fmtNum(v * 3.6, 1)} km/h${avg}` : "can't make headway";
   $("s-a").textContent = spd(race.vA);
   $("s-b").textContent = spd(race.vB);
   const outback = course === "outback";
-  $("c-a").textContent = legNote(race.legsA[0], outback && race.legsA[0].river ? race.legsA : null);
-  $("c-b").textContent = legNote(race.legsB[0], outback && race.legsB[0].river ? race.legsB : null);
+  $("c-a").textContent = map ? courseNote(race.legsA) : legNote(race.legsA[0], outback && race.legsA[0].river ? race.legsA : null);
+  $("c-b").textContent = map ? courseNote(race.legsB) : legNote(race.legsB[0], outback && race.legsB[0].river ? race.legsB : null);
   const gap = Math.abs(race.timeGap), dist = Math.abs(race.distanceGap);
   const winner = race.timeGap > 0 ? "A" : "B";
   $("verdict").textContent =
@@ -1153,6 +1209,386 @@ function drawRace(dA, dB, elapsed) {
     `<text class="strong" x="8" y="${laneY[0] + 4}">A</text><text class="strong" x="8" y="${laneY[1] + 4}">B</text>`;
   svg.innerHTML = g;
 }
+// ------------------------------------------------------- course builder
+// A real course: a GPX track (or the AuSable preset) cut into editable
+// sections, each a river, a pond or a portage with its own width, current
+// and depth. To race it, each section is cut into ~2 km legs with their own
+// heading (so the wind turns with the course) and bends (from the track).
+const R_EARTH = 6371000, rd = (d) => (d * Math.PI) / 180;
+const hav = (a, b) => {
+  const dp = rd(b[0] - a[0]), dl = rd(b[1] - a[1]);
+  const h = Math.sin(dp / 2) ** 2 + Math.cos(rd(a[0])) * Math.cos(rd(b[0])) * Math.sin(dl / 2) ** 2;
+  return 2 * R_EARTH * Math.asin(Math.sqrt(h));
+};
+const compass = (deg) => ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round((((deg % 360) + 360) % 360) / 45) % 8];
+// Distance along the track, local metres (x east, y down), turning and heading.
+function prepCourse(c) {
+  if (c.cum) return c;
+  const pts = c.points, cum = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + hav(pts[i - 1], pts[i]));
+  const kx = 111320 * Math.cos(rd(pts[0][0])), ky = 110540;
+  const xy = pts.map((p) => [(p[1] - pts[0][1]) * kx, -(p[0] - pts[0][0]) * ky]);
+  const L = cum[cum.length - 1];
+  // [x, y] at distance d.
+  const at = (d) => {
+    d = Math.max(0, Math.min(L, d));
+    let lo = 0, hi = cum.length - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (cum[m] <= d) lo = m; else hi = m; }
+    const f = cum[hi] > cum[lo] ? (d - cum[lo]) / (cum[hi] - cum[lo]) : 0;
+    return [xy[lo][0] + f * (xy[hi][0] - xy[lo][0]), xy[lo][1] + f * (xy[hi][1] - xy[lo][1])];
+  };
+  const bearing = (p, q) => ((Math.atan2(q[0] - p[0], p[1] - q[1]) * 180) / Math.PI + 360) % 360;
+  // Turning: the heading every 25 m over 50 m chords (steadies GPS wobble).
+  const STEP = 25, T = [0];
+  let prev = null;
+  for (let d = 0; d + 2 * STEP <= L; d += STEP) {
+    const h = bearing(at(d), at(d + 2 * STEP));
+    if (prev !== null) T.push(T[T.length - 1] + Math.abs(((h - prev + 540) % 360) - 180));
+    prev = h;
+  }
+  const turnTo = (d) => {
+    const i = Math.min(T.length - 1, Math.max(0, d / STEP)), j = Math.floor(i);
+    return T[j] + (i - j) * ((T[j + 1] === undefined ? T[j] : T[j + 1]) - T[j]);
+  };
+  return Object.assign(c, {
+    cum, xy, L, at,
+    bendsPerKm: (a, b) => (b > a ? ((turnTo(b) - turnTo(a)) / (b - a)) * 1000 : 0),
+    heading: (a, b) => bearing(at(a), at(b)),
+    toXY: (q) => [(q[1] - pts[0][1]) * kx, -(q[0] - pts[0][0]) * ky],
+    // The course's closest approach to (x, y): distance along it, and how far off.
+    nearest: (x, y) => {
+      let bd = Infinity, bt = 0;
+      for (let i = 1; i < xy.length; i++) {
+        const [ax, ay] = xy[i - 1], dx = xy[i][0] - ax, dy = xy[i][1] - ay, l2 = dx * dx + dy * dy;
+        const f = l2 > 0 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2)) : 0;
+        const e = (ax + f * dx - x) ** 2 + (ay + f * dy - y) ** 2;
+        if (e < bd) { bd = e; bt = cum[i - 1] + f * (cum[i] - cum[i - 1]); }
+      }
+      return { d: bt, off: Math.sqrt(bd) };
+    },
+  });
+}
+// Fewer points (Douglas-Peucker, tol metres), keeping the bends.
+function simplify(raw, tol) {
+  const kx = 111320 * Math.cos(rd(raw[0][0])), ky = 110540;
+  const xy = raw.map((p) => [(p[1] - raw[0][1]) * kx, (p[0] - raw[0][0]) * ky]);
+  const keep = new Uint8Array(raw.length); keep[0] = keep[raw.length - 1] = 1;
+  const stack = [[0, raw.length - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop(), dx = xy[b][0] - xy[a][0], dy = xy[b][1] - xy[a][1], len = Math.hypot(dx, dy) || 1e-9;
+    let best = 0, bi = -1;
+    for (let i = a + 1; i < b; i++) {
+      const e = Math.abs((xy[i][0] - xy[a][0]) * dy - (xy[i][1] - xy[a][1]) * dx) / len;
+      if (e > best) { best = e; bi = i; }
+    }
+    if (bi > 0 && best > tol) { keep[bi] = 1; stack.push([a, bi], [bi, b]); }
+  }
+  return raw.filter((p, i) => keep[i]);
+}
+const titleCase = (s) => (s === s.toUpperCase() ? s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()) : s);
+// A GPX file: its longest track (tracks that carry on from each other are
+// joined; or a route), and dams or portages from its waypoint names.
+function parseGpx(text, fileName) {
+  const doc = new DOMParser().parseFromString(text, "application/xml");
+  if (doc.getElementsByTagName("parsererror").length) throw new Error("that isn't a GPX file");
+  const read = (els) => [...els].map((p) => [+p.getAttribute("lat"), +p.getAttribute("lon")]).filter((p) => isFinite(p[0]) && isFinite(p[1]));
+  const tracks = [...doc.getElementsByTagName("trk")].map((t) => read(t.getElementsByTagName("trkpt"))).filter((t) => t.length > 1);
+  tracks.push(read(doc.getElementsByTagName("rtept")));
+  const length = (t) => t.reduce((a, p, i) => (i ? a + hav(t[i - 1], p) : 0), 0);
+  let raw = [], best = 0;
+  for (let i = 0; i < tracks.length; i++) {
+    let run = tracks[i];
+    for (let j = i + 1; j < tracks.length && tracks[j].length && hav(run[run.length - 1], tracks[j][0]) < 500; j++) run = run.concat(tracks[j]);
+    const len = run.length > 1 ? length(run) : 0;
+    if (len > best) { best = len; raw = run; }
+  }
+  if (raw.length < 2) throw new Error("no track in that file");
+  const c = prepCourse({ name: fileName.replace(/\.gpx$/i, ""), points: simplify(raw, 3), ponds: [], portages: [] });
+  for (const w of doc.getElementsByTagName("wpt")) {
+    const n = w.getElementsByTagName("name")[0], name = n ? n.textContent.trim() : "";
+    if (!(/portag|carry/i.test(name) || /\bdam$/i.test(name)) || /^feed/i.test(name)) continue;
+    const near = c.nearest(...c.toXY([+w.getAttribute("lat"), +w.getAttribute("lon")]));
+    if (near.off < 150 && !c.portages.some((p) => Math.abs(p.d - near.d) < 300)) c.portages.push({ name: titleCase(name).replace(/\s*portag\w*$/i, "") || "Portage", d: near.d, carry: 200 });
+  }
+  c.portages.sort((a, b) => a.d - b.d);
+  return c;
+}
+const KINDS = [["river", "River"], ["pond", "Pond"], ["portage", "Portage"]];
+const KIND_DEFAULTS = { river: { width: 30, current: 2.8, depth: 1.2 }, pond: { width: 300, current: 0, depth: 4 }, portage: { width: 30, current: 0, depth: 5 } };
+// Ponds and portages from the course's marks; river in between, in pieces
+// of up to 20 km (an eighth of a short course) so there's something to edit.
+function autoSections(c) {
+  const L = c.L, cuts = [];
+  for (const p of c.ponds || []) cuts.push({ d0: p.d0, d1: p.d1, kind: "pond", name: p.name });
+  for (const p of c.portages || []) {
+    const h = (p.carry || 200) / 2;
+    cuts.push({ d0: Math.max(0, p.d - h), d1: Math.min(L, p.d + h), kind: "portage", name: `${p.name} portage` });
+  }
+  cuts.sort((a, b) => a.d0 - b.d0);
+  const fixed = [];
+  for (const k of cuts) {
+    const last = fixed[fixed.length - 1];
+    if (last && k.d0 < last.d1) {
+      if (k.kind === "portage" && last.kind === "pond") last.d1 = k.d0; else k.d0 = last.d1;
+    }
+    if (k.d1 - k.d0 > 1) fixed.push(k);
+  }
+  const out = [], chunk = Math.min(20000, Math.max(1000, L / 8));
+  const river = (a, b, to) => {
+    const n = Math.max(1, Math.round((b - a) / chunk));
+    for (let i = 0; i < n; i++)
+      out.push({ d0: a + ((b - a) * i) / n, d1: a + ((b - a) * (i + 1)) / n, kind: "river", name: `River to ${to}${n > 1 ? ` (${i + 1}/${n})` : ""}` });
+  };
+  let d = 0;
+  for (const k of fixed) {
+    if (k.d0 - d > 50) river(d, k.d0, k.name.replace(/ portage$/, "")); else k.d0 = d;
+    out.push(k); d = k.d1;
+  }
+  if (L - d > 50) river(d, L, "the finish"); else if (out.length) out[out.length - 1].d1 = L;
+  return out.map((s) => Object.assign({}, KIND_DEFAULTS[s.kind], s));
+}
+let cb = null, cbSel = 0;   // the course, and the section being edited
+function loadCourse(c, info) {
+  cb = prepCourse(c);
+  cb.sections = autoSections(cb);
+  cb.info = info;
+  cbSel = 0;
+  raceZoom = 1;
+  renderBuilder();
+  updateRace();
+}
+// The AuSable preset is a separate script, loaded the first time it's needed.
+function loadPreset() {
+  const go = () => {
+    const c = JSON.parse(JSON.stringify(window.COURSES.ausable));
+    loadCourse(c, `${c.name} · ${fmtNum(prepCourse(c).L / 1000, 1)} km · ${c.portages.length} portages · ponds from race speed`);
+  };
+  if (window.COURSES && window.COURSES.ausable) return go();
+  if ($("cb-preset-js")) return;
+  const s = document.createElement("script");
+  s.id = "cb-preset-js"; s.src = "courses/ausable.js"; s.onload = go;
+  s.onerror = () => { $("cb-info").textContent = "Couldn't load the AuSable course."; };
+  document.head.append(s);
+}
+// The race's legs: each section in ~2 km pieces (a portage is one carry).
+function courseLegs() {
+  const legs = [];
+  cb.sections.forEach((s, i) => {
+    if (s.kind === "portage") { legs.push({ len: s.d1 - s.d0, kind: "portage", section: i, name: s.name }); return; }
+    const n = Math.max(1, Math.round((s.d1 - s.d0) / 2000));
+    for (let j = 0; j < n; j++) {
+      const a = s.d0 + ((s.d1 - s.d0) * j) / n, b = s.d0 + ((s.d1 - s.d0) * (j + 1)) / n;
+      legs.push({ len: b - a, kind: s.kind, section: i, name: s.name, heading: cb.heading(a, b), current: s.current / 3.6,
+                  depth: s.depth >= 5 ? (s.kind === "river" ? 5 : Infinity) : s.depth, width: s.width,
+                  bendsDegPerKm: s.kind === "river" ? cb.bendsPerKm(a, b) : 0 });
+    }
+  });
+  return legs;
+}
+// One summary line per boat under its time.
+function courseNote(legs) {
+  const by = (k) => legs.filter((l) => l.kind === k);
+  const km = (k) => fmtNum(by(k).reduce((a, l) => a + l.len, 0) / 1000, 0);
+  const carry = by("portage").reduce((a, l) => a + l.t, 0), river = by("river");
+  const u = river.length ? river.reduce((a, l) => a + l.river.line * l.len, 0) / river.reduce((a, l) => a + l.len, 0) : 0;
+  return `river ${km("river")} km (${lineName(u)}) · ponds ${km("pond")} km · ${by("portage").length} portages, ${clock(carry)} carrying`;
+}
+const secColor = (s) => s.kind === "portage" ? "var(--muted)" :
+  `color-mix(in srgb, var(--series-1) ${Math.round(22 + Math.min(1, s.current / 5) * 78)}%, var(--surface-1))`;
+const kmText = (d) => fmtNum(d / 1000, d < 10000 ? 1 : 0);
+// Map, strip, editor and table for the course being built.
+function renderBuilder() {
+  if (!cb) return;
+  $("cb-info").textContent = cb.info;
+  cbSel = Math.max(0, Math.min(cb.sections.length - 1, cbSel));
+  drawBuilderMap(); drawStrip(); drawEditor(); drawSecTable();
+}
+let cbMapGeom = null;
+function drawBuilderMap() {
+  const svg = $("cb-map"), W = Math.max(280, Math.round(svg.getBoundingClientRect().width)) || 320, H = 240;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const xs = cb.xy.map((p) => p[0]), ys = cb.xy.map((p) => p[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const k = Math.min((W - 24) / Math.max(1, x1 - x0), (H - 34) / Math.max(1, y1 - y0));
+  const ox = (W - (x1 - x0) * k) / 2 - x0 * k, oy = (H - 10 - (y1 - y0) * k) / 2 - y0 * k;
+  const P = (p) => [ox + p[0] * k, oy + p[1] * k];
+  cbMapGeom = { k, ox, oy };
+  const line = (d0, d1) => {
+    let s = "", last = null;
+    for (let i = 0; i < cb.cum.length; i++) {
+      if (cb.cum[i] < d0 || cb.cum[i] > d1) continue;
+      const q = P(cb.xy[i]);
+      if (last && Math.hypot(q[0] - last[0], q[1] - last[1]) < 1.2) continue;
+      s += `${s ? "L" : "M"}${q[0].toFixed(1)},${q[1].toFixed(1)}`; last = q;
+    }
+    const e = P(cb.at(d1)); return s + `L${e[0].toFixed(1)},${e[1].toFixed(1)}`;
+  };
+  const sel = cb.sections[cbSel];
+  let g = `<rect class="bank" x="0" y="0" width="${W}" height="${H}" rx="8"/>` +
+    `<path d="${line(sel.d0, sel.d1)}" fill="none" stroke="var(--text-primary)" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>` +
+    `<path class="riv" d="${line(0, cb.L)}" stroke-width="8"/>`;
+  cb.sections.forEach((s) => {
+    g += `<path d="${line(s.d0, s.d1)}" fill="none" stroke="${secColor(s)}" stroke-width="${s.kind === "pond" ? 6 : 4}" stroke-linejoin="round"${s.kind === "portage" ? ' stroke-dasharray="3 2"' : ""}/>`;
+  });
+  const a = P(cb.at(0)), z = P(cb.at(cb.L)), m = P(cb.at((sel.d0 + sel.d1) / 2));
+  g += `<circle cx="${a[0]}" cy="${a[1]}" r="4" fill="var(--text-primary)"/><text class="strong" x="${a[0]}" y="${a[1] + 18}" text-anchor="${a[0] > W / 2 ? "end" : "start"}">Start</text>` +
+    `<rect x="${z[0] - 4}" y="${z[1] - 4}" width="8" height="8" fill="var(--text-primary)"/><text class="strong" x="${z[0]}" y="${z[1] + 18}" text-anchor="${z[0] > W / 2 ? "end" : "start"}">Finish</text>` +
+    `<circle class="numbg" cx="${m[0]}" cy="${m[1] - 16}" r="9"/><text class="num" x="${m[0]}" y="${m[1] - 12}" text-anchor="middle">${cbSel + 1}</text>`;
+  const bar = niceStep(((W - 24) / k) / 4, 1), bw = bar * k;
+  g += `<line x1="12" x2="${12 + bw}" y1="${H - 12}" y2="${H - 12}" stroke="var(--text-secondary)" stroke-width="2"/>` +
+    `<text x="${16 + bw}" y="${H - 8}">${bar >= 1000 ? `${bar / 1000} km` : `${bar} m`}</text>` +
+    `<text x="${W - 10}" y="${H - 8}" text-anchor="end">N ↑</text>`;
+  svg.innerHTML = g;
+}
+function drawStrip() {
+  const svg = $("cb-strip"), W = Math.max(280, Math.round(svg.getBoundingClientRect().width)) || 320, H = 96;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const l = 56, r = W - 8, X = (d) => l + (d / cb.L) * (r - l);
+  let g = `<text x="0" y="22">Current</text><text x="0" y="66">Depth</text>`;
+  cb.sections.forEach((s, i) => {
+    const x = X(s.d0), w = Math.max(1, X(s.d1) - X(s.d0) - 0.5), on = i === cbSel ? ' stroke="var(--text-primary)" stroke-width="1.5"' : "";
+    if (s.kind === "portage") { g += `<rect data-sec="${i}" x="${x}" y="4" width="${Math.max(2, w)}" height="76" fill="var(--muted)" opacity="0.5"${on}/>`; return; }
+    const h = Math.max(1, (Math.min(6, s.current) / 6) * 30);
+    g += `<rect data-sec="${i}" x="${x}" y="${36 - h}" width="${w}" height="${h}" fill="${secColor(s)}"${on}/>`;
+    const y = 46 + (Math.min(5, s.depth) / 5) * 32;
+    g += `<line x1="${x}" x2="${x + w}" y1="${y}" y2="${y}" stroke="${s.depth < 1 ? "var(--series-2)" : "var(--series-1)"}" stroke-width="3"/>`;
+  });
+  g += `<line class="axis" x1="${l}" x2="${r}" y1="36.5" y2="36.5"/><line class="axis" x1="${l}" x2="${r}" y1="80.5" y2="80.5"/>`;
+  const step = niceStep(cb.L / 1000 / 4, 1);
+  for (let k = 0; k <= cb.L / 1000 + 1e-9; k += step) g += `<text x="${X(k * 1000)}" y="${H - 2}" text-anchor="middle">${k}</text>`;
+  g += `<rect x="${l}" y="0" width="${r - l}" height="82" fill="transparent" id="cb-strip-hit"/>`;
+  svg.innerHTML = g;
+}
+function drawEditor() {
+  const s = cb.sections[cbSel], len = s.d1 - s.d0;
+  $("cb-sec-name").textContent = `${cbSel + 1}. ${s.name}`;
+  $("cb-sec-km").textContent = `${kmText(s.d0)}–${kmText(s.d1)} km`;
+  chips("cb-kind", KINDS, () => s.kind, (v) => { Object.assign(s, KIND_DEFAULTS[v], { kind: v, width: s.width }); });
+  const bends = cb.bendsPerKm(s.d0, s.d1);
+  $("cb-sec-geo").textContent = s.kind === "portage" ? `Carry ${fmtNum(len, 0)} m, about ${clock(len / 2 + 30)} at a jog` :
+    `${fmtNum(len / 1000, 1)} km heading ${compass(cb.heading(s.d0, s.d1))}` + (s.kind === "river" ? ` · ${fmtNum(bends / 90, 1)} bends per km` : "");
+  for (const el of document.querySelectorAll("#cb-editor .paddled")) el.toggleAttribute("hidden", s.kind === "portage");
+  $("cb-width-ctl").toggleAttribute("hidden", s.kind !== "river");
+  $("cb-width").value = s.width; $("cb-current").value = s.current; $("cb-depth").value = Math.min(5, s.depth);
+  $("o-cb-width").textContent = `${s.width} m`;
+  $("o-cb-current").textContent = s.current === 0 ? "none" : `${fmtNum(s.current, 1)} km/h`;
+  $("o-cb-depth").textContent = depthText(s.depth);
+  $("o-cb-depth").classList.toggle("warn", s.depth < 1);
+  $("cb-split").disabled = len < 200;
+  $("cb-merge").disabled = cbSel >= cb.sections.length - 1;
+}
+function drawSecTable() {
+  $("cb-secs").tBodies[0].innerHTML = cb.sections.map((s, i) =>
+    `<tr data-sec="${i}" class="${i === cbSel ? "on" : ""}"><td><span class="sw" style="background:${secColor(s)}"></span>${i + 1}</td>` +
+    `<td>${kmText(s.d0)}–${kmText(s.d1)}</td><td>${s.name}</td>` +
+    `<td>${s.kind === "portage" ? "carry" : s.current === 0 ? "—" : fmtNum(s.current, 1)}</td>` +
+    `<td class="${s.kind !== "portage" && s.depth < 1 ? "warn" : ""}">${s.kind === "portage" ? `${fmtNum(s.d1 - s.d0, 0)} m` : s.depth >= 5 ? "deep" : fmtNum(s.depth, 1)}</td></tr>`).join("");
+}
+function selectSection(i) { cbSel = i; renderBuilder(); }
+function editSection() { renderBuilder(); updateSoon(); }
+$("cb-preset").addEventListener("click", loadPreset);
+$("cb-import").addEventListener("click", () => $("cb-file").click());
+$("cb-file").addEventListener("change", async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  try {
+    const c = parseGpx(await f.text(), f.name);
+    loadCourse(c, `${f.name} · ${fmtNum(c.L / 1000, 1)} km · ${c.portages.length ? `${c.portages.length} portage${c.portages.length > 1 ? "s" : ""} from waypoints` : "no portages found"}`);
+  } catch (err) { $("cb-info").textContent = `Couldn't read ${f.name}: ${err.message}.`; }
+  e.target.value = "";
+});
+$("cb-map").addEventListener("click", (e) => {
+  if (!cb || !cbMapGeom) return;
+  const svg = $("cb-map"), r = svg.getBoundingClientRect(), vb = svg.viewBox.baseVal;
+  const x = ((e.clientX - r.left) / r.width) * vb.width, y = ((e.clientY - r.top) / r.height) * vb.height;
+  const d = cb.nearest((x - cbMapGeom.ox) / cbMapGeom.k, (y - cbMapGeom.oy) / cbMapGeom.k).d;
+  selectSection(Math.max(0, cb.sections.findIndex((s) => d >= s.d0 && d <= s.d1)));
+});
+$("cb-strip").addEventListener("click", (e) => {
+  if (!cb) return;
+  const svg = $("cb-strip"), r = svg.getBoundingClientRect(), vb = svg.viewBox.baseVal;
+  const x = ((e.clientX - r.left) / r.width) * vb.width, d = ((x - 56) / (vb.width - 64)) * cb.L;
+  const i = cb.sections.findIndex((s) => d >= s.d0 && d <= s.d1);
+  if (i >= 0) selectSection(i);
+});
+$("cb-secs").addEventListener("click", (e) => { const tr = e.target.closest("tr[data-sec]"); if (tr) selectSection(+tr.dataset.sec); });
+for (const [id, key] of [["cb-width", "width"], ["cb-current", "current"], ["cb-depth", "depth"]])
+  $(id).addEventListener("input", (e) => { cb.sections[cbSel][key] = +e.target.value; editSection(); });
+$("cb-split").addEventListener("click", () => {
+  const s = cb.sections[cbSel], mid = (s.d0 + s.d1) / 2;
+  cb.sections.splice(cbSel, 1, Object.assign({}, s, { d1: mid, name: `${s.name} a` }), Object.assign({}, s, { d0: mid, name: `${s.name} b` }));
+  editSection();
+});
+$("cb-merge").addEventListener("click", () => {
+  const s = cb.sections[cbSel], n = cb.sections[cbSel + 1];
+  if (!n) return;
+  cb.sections.splice(cbSel, 2, Object.assign({}, s, { d1: n.d1 }));
+  editSection();
+});
+// The race on the real course, from above: north up, a fixed scale centred
+// between the boats (zoom sets it), or the whole course zoomed out.
+function drawCourseRace(dA, dB) {
+  if (!cb) return;
+  const svg = $("course-view"), L = race.metres;
+  const W = Math.max(280, Math.round(svg.getBoundingClientRect().width)) || 320, H = 220;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const S = zoomSpan(Math.min(L, Math.max(500, finalGap() * 2.5)), 50, L);
+  let k, ox, oy, d0, d1;
+  if (S >= L * 0.999) {
+    const xs = cb.xy.map((p) => p[0]), ys = cb.xy.map((p) => p[1]);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    k = Math.min((W - 24) / Math.max(1, x1 - x0), (H - 34) / Math.max(1, y1 - y0));
+    ox = (W - (x1 - x0) * k) / 2 - x0 * k; oy = (H - 10 - (y1 - y0) * k) / 2 - y0 * k; d0 = 0; d1 = L;
+  } else {
+    const c = cb.at((dA + dB) / 2);
+    k = (2 * (H - 40)) / S; ox = W / 2 - c[0] * k; oy = (H - 10) / 2 - c[1] * k;
+    d0 = (dA + dB) / 2 - 1.5 * S; d1 = (dA + dB) / 2 + 1.5 * S;
+  }
+  const P = (p) => [ox + p[0] * k, oy + p[1] * k];
+  const line = (a, b) => {
+    let s = "", last = null;
+    for (let i = 0; i < cb.cum.length; i++) {
+      if (cb.cum[i] < a || cb.cum[i] > b) continue;
+      const q = P(cb.xy[i]);
+      if (last && Math.hypot(q[0] - last[0], q[1] - last[1]) < 1.2) continue;
+      s += `${s ? "L" : "M"}${q[0].toFixed(1)},${q[1].toFixed(1)}`; last = q;
+    }
+    return s;
+  };
+  let g = `<rect class="bank" x="0" y="0" width="${W}" height="${H}"/>`;
+  for (const s of cb.sections) {
+    if (s.d1 < d0 || s.d0 > d1) continue;
+    const a = Math.max(d0, s.d0), b = Math.min(d1, s.d1);
+    const w = s.kind === "portage" ? 2 : Math.max(4, Math.min(60, (s.kind === "pond" ? Math.max(60, s.width) : s.width) * k));
+    g += `<path d="${line(a, b)}" fill="none" stroke="${s.kind === "portage" ? "var(--muted)" : "var(--water-line)"}" stroke-opacity="${s.kind === "portage" ? 1 : 0.55}" ` +
+      `stroke-width="${w.toFixed(1)}" stroke-linecap="round" stroke-linejoin="round"${s.kind === "portage" ? ' stroke-dasharray="4 3"' : ""}/>`;
+  }
+  const z = P(cb.at(L));
+  if (L >= d0 && L <= d1) g += `<rect x="${z[0] - 5}" y="${z[1] - 5}" width="10" height="10" fill="var(--text-primary)"/>`;
+  const behind = [];
+  for (const [x, d] of [["B", dB], ["A", dA]]) {
+    const q = P(cb.at(d)), p = P(cb.at(d - Math.max(5, S / 200)));
+    if (q[0] < 0 || q[0] > W || q[1] < 0 || q[1] > H - 20) { behind.push(`${x} ${fmtNum(Math.abs(dA - dB), 0)} m ${d < Math.max(dA, dB) ? "behind" : "ahead"}`); continue; }
+    g += boatIcon(q[0], q[1], (Math.atan2(q[1] - p[1], q[0] - p[0]) * 180) / Math.PI, `boat-${x.toLowerCase()}`) +
+      `<text class="strong" x="${q[0].toFixed(1)}" y="${(q[1] - 10).toFixed(1)}" text-anchor="middle">${x}</text>`;
+  }
+  const bar = niceStep((W / k) / 4, 1), bw = bar * k;
+  g += `<line x1="10" x2="${10 + bw}" y1="${H - 10}" y2="${H - 10}" stroke="var(--text-secondary)" stroke-width="2"/>` +
+    `<text x="${14 + bw}" y="${H - 6}">${bar >= 1000 ? `${bar / 1000} km` : `${bar} m`}</text>` +
+    `<text x="${W - 8}" y="${H - 6}" text-anchor="end">N ↑</text>`;
+  const sec = segAt(race.profileA, Math.min(Math.max(dA, dB), L - 1e-6));
+  g += `<text class="strong" x="8" y="16">${S >= L * 0.999 ? "Whole course" : sec.name || ""}</text>`;
+  if (behind.length) g += `<text class="strong" x="8" y="34">◀ ${behind.join(" · ")}</text>`;
+  const wind = parseFloat($("wind").value);
+  if (wind > 0) {
+    const a = rd(parseFloat($("windDir").value) + 180), cx = W - 22, cy = 22;   // arrow points where the wind blows
+    g += `<circle cx="${cx}" cy="${cy}" r="14" fill="var(--surface-1)" stroke="var(--border)"/>` +
+      `<line x1="${cx - 8 * Math.sin(a)}" y1="${cy + 8 * Math.cos(a)}" x2="${cx + 8 * Math.sin(a)}" y2="${cy - 8 * Math.cos(a)}" stroke="var(--text-primary)" stroke-width="2"/>` +
+      `<circle cx="${cx + 8 * Math.sin(a)}" cy="${cy - 8 * Math.cos(a)}" r="2.5" fill="var(--text-primary)"/>`;
+  }
+  svg.innerHTML = g;
+}
+
 // ----------------------------------------------------------- race replay
 // A race can be replayed at any moment: from the prediction for the current
 // settings, or, after a run, from what was recorded (settings may have
@@ -1165,9 +1601,14 @@ const segAt = (prof, d) => prof.find((g) => d < g.d1) || prof[prof.length - 1];
 function predicted(x, t) {
   const prof = race[`profile${x}`], fin = race[`t${x}`], L = race.metres;
   const tt = Math.min(t, fin), d = Math.min(L, race[`pos${x}`](tt)), g = segAt(prof, Math.min(d, L - 1e-6));
-  const strokes = (tt * g.rate) / 60 * (g.perSide / (g.perSide + g.loss));
-  return { d, v: t >= fin ? 0 : g.v, g, strokes, switches: strokes / g.perSide, energy: g.watts * tt, fin: isFinite(fin) ? fin : null,
-           avgP: g.watts, t: tt };
+  // Totals over the course so far: each piece at its own rate and power.
+  let left = tt, strokes = 0, switches = 0, energy = 0;
+  for (const p of prof) {
+    if (left <= 0 || !(p.v > 0)) break;
+    const dt = Math.min(left, (p.d1 - p.d0) / p.v), n = (dt * p.rate) / 60 * (p.perSide / (p.perSide + p.loss));
+    strokes += n; switches += n / p.perSide; energy += p.watts * dt; left -= dt;
+  }
+  return { d, v: t >= fin ? 0 : g.v, g, strokes, switches, energy, fin: isFinite(fin) ? fin : null, avgP: g.watts, t: tt };
 }
 function recorded(x, t) {
   const ss = rec.samples;
@@ -1187,15 +1628,15 @@ const whereText = (g) => {
   const leg = race.legsA.length > 1 ? (g.leg === 0 ? "going out" : "coming back") : "";
   const edge = g.line > 0.88, mid = g.line < 0.12;
   const kind = { open: "", straight: mid ? "mid-channel" : edge ? "along the bank" : "straight",
-                 crossing: "crossing the river", bend: mid ? "mid-channel bend" : "inside of a bend" }[g.kind];
-  return [kind, leg].filter(Boolean).join(", ");
+                 crossing: "crossing the river", bend: mid ? "mid-channel bend" : "inside of a bend", pond: "", portage: "carrying" }[g.kind];
+  return [g.name, kind, g.name ? "" : leg].filter(Boolean).join(", ");
 };
 let shownT = 0;   // the moment on screen, to redraw it after a zoom
 function showAt(t) {
   shownT = t;
   const st = stateAtT(t), L = race.metres;
   // River: the course from above. Open water: straight lanes.
-  if (water === "river") drawRiverRace(st.A.d, st.B.d); else drawRace(st.A.d, st.B.d, t);
+  if (water === "river") drawRiverRace(st.A.d, st.B.d); else if (water === "map") drawCourseRace(st.A.d, st.B.d); else drawRace(st.A.d, st.B.d, t);
   if (!dragging) $("scrub").value = String(Math.round(Math.min(1, t / Math.max(1e-9, sliderEnd())) * 1000));
   $("scrub-time").textContent = `${clock(t)} · ${fmtNum(Math.max(st.A.d, st.B.d) / 1000, 2)} of ${fmtNum(L / 1000, 2)} km`;
   const w = (x) => whereText(st[x].g);
@@ -1226,7 +1667,7 @@ function drawStats(st) {
     row("Stroke rate", ...both((s) => fmtNum(s.g.rate, 0), " spm")),
     row("Strokes", ...both((s) => fmtNum(s.strokes, 0), "")),
     // Per stroke taken: strokes lost to switching sides don't count.
-    row("Distance per stroke", ...both((s) => (s.v > 0 ? fmtNum((s.v * 60) / s.g.rate * (s.g.perSide + s.g.loss) / s.g.perSide, 2) : "—"), " m")),
+    row("Distance per stroke", ...both((s) => (s.v > 0 && s.g.rate > 0 ? fmtNum((s.v * 60) / s.g.rate * (s.g.perSide + s.g.loss) / s.g.perSide, 2) : "—"), " m")),
     row("Avg distance per stroke", ...both((s) => (s.strokes >= 1 ? fmtNum(s.d / s.strokes, 2) : "—"), " m")),
     row("Switches", ...both((s) => fmtNum(s.switches, 0), "")),
     row("Energy", ...both((s) => fmtNum(s.energy / 1000, 0), " kJ")),
@@ -1241,19 +1682,34 @@ function drawSpeed(st) {
   const W = Math.max(280, Math.round(svg.getBoundingClientRect().width)) || 320, H = 120;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   const m = { l: 60, r: 12, t: 10, b: 22 }, pw = W - m.l - m.r, ph = H - m.t - m.b;
+  // On a real course the river's pieces are too fine to draw one by one:
+  // speed made good over ~300 steps instead.
+  const binned = (prof) => {
+    const n = 300, out = [];
+    for (let i = 0; i < n; i++) {
+      const a = (L * i) / n, b = (L * (i + 1)) / n;
+      let t = 0;
+      for (const g of prof) if (g.d1 > a && g.d0 < b && g.v > 0) t += (Math.min(b, g.d1) - Math.max(a, g.d0)) / g.v;
+      const v = t > 0 ? (b - a) / t : 0;
+      out.push([a, v], [b, v]);
+    }
+    return out;
+  };
   const series = (x) => rec
     ? rec.samples.map((q) => [q[x].d, q[x].v]).filter((p, i, a) => i === 0 || p[0] > a[i - 1][0])
-    : race[`profile${x}`].flatMap((g) => [[g.d0, g.v], [g.d1, g.v]]);
+    : water === "map" ? binned(race[`profile${x}`]) : race[`profile${x}`].flatMap((g) => [[g.d0, g.v], [g.d1, g.v]]);
   const S2 = { A: series("A"), B: series("B") };
   const vMax = Math.max(0.5, ...S2.A.map((p) => p[1]), ...S2.B.map((p) => p[1])) * 3.6 * 1.1;
   const ys = niceStep(vMax, 2), yTop = Math.ceil(vMax / ys) * ys;
   const X = (d) => m.l + (d / L) * pw, Y = (kmh) => m.t + ph - (kmh / yTop) * ph;
   let g = "";
-  for (const s of race.profileA) if (s.kind === "bend") g += `<rect class="bendband" x="${X(s.d0)}" y="${m.t}" width="${Math.max(1, X(s.d1) - X(s.d0))}" height="${ph}"/>`;
+  // Shaded: bends (on a real course, ponds; portages darker).
+  const band = water === "map" ? (s) => s.kind === "pond" || s.kind === "portage" : (s) => s.kind === "bend";
+  for (const s of race.profileA) if (band(s)) g += `<rect class="bendband" x="${X(s.d0)}" y="${m.t}" width="${Math.max(1, X(s.d1) - X(s.d0))}" height="${ph}"${s.kind === "portage" ? ' style="fill:var(--muted);opacity:.5"' : ""}/>`;
   for (let f = 0; f <= yTop + 1e-9; f += ys)
     g += `<line class="${f === 0 ? "axis" : "grid"}" x1="${m.l}" x2="${W - m.r}" y1="${Y(f)}" y2="${Y(f)}"/>` +
       `<text x="${m.l - 6}" y="${Y(f) + 4}" text-anchor="end">${fmtNum(f, 0)}${f + ys > yTop + 1e-9 ? " km/h" : ""}</text>`;
-  if (race.legsA.length > 1) g += `<line class="turn" x1="${X(L / 2)}" x2="${X(L / 2)}" y1="${m.t}" y2="${m.t + ph}"/>` +
+  if (race.legsA.length > 1 && water !== "map") g += `<line class="turn" x1="${X(L / 2)}" x2="${X(L / 2)}" y1="${m.t}" y2="${m.t + ph}"/>` +
     `<text x="${X(L / 2) + 4}" y="${m.t + 10}">turn</text>`;
   g += `<text x="${m.l}" y="${H - 6}">0</text><text x="${W - m.r}" y="${H - 6}" text-anchor="end">${fmtNum(L / 1000, L < 1000 ? 2 : 1)} km</text>`;
   for (const x of ["A", "B"])
@@ -1384,7 +1840,10 @@ for (const id of ["race-view", "river-map"]) {
     setZoom(raceZoom * Math.exp(-e.deltaY / 200));
   }, { passive: false });
 }
-for (const id of ["effA", "effB", "dist", "depth", "wind", "windDir", "current", "width", "bends"]) $(id).addEventListener("input", updateRace);
+let pendingRace = 0;
+const updateSoon = () => { if (!pendingRace) pendingRace = requestAnimationFrame(() => { pendingRace = 0; updateRace(); }); };
+for (const id of ["effA", "effB", "dist", "depth", "wind", "windDir", "current", "width", "bends"])
+  $(id).addEventListener("input", () => (water === "map" ? updateSoon() : updateRace()));
 renderCourse();
 
 // ---------------------------------------------------------------- views

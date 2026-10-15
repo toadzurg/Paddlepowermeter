@@ -528,6 +528,8 @@
   // so a line off the middle crosses the river between bends (at 45°,
   // through the conditions halfway to mid-channel).
   const RIVER_EDGE = 3, MIN_DEPTH = 0.25, BEND_ANGLE = 90, BEND_RADIUS = 1.5;
+  // Portage: carrying the boat at a jog, plus getting out and back in.
+  const CARRY_SPEED = 2, PORTAGE_SETUP = 30;   // m/s, s
   const shapeStraight = (y, W) => 1 - Math.pow(1 - (2 * y) / W, 2);
   const shapeBend = (y, W) => ((y / W) * (2 - y / W)) / 0.75;
   // Distance from the bank for line u.
@@ -579,14 +581,15 @@
     return { t: t * k, path: path * k, parts, line: u };
   }
   // The fastest line for a leg, by a coarse scan then refinement.
-  function bestLine(r, watts, c, river) {
+  // n scan steps, then `refine` thirds (a long course uses fewer).
+  function bestLine(r, watts, c, river, n = 20, refine = 20) {
     let best = 0, bt = Infinity;
-    for (let i = 0; i <= 20; i++) {
-      const u = i / 20, t = riverLeg(r, watts, c, river, u).t;
+    for (let i = 0; i <= n; i++) {
+      const u = i / n, t = riverLeg(r, watts, c, river, u).t;
       if (t < bt) { bt = t; best = u; }
     }
-    let lo = Math.max(0, best - 0.05), hi = Math.min(1, best + 0.05);
-    for (let i = 0; i < 20; i++) {
+    let lo = Math.max(0, best - 1 / n), hi = Math.min(1, best + 1 / n);
+    for (let i = 0; i < refine; i++) {
       const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3;
       if (riverLeg(r, watts, c, river, m1).t < riverLeg(r, watts, c, river, m2).t) hi = m2; else lo = m1;
     }
@@ -606,14 +609,25 @@
     legs.forEach((l, li) => {
       const base = { leg: li, watts, rate: r.params.rateSpm, loss: r.params.switchLossStrokes,
                      perSide: isFinite(l.windward) ? (l.windward + l.lee) / 2 : MAX_STROKES_PER_SIDE };
+      if (l.section !== undefined) Object.assign(base, { leg: 0, section: l.section, name: l.name });
       const start = d, end = d + l.len;
+      if (l.kind === "portage") {
+        out.push(Object.assign({ d0: start, d1: end, v: l.v, kind: "portage", line: 0, current: 0, depth: Infinity }, base, { rate: 0, watts: 0 }));
+        d = end;
+        return;
+      }
+      if (l.kind === "pond") {
+        out.push(Object.assign({ d0: start, d1: end, v: l.v, kind: "pond", line: 0, current: l.current, depth: l.depth }, base));
+        d = end;
+        return;
+      }
       if (!l.river) {
         out.push(Object.assign({ d0: start, d1: end, v: l.v, kind: "open", line: 0, current: 0, depth: Infinity }, base));
         d = end;
         return;
       }
       const parts = l.river.parts, by = (k) => parts.find((p) => p.kind === k);
-      const turnDeg = Math.max(0, river.bendsDegPerKm || 0), bends = turnDeg / BEND_ANGLE;
+      const turnDeg = Math.max(0, (l.cfg || river).bendsDegPerKm || 0), bends = turnDeg / BEND_ANGLE;
       const units = [];
       for (const k of ["straight", "crossing", "bend"]) {
         const p = by(k);
@@ -649,14 +663,55 @@
     if (env.headwind) { ws = Math.abs(env.headwind); wa = env.headwind > 0 ? 0 : 180; }
     const cur = env.current || 0, depth = env.depth === undefined ? Infinity : env.depth;
     const leg = (len, back) => ({ len, windSpeed: ws, windAngle: back ? 180 - wa : wa, current: back ? -cur : cur, depth });
-    const legs = env.course === "outback" ? [leg(metres / 2, false), leg(metres / 2, true)] : [leg(metres, false)];
+    let legs = env.course === "outback" ? [leg(metres / 2, false), leg(metres / 2, true)] : [leg(metres, false)];
+    // env.sections: a real course, piece by piece: { len (m), kind: "river" |
+    // "pond" | "portage", heading (deg, the way you're going: 0 = north),
+    // current (m/s, + with you), depth (m), width (m), bendsDegPerKm, section
+    // (which editable section it belongs to), name }. env.windFrom (deg,
+    // compass) and windSpeed: the wind's angle to the boat changes as the
+    // course turns. A portage is carried, not paddled.
+    if (env.sections) {
+      const from = env.windFrom || 0;
+      legs = env.sections.map((sc) => ({
+        len: sc.len, kind: sc.kind || "river", section: sc.section, name: sc.name,
+        windSpeed: ws, windAngle: Math.abs((((from - (sc.heading || 0)) % 360) + 540) % 360 - 180),
+        current: sc.current || 0, depth: sc.depth === undefined ? Infinity : sc.depth,
+        cfg: (sc.kind || "river") === "river" ? { width: sc.width, bendsDegPerKm: sc.bendsDegPerKm || 0 } : null,
+      }));
+      metres = legs.reduce((a, l) => a + l.len, 0);
+    }
     // env.river: { width (m), bendsDegPerKm, lineA, lineB } with current and
     // depth taken as mid-channel; each line is 0 (middle) … 1 (edges) or
     // "best" (fastest for each leg).
     const river = env.river && env.river.width > 2 * RIVER_EDGE ? env.river : null;
     const boat = (r, watts, line) => {
+      // Best line once per editable section, on its average bends.
+      const best = new Map();
+      const bestFor = (l) => {
+        if (!best.has(l.section)) {
+          const mine = legs.filter((m) => m.section === l.section && m.cfg);
+          const len = mine.reduce((a, m) => a + m.len, 0) || 1;
+          const bends = mine.reduce((a, m) => a + m.cfg.bendsDegPerKm * m.len, 0) / len;
+          best.set(l.section, bestLine(r, watts, l, Object.assign({}, l.cfg, { bendsDegPerKm: bends }), 10, 10));
+        }
+        return best.get(l.section);
+      };
       const ls = legs.map((l) => {
+        if (l.kind === "portage") {
+          const t = l.len / CARRY_SPEED + PORTAGE_SETUP;
+          return { len: l.len, v: l.len / t, t, kind: "portage", section: l.section, name: l.name, water: 0 };
+        }
         const st = legSpeed(r, watts, l);
+        const tag = { kind: l.kind, section: l.section, name: l.name, cfg: l.cfg, current: l.current, depth: l.depth };
+        if (env.sections && !l.cfg) {
+          const v = st.water + l.current;
+          return Object.assign(st, tag, { len: l.len, v, t: v > 1e-3 ? l.len / v : Infinity });
+        }
+        if (env.sections) {
+          const u = line === "best" ? bestFor(l) : Math.min(1, Math.max(0, +line || 0));
+          const rl = riverLeg(r, watts, l, l.cfg, u);
+          return Object.assign(st, tag, { len: l.len, v: isFinite(rl.t) ? l.len / rl.t : 0, t: rl.t, river: rl });
+        }
         if (!river) {
           const v = st.water + l.current;
           return Object.assign(st, { len: l.len, v, t: v > 1e-3 ? l.len / v : Infinity });
@@ -676,9 +731,10 @@
         }
         return Math.min(metres, d);
       };
-      return { legs: ls, t, v: isFinite(t) ? metres / t : 0, water: ls[0].water, pos, profile };
+      return { legs: ls, t, v: isFinite(t) ? metres / t : 0, water: (ls.find((l) => l.kind !== "portage") || ls[0]).water, pos, profile };
     };
-    const A = boat(a, wattsA, river && river.lineA), B = boat(b, wattsB, river && river.lineB);
+    const lineOf = (x) => (env.sections ? (env.lines || {})[x] : river && river[`line${x}`]);
+    const A = boat(a, wattsA, lineOf("A")), B = boat(b, wattsB, lineOf("B"));
     const first = Math.min(A.t, B.t);
     return {
       vA: A.v, vB: B.v, waterA: A.water, waterB: B.water, tA: A.t, tB: B.t, metres,
@@ -692,7 +748,7 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 25;
+  const API_LEVEL = 26;
   const api = { API_LEVEL, simulate, race, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.StrokeSim = api;
