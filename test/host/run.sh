@@ -4,15 +4,19 @@ set -e
 cd "$(dirname "$0")"
 mkdir -p build
 CXX="c++ -std=c++17 -O2 -Wall -Wextra -Werror"
+MODEL="../../src/Kalman.cpp ../../src/Orientation.cpp ../../src/PowerModel.cpp"
 
-$CXX -I../../src \
-  test_power_model.cpp ../../src/Kalman.cpp ../../src/Orientation.cpp \
-  ../../src/PowerModel.cpp -o build/test_power_model
+$CXX -I../../src test_power_model.cpp $MODEL -o build/test_power_model
 $CXX -I../../lib/BoatSpeed/src \
   test_impeller.cpp ../../lib/BoatSpeed/src/ImpellerSpeed.cpp \
   -o build/test_impeller
+$CXX -I../../src -I../../tools/replay test_log.cpp $MODEL -o build/test_log
 
 status=0
 ./build/test_power_model || status=1
 ./build/test_impeller || status=1
+./build/test_log build/test_log.bin || status=1
+# 30 s at 100 Hz = 3000 records
+python3 ../../tools/log2csv.py build/test_log.bin -o build/test_log.csv \
+  2>/dev/null && python3 check_csv.py build/test_log.csv 3000 || status=1
 exit $status

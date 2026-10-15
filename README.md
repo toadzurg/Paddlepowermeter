@@ -136,6 +136,58 @@ drive.
 Efficiency is not capped at 100%. A reading above 100% means a calibration
 (force, lever arm or impeller) is off.
 
+## Raw sensor logging
+
+With a microSD card fitted, the paddle records every sample (100 per second)
+to the card. Recordings let you check the power model against real strokes
+and different paddlers, and re-run old sessions after improving the code or
+fixing a calibration.
+
+**Hardware:** a microSD breakout on the ESP32's default SPI pins:
+
+| SD pin | ESP32 |
+|---|---|
+| CS | GPIO 5 (`LOG_SD_CS_PIN` in `src/Config.h`) |
+| SCK | GPIO 18 |
+| MISO | GPIO 19 |
+| MOSI | GPIO 23 |
+| VCC / GND | 3V3 / GND |
+
+Use a FAT32-formatted card. Logging starts automatically at boot when a card
+is present (`LOG_AUTOSTART`), and each session gets its own file:
+`PPM00001.BIN`, `PPM00002.BIN`, ... A file holds about 29 MB per hour. At
+most about 1 s of data is lost if the power is cut.
+
+Serial commands: `log start`, `log stop`, and `log` (status). Re-running
+`tare`, `cal` or `boat cal` while logging starts a new file, so each file's
+header matches the calibration its data was recorded with.
+
+**What's recorded:**
+- Every sensor reading as the chips report it: each IMU's own axes, before
+  gyro-bias removal, and raw force ADC counts.
+- A header with the geometry, axis maps, gyro bias and calibration in force
+  at the time.
+- A few of the firmware's own outputs, to compare against an offline replay.
+
+Because the readings are raw, a recording made with a wrong axis map or
+calibration can still be re-processed correctly. The binary format is
+defined in `src/LogFormat.h`.
+
+**Tools (on a PC):**
+
+```
+python3 tools/log2csv.py PPM00001.BIN          # → PPM00001.csv for a spreadsheet/plotting
+./tools/replay/build.sh                        # once
+./tools/replay/replay PPM00001.BIN > strokes.csv
+./tools/replay/replay PPM00001.BIN --counts-per-n 1180 --ppm 7.4   # try another calibration
+```
+
+`replay` runs the same `PowerModel` the paddle runs and prints one CSV row
+per stroke: power, rate, energy, pivot, lever arm, and the useful/slip split
+when the impeller was logged. It also reports how closely it matches what
+the paddle computed live. To try different geometry or filter tuning on the
+same recording, edit `src/Config.h` and rebuild.
+
 ## Tests
 
 The signal processing is tested on a PC against a physics simulation. The
@@ -149,7 +201,10 @@ with gravity, boat surge, sensor noise and gyro bias:
 Scenarios: nominal, a wrong pivot prior, boat surge, 75 spm race pace, IMU2
 failure, and the paddler stopping. The impeller pulse timing has its own
 tests, including the microsecond counter wrapping every 71 minutes during
-long races.
+long races. An end-to-end test writes a simulated session as a real log file
+and checks that replaying it reproduces the live result exactly. The file
+uses a scrambled axis map, gyro bias, raw counts, the timer wrap and a torn
+final record.
 
 ## Layout
 
@@ -166,7 +221,11 @@ src/
   BLEManager.{h,cpp}     Cycling Power + Battery services
   BoatLink.{h,cpp}       receives boat speed from the boat node (ESP-NOW)
   boat/BoatNode.cpp      boat node firmware (impeller reader)
+  Logger.{h,cpp}         microSD raw sensor logging (background writer)
+  LogFormat.h            log file format (shared with tools/)
 lib/BoatSpeed/           impeller pulse timing + radio packet (shared)
 lib/                     vendored sensor libraries
+tools/log2csv.py         log → CSV
+tools/replay/            re-run the power model over a log
 test/host/               PC simulation tests
 ```

@@ -45,6 +45,11 @@ uint8_t initIMU() {
   return (ok[0] ? 1 : 0) | (ok[1] ? 2 : 0);
 }
 
+void getGyroBias(float bias[2][3]) {
+  for (int i = 0; i < 2; i++)
+    for (int k = 0; k < 3; k++) bias[i][k] = gyroBias[i][k];
+}
+
 bool calibrateGyroBias(int samples) {
   double sum[2][3] = {};
   int n[2] = {0, 0};
@@ -69,10 +74,17 @@ bool calibrateGyroBias(int samples) {
   return true;
 }
 
-void readIMU(ImuReading out[2]) {
+void readIMU(ImuReading out[2], ImuReading *raw) {
   for (int i = 0; i < 2; i++) {
     float g[3], a[3];
     out[i].valid = readRaw(i, g, a);
+    if (raw) {
+      raw[i].valid = out[i].valid;
+      for (int k = 0; k < 3; k++) {
+        raw[i].gyro[k] = out[i].valid ? g[k] : 0;
+        raw[i].accel[k] = out[i].valid ? a[k] : 0;
+      }
+    }
     if (!out[i].valid) continue;
     for (int k = 0; k < 3; k++) g[k] -= gyroBias[i][k];
     remap(*axes[i], g, out[i].gyro);

@@ -8,9 +8,10 @@
 // kept in flash (see PaddlePowerMeter.ino serial commands).
 bool initScale(int32_t zeroOffset, float countsPerN);
 
-// Returns true and sets forceN when a new conversion is ready. Otherwise
-// leaves forceN unchanged (the ADC runs slower than the main loop).
-bool readForce(float &forceN);
+// Returns true and sets forceN (and rawCounts, if given) when a new
+// conversion is ready. Otherwise leaves them unchanged (the ADC runs slower
+// than the main loop).
+bool readForce(float &forceN, int32_t *rawCounts = nullptr);
 
 // Blocking calibration helpers (paddle must be held still).
 int32_t tareScale();                    // returns new zero offset
