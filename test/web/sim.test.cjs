@@ -768,11 +768,22 @@ console.log("\nStroke simulator physics");
     check(`${tag}: hull: B only`, JSON.stringify(await pressed("#hull-mode")) === '["b"]' && (await page.$$("#hp-chart path.ln")).length === 3 &&
           !/^A /.test(await text("#hull-heading-read")) && (await page.$$("#hp-surge path.hull.boat-a")).length === 0);
     await page.click("#hull-mode >> text=Overlay");
+    // Race score: the race's own times, then what each loss costs.
+    const scoreReady = () => page.waitForFunction(() => document.getElementById("score").dataset.ready === "1", null, { timeout: 60000 });
+    await scoreReady();
+    const heads = await page.$$eval("#score-heads .big", (bs) => bs.map((b) => b.textContent));
+    check(`${tag}: race score: the race's own times`, heads[0] === (await text("#t-a")) && heads[1] === (await text("#t-b")) &&
+          /^\d+(\.\d)? km (open water|river).*, (\d+ W|A \d+ W, B \d+ W)\.$/.test(await text("#score-status")) &&
+          /Blade slip/.test(await text("#score-bars")) && (await page.$$eval("h2", (hs) => hs.map((h) => h.textContent))).some((h) => h.startsWith("Stroke efficiency: A vs B")),
+          `${heads} | ${await text("#score-status")}`);
     // Boat score for both boats; body settings show what they do.
     check(`${tag}: boat score for both boats`, /^Boat A\d+ \/ 100.*Boat B\d+ \/ 100/.test(await text("#boat-score")), await text("#boat-score"));
     await page.$eval("#ctl-body", (e) => e.closest("details").open = true);
     const score0 = await text("#boat-score .tile.a .big");
     await slide("#c-swingM", 0.1); await page.waitForTimeout(400);
+    await scoreReady();
+    check(`${tag}: race score: body swing costs A time`, /^Body swing/.test(await text("#score-bars").then((x) => x.replace(/^0[\d:]+/, ""))) &&
+          /Boat A: a quieter body, about \d+:\d\d\./.test(await text("#score-find")), await text("#score-find"));
     check(`${tag}: body swing: its cost, a lower score, the still-body curve`, /^Hull speed swings [\d.]+–[\d.]+ km\/h: costs [\d.]+% of your power$/.test(await text("#e-swingM")) &&
           (await text("#boat-score .tile.a .big")) !== score0 && /Body swing −/.test(await text("#boat-score .tile.a")) && (await page.$$("#hp-chart path.ln.still")).length === 1,
           await text("#e-swingM"));
