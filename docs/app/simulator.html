@@ -194,6 +194,9 @@
   .curve-legend b { color: var(--text-primary); font-weight: 600; }
   .key { display: inline-block; width: 18px; height: 0; border-top: 2.5px solid; vertical-align: 3px; margin-right: 6px; }
   .key.a { border-color: var(--series-1); } .key.b { border-color: var(--series-2); border-top-style: dashed; }
+  .key.both { border: 0; height: 2.5px; background: repeating-linear-gradient(90deg, var(--series-2) 0 5px, var(--series-1) 5px 10px); }
+  /* Same curve: even dashes, so the line is half A blue, half B orange. */
+  svg.curve.same .ln { stroke-width: 2.5; } svg.curve.same .ln.b { stroke-dasharray: 6 6; stroke-linecap: butt; }
   .curve-wrap { position: relative; }
   svg.curve { display: block; width: 100%; height: auto; margin-top: 4px; touch-action: pan-y; }
   svg.curve text { fill: var(--text-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
@@ -637,14 +640,19 @@ const niceStep = (max, n) => {
 function drawCurve() {
   const C = { a: curveOf(results.a), b: curveOf(results.b) }, k = curveMode;
   curveData = C;
+  // Same curve (same settings): the lines coincide.
+  const same = C.a.pts.length === C.b.pts.length && Math.abs(C.a.Td - C.b.Td) < 1e-9 &&
+    C.a.pts.every((p, i) => Math.abs(p[k] - C.b.pts[i][k]) < 0.5);
   $("curve-sub").textContent = k === "force"
     ? `The water's push on the blade face, from the catch through the drive, at ${effortW} W and each boat's stroke rate.`
     : `The part of that push along the boat. The area under each curve is the stroke's impulse.`;
   const peakKey = k === "force" ? "peakForce" : "peakForward";
   $("curve-legend").innerHTML = BOATS.map((x) =>
     `<span><i class="key ${x}"></i>${x.toUpperCase()}: peak <b>${fmtNum(C[x][peakKey], 0)} N</b> · ` +
-    `impulse <b>${fmtNum(C[x].impulse, 1)} N·s</b> · drive <b>${fmtNum(C[x].Td, 2)} s</b></span>`).join("");
+    `impulse <b>${fmtNum(C[x].impulse, 1)} N·s</b> · drive <b>${fmtNum(C[x].Td, 2)} s</b></span>`).join("") +
+    (same ? `<span id="curve-same"><i class="key both"></i>A and B are the same: one blended line</span>` : "");
   const svg = $("curve");
+  svg.classList.toggle("same", same);
   const W = Math.max(280, Math.round(svg.getBoundingClientRect().width)) || 320, H = 220;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   const m = { l: 52, r: 12, t: 12, b: 30 }, pw = W - m.l - m.r, ph = H - m.t - m.b;
@@ -662,12 +670,16 @@ function drawCurve() {
     g += `<text x="${end ? Math.min(X(t), W - m.r) : X(t)}" y="${H - 10}" text-anchor="${end ? "end" : "middle"}">` +
       `${fmtNum(t, xs < 0.1 ? 2 : 1)}${end ? " s" : ""}</text>`;
   }
-  // B under A, so the solid line stays readable where they cross.
-  for (const x of ["b", "a"])
+  // B's dashed line over A's solid one: where the curves coincide (same
+  // settings), the gaps in B's dashes show A, so the line reads as both
+  // colours blended, and neither boat's curve hides the other.
+  for (const x of ["a", "b"])
     g += `<path class="ln ${x}" d="${C[x].pts.map((p, i) => `${i ? "L" : "M"}${X(p.t).toFixed(1)},${Y(p[k]).toFixed(1)}`).join(" ")}"/>`;
-  // Direct labels at each peak, nudged apart if they'd collide.
-  const peaks = BOATS.map((x) => { const p = C[x].pts.reduce((a, q) => (q[k] > a[k] ? q : a)); return { x, px: X(p.t), py: Y(p[k]) }; });
-  if (Math.abs(peaks[0].py - peaks[1].py) < 16 && Math.abs(peaks[0].px - peaks[1].px) < 60) {
+  // Direct labels at each peak, nudged apart if they'd collide, or one
+  // "A = B" label when the curves are the same.
+  let peaks = BOATS.map((x) => { const p = C[x].pts.reduce((a, q) => (q[k] > a[k] ? q : a)); return { x, px: X(p.t), py: Y(p[k]) }; });
+  if (same) peaks = [{ x: "a = b", px: peaks[0].px, py: peaks[0].py }];
+  else if (Math.abs(peaks[0].py - peaks[1].py) < 16 && Math.abs(peaks[0].px - peaks[1].px) < 60) {
     const up = peaks[0].py <= peaks[1].py ? 0 : 1;
     peaks[up].py -= 8; peaks[1 - up].py += 8;
   }
