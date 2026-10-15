@@ -306,7 +306,16 @@
     box.style.borderLeftColor = "var(--critical)";
     text.textContent = "App error (please send this to the developer): " + msg;
   }
+  // Errors from scripts the browser adds to every page (Bluefy adds one for
+  // Bluetooth) arrive as a bare "Script error." with no line number. They
+  // aren't this app's errors, so they're noted in the console instead.
+  window.__ppmOutsideErrors = 0;
   window.addEventListener("error", function (e) {
+    if (!e.lineno && (!e.filename || e.message === "Script error.")) {
+      window.__ppmOutsideErrors++;
+      if (window.__ppmOnOutsideError) window.__ppmOnOutsideError();
+      return;
+    }
     show((e.message || "unknown error") + " at line " + (e.lineno || "?") + ":" + (e.colno || "?"));
   });
   window.addEventListener("unhandledrejection", function (e) {
@@ -315,8 +324,11 @@
 })();
 </script>
 <script>
+// Everything runs in its own scope: browsers like Bluefy inject their own
+// scripts into the page, and shared global names would break one or both.
+(() => {
 "use strict";
-const APP_VERSION = "2026-10-15.2";
+const APP_VERSION = "2026-10-15.3";
 // Must match src/BleProtocol.h.
 const UUID = {
   service: "7e1a0001-5c3b-4c2e-9a77-0f5d3e2b9c10",
@@ -579,8 +591,14 @@ async function sendCommand(text) {
   } catch (e) { log(`error: ${e.message}`, "err"); }
 }
 
+// A browser's Bluetooth add-on can throw just from being looked at; that
+// must not stop the rest of the app.
+function hasBluetooth() {
+  try { return !!navigator.bluetooth; } catch (e) { return false; }
+}
+
 async function connect() {
-  if (!navigator.bluetooth) { $("unsupported").hidden = false; return; }
+  if (!hasBluetooth()) { $("unsupported").hidden = false; return; }
   try {
     setPill("off", "Choosing…");
     const device = await navigator.bluetooth.requestDevice({
@@ -768,15 +786,20 @@ function stopDemo() {
 $("demo").addEventListener("click", () => (state.demo ? stopDemo() : startDemo()));
 $("demo-2").addEventListener("click", startDemo);
 
-if (!navigator.bluetooth) $("unsupported").hidden = false;
 $("version").textContent = `App version ${APP_VERSION}.`;
-if (/[?&]demo\b/.test(location.search)) startDemo();
 // The script got this far, so the "Starting the app…" note can go (unless
 // the error reporter has already replaced it with an error).
 if (!$("js-status-text").textContent.startsWith("App error")) $("js-status").hidden = true;
+const noteOutside = () =>
+  log("note: the browser reported an error in one of its own scripts (not this app)");
+if (window.__ppmOutsideErrors) noteOutside();
+window.__ppmOnOutsideError = noteOutside;
+if (/[?&]demo\b/.test(location.search)) startDemo();
+if (!hasBluetooth()) $("unsupported").hidden = false;
 
 // Exposed for tests.
 window.ppm = { decodeLive, decodeStroke, onLive, onStroke, onReplyChunk, state };
+})();
 </script>
 </body>
 </html>
