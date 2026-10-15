@@ -594,6 +594,46 @@
     return riverLeg(r, watts, c, river, u).t <= bt ? u : best;
   }
 
+  // The course laid out along its length, for replays: segments {d0, d1,
+  // v (speed made good), kind, leg, line, current, depth, watts, rate,
+  // perSide, loss}. Open water is one piece per leg. A river repeats, once
+  // per bend: a straight, the crossing to the next bend's inside, the bend
+  // (riverSegments' per-km mix). Bends sit at the same places for every
+  // line. Each leg's speeds are scaled so its time matches the leg's own.
+  function courseProfile(r, watts, legs, river) {
+    const out = [];
+    let d = 0;
+    legs.forEach((l, li) => {
+      const base = { leg: li, watts, rate: r.params.rateSpm, loss: r.params.switchLossStrokes,
+                     perSide: isFinite(l.windward) ? (l.windward + l.lee) / 2 : MAX_STROKES_PER_SIDE };
+      const start = d, end = d + l.len;
+      if (!l.river) {
+        out.push(Object.assign({ d0: start, d1: end, v: l.v, kind: "open", line: 0, current: 0, depth: Infinity }, base));
+        d = end;
+        return;
+      }
+      const parts = l.river.parts, by = (k) => parts.find((p) => p.kind === k);
+      const turnDeg = Math.max(0, river.bendsDegPerKm || 0), bends = turnDeg / BEND_ANGLE;
+      const units = [];
+      for (const k of ["straight", "crossing", "bend"]) {
+        const p = by(k);
+        if (p && p.len > 0) units.push({ kind: k, len: bends > 0 ? p.len / bends : p.len, v: p.len / p.t, current: p.current, depth: p.depth });
+      }
+      const first = out.length;
+      while (d < end - 1e-9 && units.length) for (const u of units) {
+        if (d >= end - 1e-9) break;
+        const d1 = Math.min(end, d + u.len);
+        out.push(Object.assign({ d0: d, d1, v: u.v, kind: u.kind, line: l.river.line, current: u.current, depth: u.depth }, base));
+        d = d1;
+      }
+      // Match the leg's own time, so replays and results agree.
+      const tp = out.slice(first).reduce((a, g) => a + (g.v > 0 ? (g.d1 - g.d0) / g.v : Infinity), 0);
+      if (isFinite(tp) && isFinite(l.t) && l.t > 0) for (let i = first; i < out.length; i++) out[i].v *= tp / l.t;
+      d = end;
+    });
+    return out;
+  }
+
   // Steady race between two strokes: each boat holds its average speed at
   // its own effort. env: headwind (m/s, + against you, − tailwind), current
   // (m/s, + with you) and course: "point" (one way) or "outback" (out to a
@@ -626,22 +666,23 @@
         return Object.assign(st, { len: l.len, v: isFinite(rl.t) ? l.len / rl.t : 0, t: rl.t, river: rl });
       });
       const t = ls.reduce((s, l) => s + l.t, 0);
+      const profile = courseProfile(r, watts, ls, river);
       const pos = (time) => {        // distance covered by `time`
         let d = 0, left = time;
-        for (const l of ls) {
-          if (left <= 0 || !isFinite(l.t)) break;
-          const dt = Math.min(left, l.t);
-          d += l.v * dt; left -= dt;
+        for (const g of profile) {
+          if (left <= 0 || !(g.v > 0)) break;
+          const dt = Math.min(left, (g.d1 - g.d0) / g.v);
+          d += g.v * dt; left -= dt;
         }
         return Math.min(metres, d);
       };
-      return { legs: ls, t, v: isFinite(t) ? metres / t : 0, water: ls[0].water, pos };
+      return { legs: ls, t, v: isFinite(t) ? metres / t : 0, water: ls[0].water, pos, profile };
     };
     const A = boat(a, wattsA, river && river.lineA), B = boat(b, wattsB, river && river.lineB);
     const first = Math.min(A.t, B.t);
     return {
       vA: A.v, vB: B.v, waterA: A.water, waterB: B.water, tA: A.t, tB: B.t, metres,
-      legsA: A.legs, legsB: B.legs, posA: A.pos, posB: B.pos,
+      legsA: A.legs, legsB: B.legs, posA: A.pos, posB: B.pos, profileA: A.profile, profileB: B.profile,
       // > 0: A wins by this many seconds (0 if neither finishes)
       timeGap: isFinite(A.t) || isFinite(B.t) ? B.t - A.t : 0,
       // m apart as the winner finishes

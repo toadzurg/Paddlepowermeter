@@ -258,6 +258,7 @@ console.log("\nStroke simulator physics");
     const cellVal = async (row, col) => parseFloat((await page.$eval(`#cmp tr[data-row="${row}"] td:nth-child(${col})`, (e) => e.textContent)).replace("−", "-"));
     const slide = (sel, v) => page.$eval(sel, (el, v) => { el.value = v; el.dispatchEvent(new Event("input")); }, v);
     const secs = (t) => t.split(":").reduce((a, x) => a * 60 + +x, 0);
+    const labels0 = () => page.$$eval("#race-stats tbody tr td:first-child", (ts) => ts.map((t) => t.textContent));
 
     // Layout: phones put the sliders after the views, wide screens beside them.
     const box = async (sel) => (await page.$(sel)).boundingBox();
@@ -481,9 +482,46 @@ console.log("\nStroke simulator physics");
     await page.click("#water >> text=Open water");
     check(`${tag}: back to open water`, !(await riverShown()) && (await text("#l-current")) === "Current");
 
+    // Replay: scrub through the race; stats and the speed chart follow.
+    check(`${tag}: stats rows`, JSON.stringify(await labels0()) ===
+          '["Time","Distance","Speed now","Avg speed","Power","Stroke rate","Strokes","Distance per stroke","Switches","Energy","Gap"]',
+          JSON.stringify(await labels0()));
+    check(`${tag}: replay starts at the winner's finish`, /✓/.test(await page.$eval("#race-stats tbody tr:first-child", (r) => r.textContent)));
+    await page.$eval("#scrub", (el) => { el.value = 500; el.dispatchEvent(new Event("input")); });
+    const dist = () => page.$$eval('#race-stats tbody tr:nth-child(2) td.v', (ts) => ts.map((t) => parseFloat(t.textContent)));
+    const [dA5, dB5] = await dist();
+    check(`${tag}: scrub halfway`, dA5 > 0.5 && dA5 < 9.5 && dB5 > 0.5 && dB5 < 9.5 && /^\d+:\d\d(:\d\d)? · [\d.]+ of 10.00 km$/.test(await text("#scrub-time")),
+          `${dA5} / ${dB5} km, ${await text("#scrub-time")}`);
+    await page.click("#scrub-fwd");
+    check(`${tag}: step forward`, (await page.$eval("#scrub", (e) => +e.value)) === 510 && (await dist())[0] > dA5);
+    await page.click("#scrub-back"); await page.click("#scrub-back");
+    check(`${tag}: step back`, (await page.$eval("#scrub", (e) => +e.value)) === 490);
+    check(`${tag}: speed chart: two boats with markers`, (await page.$$("#race-speed path.ln")).length === 2 &&
+          (await page.$$("#race-speed circle.dot")).length === 2);
+    // River with bends: the chart shades bends and the replay says where each boat is.
+    await page.click("#water >> text=River");
+    await slide("#current", -3); await slide("#depth", 2.5);
+    check(`${tag}: bends shaded`, (await page.$$("#race-speed rect.bendband")).length > 5);
+    const wheres = new Set();
+    for (let v = 0; v <= 1000; v += 7) {
+      await page.$eval("#scrub", (el, v) => { el.value = v; el.dispatchEvent(new Event("input")); }, v);
+      wheres.add(await text("#scrub-where"));
+    }
+    const all = [...wheres].join(" | ");
+    check(`${tag}: replay passes straights, crossings and bends`, /along the bank/.test(all) && /crossing the river/.test(all) &&
+          /inside of a bend/.test(all), all.slice(0, 160));
+    await slide("#current", 0); await slide("#depth", 5);
+    await page.click("#water >> text=Open water");
+
     // Race controls: pause, resume, slow motion, stop; a change mid-race applies from then on.
     await page.evaluate(() => { window.sim.raceWallS = 1.5; });
-    const run = () => page.evaluate(() => window.sim.run && { t: window.sim.run.t, dA: window.sim.run.dA, paused: window.sim.run.paused });
+    const run = () => page.evaluate(() => window.sim.run && { t: window.sim.run.t, dA: window.sim.run.A.d, paused: window.sim.run.paused });
+    // Scrubbing during a run pauses it.
+    await page.click("#race-start");
+    await page.waitForTimeout(250);
+    await page.$eval("#scrub", (el) => { el.value = 300; el.dispatchEvent(new Event("input")); });
+    check(`${tag}: scrubbing a run pauses it`, (await run()).paused && (await text("#race-pause")) === "Resume");
+    await page.click("#race-stop");
     check(`${tag}: pause and stop start disabled`, await page.$eval("#race-pause", (b) => b.disabled) && await page.$eval("#race-stop", (b) => b.disabled));
     await page.click("#race-start");
     await page.waitForTimeout(300);
@@ -501,7 +539,7 @@ console.log("\nStroke simulator physics");
     // Mid-race change: B goes to 400 W halfway, so B finishes between its 150 W and 400 W times.
     const tB150 = await page.evaluate(() => window.sim.race.tB);
     await page.click("#race-start");
-    await page.waitForFunction(() => window.sim.run && window.sim.run.dB > window.sim.race.metres / 2, null, { timeout: 5000 });
+    await page.waitForFunction(() => window.sim.run && window.sim.run.B.d > window.sim.race.metres / 2, null, { timeout: 5000 });
     await slide("#effB", 400);
     const tB400 = await page.evaluate(() => window.sim.race.tB);
     await page.waitForFunction(() => !window.sim.run, null, { timeout: 8000 });
@@ -509,7 +547,10 @@ console.log("\nStroke simulator physics");
     const finB = secs(raced.match(/B (\d+:\d\d(:\d\d)?)/)[1]);
     check(`${tag}: mid-race change applies from then on`, finB < tB150 - 1 && finB > tB400 + 1 && /changed mid-race/.test(raced),
           `${raced} (150 W ${tB150.toFixed(0)} s, 400 W ${tB400.toFixed(0)} s)`);
+    const labels = () => page.$$eval("#race-stats tbody tr td:first-child", (ts) => ts.map((t) => t.textContent));
+    check(`${tag}: replay after a run with a power change shows avg power`, (await labels()).includes("Avg power"));
     await slide("#effB", 150);
+    check(`${tag}: changing settings after a run goes back to the prediction`, !(await labels()).includes("Avg power"));
     await page.evaluate(() => { window.sim.raceWallS = 12; });
 
     await page.click("#race-start");
