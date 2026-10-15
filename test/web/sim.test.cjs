@@ -645,7 +645,7 @@ console.log("\nStroke simulator physics");
       await page.screenshot({ path: path.join(process.argv[2], `sim-${scheme}.png`), fullPage: true });
     }
     // Real course: the AuSable preset, sections to edit, a GPX of your own.
-    await page.click("#water >> text=Real course");
+    await page.click("#water >> text=AuSable / GPX");
     await page.waitForFunction(() => document.querySelectorAll("#cb-secs tbody tr").length > 10, null, { timeout: 10000 });
     const rows = () => page.$$eval("#cb-secs tbody tr", (r) => r.length);
     check(`${tag}: real course: the AuSable loads in sections`, (await rows()) >= 20 &&
@@ -736,17 +736,24 @@ console.log("\nStroke simulator physics");
     check(`${tag}: real course: a bad file says so`, /^Couldn't read nope\.gpx: /.test(await text("#cb-info")), await text("#cb-info"));
     await page.click("#water >> text=Open water");
     check(`${tag}: back from the real course`, (await page.isVisible("#dist")) && (await page.isVisible("#race-view")) && !(await page.isVisible("#builder")));
-    // On the hull: charts for the boat picked, both boats' power, shallow water.
-    check(`${tag}: hull: stroke chart and power for both boats`, (await page.$$("#hull-chart path.ln")).length === 2 &&
+    // On the hull: Overlay by default (both boats in each picture), Split, one boat; power, shallow water.
+    check(`${tag}: hull: overlay by default, both boats in each picture`, JSON.stringify(await pressed("#hull-mode")) === '["overlay"]' &&
+          (await page.$$("#hp-chart svg")).length === 1 && (await page.$$("#hp-chart path.ln")).length === 6 &&
+          (await page.$$("#hp-surge path.hull")).length === 2 && (await page.$$("#hp-roll path.hull")).length === 2 &&
           /^Boat Amoves the boat: \d+%Boat Bmoves the boat: \d+%/.test(await text("#hull-power")) &&
-          /^Speed swings [\d.]+–[\d.]+ km\/h, costing [\d.]+% of your power/.test(await text("#hull-surge-read")), await text("#hull-power"));
-    check(`${tag}: hull: roll and its balance`, /lifts the paddle side by up to \d+ N·m.*hips \d+ mm toward the paddle side.*Held still: ±[\d.]+° each stroke/.test(await text("#hull-roll-read")), await text("#hull-roll-read"));
-    const surge1 = await text("#hull-surge"); await page.waitForTimeout(300);
-    check(`${tag}: hull: the drawings move with the stroke`, (await text("#hull-surge")) !== surge1);
-    const head0 = await text("#hull-heading-read");
-    await page.click("#hull-boat >> text=Boat B");
-    check(`${tag}: hull: switch to boat B`, JSON.stringify(await pressed("#hull-boat")) === '["b"]' && (await text("#hull-heading-read")) !== head0);
-    await page.click("#hull-boat >> text=Boat A");
+          /^A Speed swings [\d.]+–[\d.]+ km\/h, costing [\d.]+%.*B Speed swings/.test(await text("#hull-surge-read")), await text("#hull-surge-read"));
+    check(`${tag}: hull: roll and its balance`, /^A Lifts the paddle side up to \d+ N·m; balance with hips \d+ mm toward the paddle side\. Held still: ±[\d.]+°/.test(await text("#hull-roll-read")), await text("#hull-roll-read"));
+    const surge1 = await text("#hp-surge"); await page.waitForTimeout(300);
+    check(`${tag}: hull: the drawings move with the stroke`, (await text("#hp-surge")) !== surge1);
+    await page.click("#hull-mode >> text=Split");
+    check(`${tag}: hull: split, a picture per boat`, (await page.$$("#hp-chart svg")).length === 2 && (await page.$$("#hp-surge svg")).length === 2 &&
+          (await page.$$("#hp-chart path.ln")).length === 6 && (await page.$$('#hp-surge svg[data-boats="b"] path.hull.boat-b')).length === 1);
+    await page.click("#hull-mode >> text=B only");
+    check(`${tag}: hull: B only`, JSON.stringify(await pressed("#hull-mode")) === '["b"]' && (await page.$$("#hp-chart path.ln")).length === 3 &&
+          !/^A /.test(await text("#hull-heading-read")) && (await page.$$("#hp-surge path.hull.boat-a")).length === 0);
+    await page.click("#hull-mode >> text=Overlay");
+    // The C1 shape in the stroke views: a gunwale line inside the hull from above.
+    check(`${tag}: stroke views draw the C1 (hull and gunwale from above)`, (await page.$$('.pair[data-view="top"] svg path.hull-in')).length >= 1);
     await slide("#depth", 0.9);
     check(`${tag}: hull: shallow race water shows on the heat map`, /0\.9 m deep: \+\d+%/.test(await text("#hull-shallow")) && (await page.$$("#hull-shallow circle")).length === 2);
     await slide("#depth", 5);

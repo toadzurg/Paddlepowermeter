@@ -153,6 +153,7 @@
   svg.view .water { fill: var(--water); }
   svg.view .water-line { stroke: var(--water-line); stroke-width: 1.5; }
   svg.view .hull { fill: var(--grid); fill-opacity: 0.55; stroke: var(--axis); stroke-width: 1.5; }
+  svg.view .hull-in, svg.hv .hull-in { fill: none; stroke: var(--axis); stroke-width: 1; }
   svg.view .centre { stroke: var(--axis); stroke-dasharray: 4 4; }
   svg.view .paddle { stroke-linecap: round; }
   svg.view .paddle.a { stroke: var(--series-1); } svg.view .paddle.b { stroke: var(--series-2); }
@@ -293,7 +294,12 @@
   svg.hv .hull { fill: var(--surface-1); stroke: var(--text-secondary); stroke-width: 1.5; }
   svg.hv .ghost { fill: none; stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 4 3; }
   svg.hv .grid { stroke: var(--grid); } svg.hv .axis { stroke: var(--axis); } svg.hv .drive { fill: var(--water); }
-  svg.hv .ln { fill: none; stroke-width: 2; } svg.hv .ln.a { stroke: var(--series-1); } svg.hv .ln.b { stroke: var(--series-2); }
+  svg.hv .ln { fill: none; stroke-width: 2; } svg.hv .ln.drag { stroke-dasharray: 5 3; stroke-width: 1.5; } svg.hv .ln.speed { stroke-dasharray: 1.5 3; stroke-width: 2; }
+  svg.hv .hull.boat-a { stroke: var(--series-1); } svg.hv .hull.boat-b { stroke: var(--series-2); fill-opacity: 0.6; }
+  svg.hv .paddler { fill: var(--muted); }
+  .hpair.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0 12px; }
+  .hull-legend i { background: var(--text-secondary); } .hull-legend i.dash { background: repeating-linear-gradient(90deg, var(--text-secondary) 0 4px, transparent 4px 7px); }
+  .hull-legend i.dot { background: repeating-linear-gradient(90deg, var(--text-secondary) 0 2px, transparent 2px 5px); } .hull-legend i.ghost { background: var(--muted); height: 1px; }
   .hull-read { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
   .hull-read b { color: var(--text-primary); font-weight: 600; }
   .hull-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
@@ -388,23 +394,23 @@
       <section class="card" id="hull-card">
         <div class="card-head">
           <h2>On the hull<button type="button" class="info" data-tip="The boat's response to each stroke: it surges, bobs, rolls and turns. Drawings are exaggerated (each says by how much); the numbers aren't." aria-label="What is this?">?</button></h2>
-          <div class="row chips" id="hull-boat" role="group" aria-label="Boat shown"></div>
+          <div class="row chips" id="hull-mode" role="group" aria-label="Boats shown"></div>
         </div>
         <div class="sub" id="hull-sub"></div>
         <div class="hull-grid">
           <section><h3>Through one stroke</h3>
-            <svg class="hv" id="hull-surge" viewBox="0 0 360 112" role="img" aria-label="The boat against a steady boat, with push and drag"></svg>
-            <div class="hull-legend"><span><i style="background:var(--series-1)"></i>Blade push</span><span><i style="background:var(--series-2)"></i>Hull drag</span><span><i style="background:var(--muted)"></i>Steady boat, same average speed</span></div>
-            <svg class="hv" id="hull-chart" role="img" aria-label="Push, drag and speed through one stroke"></svg>
+            <div class="hpair" id="hp-surge" data-what="The boat against a steady boat, with push and drag"></div>
+            <div class="hull-legend"><span><i></i>Blade push</span><span><i class="dash"></i>Hull drag</span><span><i class="dot"></i>Speed</span><span><i class="ghost"></i>Steady boat, same average speed</span></div>
+            <div class="hpair" id="hp-chart" data-what="Push, drag and speed through one stroke"></div>
             <div class="hull-read" id="hull-surge-read"></div></section>
           <section><h3>Bob</h3>
-            <svg class="hv" id="hull-bob" viewBox="0 0 360 86" role="img" aria-label="The boat rising and sinking"></svg>
+            <div class="hpair" id="hp-bob" data-what="The boat rising and sinking"></div>
             <div class="hull-read" id="hull-bob-read"></div>
             <h3>Roll<button type="button" class="info" data-tip="The blade's push up and sideways rolls the boat. From a C1's shape (31–32 in wide at the 4 in waterline) and a paddler sitting high; the stability is an estimate." aria-label="What is this?">?</button></h3>
-            <svg class="hv" id="hull-roll" viewBox="0 0 360 100" role="img" aria-label="The boat rolling, from behind"></svg>
+            <div class="hpair" id="hp-roll" data-what="The boat rolling, from behind"></div>
             <div class="hull-read" id="hull-roll-read"></div></section>
           <section><h3>Heading</h3>
-            <svg class="hv" id="hull-heading" viewBox="0 0 360 120" role="img" aria-label="The bow's heading over strokes, switching sides"></svg>
+            <div class="hpair" id="hp-heading" data-what="The bow's heading over strokes, switching sides"></div>
             <div class="hull-read" id="hull-heading-read"></div></section>
           <section><h3>Where your power goes</h3>
             <svg class="hv" id="hull-power" viewBox="0 0 360 170" role="img" aria-label="Shares of each boat's power"></svg></section>
@@ -1002,7 +1008,7 @@ let race = null, run = null, course = "point", water = "open";
 const lines = { a: "best", b: 0 };
 // [value, label] pairs, in display order.
 const COURSES = [["point", "Point to point"], ["outback", "There and back"]];
-const WATERS = [["open", "Open water"], ["river", "River"], ["map", "Real course"]];
+const WATERS = [["open", "Open water"], ["river", "River"], ["map", "AuSable / GPX"]];
 const LINES = [["0", "Middle"], ["0.5", "Between"], ["1", "Edges"], ["best", "Best line"]];
 // A row of choice chips; `get`/`set` read and write the chosen value.
 function chips(id, options, get, set) {
@@ -1768,117 +1774,157 @@ function drawCourseRace(dA, dB) {
 }
 
 // ----------------------------------------------------------------- hull
-// What the stroke and the water do to the hull, for the boat picked here:
-// through one stroke (surge against a steady boat, push and drag), bob,
-// roll, heading, where the power goes (both boats) and shallow water.
-let hullBoat = "a", hullCyc = { a: null, b: null };
+// What the stroke and the water do to the hull: through one stroke (surge
+// against a steady boat, push and drag), bob, roll, heading, where the power
+// goes and shallow water. Like the stroke views: both boats side by side
+// (Split), in one picture (Overlay), or one boat. Drawn from the C1 shape.
+let hullMode = "overlay", hullCyc = { a: null, b: null };
+const HULL_MODES = [["split", "Split"], ["overlay", "Overlay"], ["a", "A only"], ["b", "B only"]];
+const hullPanes = () => (hullMode === "split" ? [["a"], ["b"]] : hullMode === "overlay" ? [["a", "b"]] : [[hullMode]]);
+const hullShown = () => hullPanes().flat();
+const hullFocus = () => hullShown()[0];
+const COL = { a: "var(--series-1)", b: "var(--series-2)" };
 const ARROW = (id, c) => `<marker id="${id}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="${c}"/></marker>`;
-const hullDefs = `<defs>${ARROW("ha1", "var(--series-1)")}${ARROW("ha2", "var(--series-2)")}${ARROW("ha3", "var(--text-primary)")}</defs>`;
+const hullDefs = `<defs>${ARROW("ha-a", COL.a)}${ARROW("ha-b", COL.b)}${ARROW("ha3", "var(--text-primary)")}</defs>`;
+const tagFor = (bs) => bs.map((x, i) => `<text class="strong" x="${W_HV - 8 - (bs.length - 1 - i) * 16}" y="16" text-anchor="end" style="fill:${COL[x]}">${x.toUpperCase()}</text>`).join("");
+const W_HV = 360;
+// One svg per pane in each of the moving pictures and the charts.
+function layoutHull() {
+  for (const el of document.querySelectorAll("#hull-card .hpair")) {
+    const ps = hullPanes();
+    el.classList.toggle("two", ps.length === 2);
+    el.innerHTML = ps.map((bs) => `<svg class="hv" data-boats="${bs.join("")}" role="img" aria-label="${el.dataset.what}, ${bs.map((b) => NAME[b]).join(" and ")}"></svg>`).join("");
+  }
+}
 function updateHull() {
   if (!results.a || !results.b) return;
   for (const x of BOATS) hullCyc[x] = results[x].cycleAt(effortW);
-  chips("hull-boat", BOATS.map((x) => [x, NAME[x]]), () => hullBoat, (v) => { hullBoat = v; updateHull(); });
+  chips("hull-mode", HULL_MODES, () => hullMode, (v) => { hullMode = v; layoutHull(); updateHull(); });
+  if (!document.querySelector("#hp-surge svg")) layoutHull();
   $("hull-sub").textContent = `What the stroke and the water do to the boat, at ${effortW} W.`;
-  drawSurgeChart(); drawHeading(); drawPower(); drawShallow(); drawHullLive(phase);
+  drawSurgeChart(); drawHeading(); drawPower(); drawShallow(); hullReadouts(); drawHullLive(phase);
 }
+// Side-on and end-on pictures of the C1 at s px/m, waterline at y = wl.
+const sideP = (cx, wl, s) => (q) => [cx + q[0] * s, wl - q[2] * s];
+const panesIn = (id) => [...document.querySelectorAll(`#${id} svg`)].map((svg) => ({ svg, bs: svg.dataset.boats.split("") }));
 // The drawings that move with the stroke views.
 function drawHullLive(ph) {
-  const c = hullCyc[hullBoat];
-  if (!c || $("hull-card").getBoundingClientRect().bottom < 0) return;
-  const n = c.t.length, i = Math.min(n - 1, Math.floor(ph * n));
+  if (!hullCyc.a || $("hull-card").getBoundingClientRect().bottom < 0) return;
+  const at = (x) => { const c = hullCyc[x], n = c.t.length; return [c, Math.min(n - 1, Math.floor(ph * n))]; };
+  const s = 300 / 5.64;   // px per m
   // Surge: side view, bow right, against a steady boat at the same average speed.
-  {
-    const svg = $("hull-surge"), W = 360, H = 112, pxm = 240 / 5.64;
-    const big = Math.max(1e-6, ...c.ahead.map(Math.abs)), ex = 28 / big, off = c.ahead[i] * ex;
-    const hull = (x, cls) => `<path class="${cls}" d="M${x - 120},48 Q${x - 60},70 ${x + 10},68 Q${x + 80},66 ${x + 125},44 L${x + 118},42 Q${x},50 ${x - 115},46 Z"/>`;
-    const s = 0.35, push = c.push[i], drag = c.drag[i];
-    let g = hullDefs + `<rect class="water" x="0" y="52" width="${W}" height="${H - 52}"/><line class="wl" x1="0" x2="${W}" y1="52" y2="52"/>`;
-    g += hull(180, "ghost") + hull(180 + off, "hull");
-    if (push > 1) g += `<line x1="${165 + off}" y1="86" x2="${165 + off + push * s}" y2="86" stroke="var(--series-1)" stroke-width="4" marker-end="url(#ha1)"/><text x="${169 + off + push * s}" y="90">${fmtNum(push, 0)} N</text>`;
-    g += `<line x1="${292 + off}" y1="60" x2="${292 + off - drag * s * 1.6}" y2="60" stroke="var(--series-2)" stroke-width="4" marker-end="url(#ha2)"/>` +
-      `<text x="${288 + off - drag * s * 1.6}" y="76" text-anchor="end">${fmtNum(drag, 0)} N</text>`;
-    g += `<text class="strong" x="8" y="16">${fmtNum(Math.abs(c.ahead[i]) * 1000, 0)} mm ${c.ahead[i] >= 0 ? "ahead of" : "behind"} the steady boat</text>` +
-      `<text x="8" y="32">gap drawn ×${fmtNum(ex / pxm, 0)}</text>`;
+  const big = Math.max(1e-6, ...BOATS.flatMap((x) => hullCyc[x].ahead.map(Math.abs))), ex = 28 / big;
+  for (const { svg, bs } of panesIn("hp-surge")) {
+    svg.setAttribute("viewBox", `0 0 ${W_HV} 112`);
+    let g = hullDefs + `<rect class="water" x="0" y="52" width="${W_HV}" height="60"/><line class="wl" x1="0" x2="${W_HV}" y1="52" y2="52"/>` +
+      `<path class="ghost" d="${hullPath("side", sideP(180, 52, s))}"/>`;
+    bs.forEach((x, k) => {
+      const [c, i] = at(x), off = c.ahead[i] * ex, push = c.push[i], drag = c.drag[i], y = 82 + k * 12;
+      g += `<path class="hull boat-${x}" d="${hullPath("side", sideP(180 + off, 52, s))}"/>`;
+      if (push > 1) g += `<line x1="${150 + off}" y1="${y}" x2="${150 + off + push * 0.3}" y2="${y}" stroke="${COL[x]}" stroke-width="4" marker-end="url(#ha-${x})"/>`;
+      g += `<line x1="${300 + off}" y1="${y - 26}" x2="${300 + off - drag * 0.5}" y2="${y - 26}" stroke="${COL[x]}" stroke-width="3" stroke-dasharray="4 3" marker-end="url(#ha-${x})"/>`;
+      g += `<text x="8" y="${16 + k * 15}"><tspan class="strong" style="fill:${COL[x]}">${x.toUpperCase()}</tspan> ${fmtNum(Math.abs(c.ahead[i]) * 1000, 0)} mm ${c.ahead[i] >= 0 ? "ahead" : "behind"} · push ${fmtNum(push, 0)} N · drag ${fmtNum(drag, 0)} N</text>`;
+    });
+    g += `<text x="${W_HV - 8}" y="${bs.length > 1 ? 46 : 31}" text-anchor="end">gap ×${fmtNum(ex / s, 0)}</text>`;
     svg.innerHTML = g;
-    const cur = $("hull-cursor");
-    if (cur && hullGeom) { const x = hullGeom.X(i); cur.setAttribute("x1", x); cur.setAttribute("x2", x); }
   }
-  // Bob: side view, height exaggerated.
-  {
-    const ex = 200 * (240 / 5.64) / 1000, y = 46 - c.heave[i] * 1000 * ex;   // px per mm
-    let g = hullDefs + `<rect class="water" x="0" y="46" width="360" height="40"/><line class="wl" x1="0" x2="360" y1="46" y2="46"/>`;
-    g += `<path class="hull" d="M60,${y - 6} Q120,${y + 16} 180,${y + 15} Q250,${y + 14} 300,${y - 8} L294,${y - 10} Q180,${y - 2} 66,${y - 8} Z"/>`;
-    if (c.up[i] > 2) g += `<line x1="180" x2="180" y1="${y + 15 + Math.min(40, c.up[i] * 0.4)}" y2="${y + 15}" stroke="var(--series-1)" stroke-width="4" marker-end="url(#ha1)"/>`;
-    g += `<text class="strong" x="8" y="16">${c.heave[i] >= 0 ? "Up" : "Down"} ${fmtNum(Math.abs(c.heave[i]) * 1000, 1)} mm · height ×200</text>`;
-    $("hull-bob").innerHTML = g;
+  for (const el of document.querySelectorAll("#hp-chart .hull-cursor")) {
+    const x = +el.dataset.x0 + ph * +el.dataset.w;
+    el.setAttribute("x1", x); el.setAttribute("x2", x);
   }
-  // Roll: from behind, paddle on the right; tilt exaggerated ×3.
-  {
-    const deg = (c.heel[i] * 180) / Math.PI, cx = 120, cy = 58;
-    let g = hullDefs + `<rect class="water" x="0" y="58" width="360" height="42"/><line class="wl" x1="0" x2="360" y1="58" y2="58"/>`;
-    g += `<g transform="rotate(${fmtNum(deg * 3, 2).replace("−", "-")} ${cx} ${cy})">` +
-      `<path class="hull" d="M${cx - 36},${cy - 22} Q${cx - 40},${cy + 12} ${cx},${cy + 14} Q${cx + 40},${cy + 12} ${cx + 36},${cy - 22} Z"/>` +
-      `<rect x="${cx - 9}" y="${cy - 58}" width="18" height="40" rx="7" fill="var(--muted)"/><circle cx="${cx}" cy="${cy - 66}" r="8" fill="var(--muted)"/></g>`;
-    if (c.up[i] > 2) g += `<line x1="${cx + 70}" x2="${cx + 70}" y1="${cy + 30}" y2="${cy + 30 - Math.min(36, c.up[i] * 0.4)}" stroke="var(--series-1)" stroke-width="4" marker-end="url(#ha1)"/>`;
-    g += `<text class="strong" x="200" y="22">${Math.abs(deg) < 0.05 ? "Level" : `${fmtNum(Math.abs(deg), 1)}° paddle side ${deg > 0 ? "down" : "up"}`}</text>` +
-      `<text x="200" y="38">if you held still · tilt ×3</text><text x="200" y="${cy + 30}">blade lifts →</text>`;
-    $("hull-roll").innerHTML = g;
+  // Bob: side view, height ×200.
+  for (const { svg, bs } of panesIn("hp-bob")) {
+    svg.setAttribute("viewBox", `0 0 ${W_HV} 86`);
+    let g = hullDefs + `<rect class="water" x="0" y="50" width="${W_HV}" height="36"/><line class="wl" x1="0" x2="${W_HV}" y1="50" y2="50"/>`;
+    bs.forEach((x, k) => {
+      const [c, i] = at(x), y = 50 - c.heave[i] * 200 * s;
+      g += `<path class="hull boat-${x}" d="${hullPath("side", sideP(180, y, s))}"/>`;
+      if (c.up[i] > 2) g += `<line x1="${170 + k * 20}" x2="${170 + k * 20}" y1="${y + 8 + Math.min(30, c.up[i] * 0.35)}" y2="${y + 8}" stroke="${COL[x]}" stroke-width="4" marker-end="url(#ha-${x})"/>`;
+      g += `<text x="8" y="${16 + k * 15}"><tspan class="strong" style="fill:${COL[x]}">${x.toUpperCase()}</tspan> ${c.heave[i] >= 0 ? "up" : "down"} ${fmtNum(Math.abs(c.heave[i]) * 1000, 1)} mm</text>`;
+    });
+    g += `<text x="${W_HV - 8}" y="16" text-anchor="end">height ×200</text>`;
+    svg.innerHTML = g;
+  }
+  // Roll: from behind, paddle on the right; tilt ×3.
+  for (const { svg, bs } of panesIn("hp-roll")) {
+    svg.setAttribute("viewBox", `0 0 ${W_HV} 140`);
+    const cx = 100, wl = 100, sr = 110, P = (q) => [cx - q[1] * sr, wl - q[2] * sr];   // from behind: +y (left) is on the left
+    let g = hullDefs + `<rect class="water" x="0" y="${wl}" width="${W_HV}" height="${140 - wl}"/><line class="wl" x1="0" x2="${W_HV}" y1="${wl}" y2="${wl}"/>`;
+    bs.forEach((x, k) => {
+      const [c, i] = at(x), deg = (c.heel[i] * 180) / Math.PI * 3;
+      // + heel puts the paddle side (right, from behind) down: clockwise on the page.
+      g += `<g transform="rotate(${deg.toFixed(2)} ${cx} ${wl})"><path class="hull boat-${x}" d="${hullPath("end", P)}"/>` +
+        (k === 0 ? `<rect x="${cx - 11}" y="${wl - 0.72 * sr}" width="22" height="${0.6 * sr}" rx="9" class="paddler"/><circle cx="${cx}" cy="${wl - 0.81 * sr}" r="9" class="paddler"/>` : "") + `</g>`;
+      if (c.up[i] > 2) g += `<line x1="${cx + 70 + k * 14}" x2="${cx + 70 + k * 14}" y1="${wl + 34}" y2="${wl + 34 - Math.min(30, c.up[i] * 0.35)}" stroke="${COL[x]}" stroke-width="4" marker-end="url(#ha-${x})"/>`;
+      const d = c.heel[i] * 180 / Math.PI;
+      g += `<text x="205" y="${22 + k * 15}"><tspan class="strong" style="fill:${COL[x]}">${x.toUpperCase()}</tspan> ${Math.abs(d) < 0.05 ? "level" : `${fmtNum(Math.abs(d), 1)}° paddle side ${d > 0 ? "down" : "up"}`}</text>`;
+    });
+    g += `<text x="205" y="${22 + bs.length * 15}">if you held still · tilt ×3</text><text x="${cx + 92}" y="${wl + 24}">← blade lifts</text>`;
+    svg.innerHTML = g;
   }
 }
-let hullGeom = null;
+// Push, drag and speed through one stroke, on scales shared by both boats.
 function drawSurgeChart() {
-  const c = hullCyc[hullBoat], svg = $("hull-chart"), W = 360, H = 150, m = { l: 40, r: 44, t: 10, b: 22 }, pw = W - m.l - m.r, ph = H - m.t - m.b, n = c.t.length;
-  const fMax = niceStep(Math.max(...c.push) * 1.1, 1) * Math.ceil((Math.max(...c.push) * 1.1) / niceStep(Math.max(...c.push) * 1.1, 1));
-  const X = (i) => m.l + (i / (n - 1)) * pw, Y = (f) => m.t + ph - (f / fMax) * ph;
-  const v0 = Math.min(...c.speed) * 3.6 - 0.2, v1 = Math.max(...c.speed) * 3.6 + 0.2, YV = (v) => m.t + ph - ((v * 3.6 - v0) / (v1 - v0)) * ph;
-  hullGeom = { X };
-  let g = `<rect class="drive" x="${m.l}" y="${m.t}" width="${(c.drive / c.cycle) * pw}" height="${ph}"/><text x="${m.l + 4}" y="${m.t + 12}">drive</text>` +
-    `<text x="${m.l + (c.drive / c.cycle) * pw + 4}" y="${m.t + 12}">recovery</text>`;
-  const ys = niceStep(fMax, 2);
-  for (let f = 0; f <= fMax + 1e-9; f += ys) g += `<line class="${f ? "grid" : "axis"}" x1="${m.l}" x2="${W - m.r}" y1="${Y(f)}" y2="${Y(f)}"/><text x="${m.l - 5}" y="${Y(f) + 4}" text-anchor="end">${fmtNum(f, 0)}${f + ys > fMax + 1e-9 ? " N" : ""}</text>`;
-  g += `<text x="${W - m.r + 5}" y="${YV(Math.max(...c.speed)) + 4}">${fmtNum(Math.max(...c.speed) * 3.6, 1)}</text><text x="${W - m.r + 5}" y="${YV(Math.min(...c.speed)) + 4}">${fmtNum(Math.min(...c.speed) * 3.6, 1)}</text>` +
-    `<text x="${W - m.r + 5}" y="${m.t + ph + 16}">km/h</text><text x="${m.l}" y="${H - 6}">0</text><text x="${W - m.r}" y="${H - 6}" text-anchor="end">${fmtNum(c.cycle, 1)} s</text>`;
-  const path = (arr, Yf) => arr.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Yf(v).toFixed(1)}`).join(" ");
-  g += `<path class="ln a" d="${path(c.push, Y)}"/><path class="ln b" d="${path(c.drag, Y)}" style="stroke-dasharray:none"/>` +
-    `<path d="${path(c.speed, YV)}" fill="none" stroke="var(--text-primary)" stroke-width="1.5" stroke-dasharray="5 3"/>`;
-  const j = Math.floor(n * 0.62);
-  g += `<text x="${X(j)}" y="${YV(c.speed[j]) - 6}" style="fill:var(--text-primary)">speed</text>` +
-    `<line id="hull-cursor" x1="${m.l}" x2="${m.l}" y1="${m.t}" y2="${m.t + ph}" stroke="var(--text-primary)" opacity=".35"/>`;
-  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
-  svg.innerHTML = g;
-  const e = results[hullBoat].at(effortW);
-  $("hull-surge-read").innerHTML = `<span>Speed swings <b>${fmtNum(Math.min(...c.speed) * 3.6, 1)}–${fmtNum(Math.max(...c.speed) * 3.6, 1)} km/h</b>, costing <b>${fmtNum(e.shares.surge * 100, 1)}%</b> of your power</span>` +
-    `<span>Peak push <b>${fmtNum(Math.max(...c.push), 0)} N</b> against <b>${fmtNum(e.hullK * e.waterSpeed ** 2, 0)} N</b> of drag</span>`;
-  $("hull-bob-read").innerHTML = `<span>Rides <b>${fmtNum(Math.abs(e.sinkMm), 1)} mm ${e.sinkMm < 0 ? "higher" : "lower"}</b>: ${fmtNum(Math.abs(e.shares.sink) * 100, 1)}% ${e.shares.sink < 0 ? "less" : "more"} drag</span>` +
-    `<span>Bobs <b>±${fmtNum(e.bounceMm, 1)} mm</b>, making waves: ${fmtNum(e.shares.bounce * 100, 1)}%</span>`;
-  const heel = Math.max(...c.heel.map(Math.abs)) * 180 / Math.PI, inStep = Math.abs(c.rollPeriod / c.cycle - 1) < 0.15;
-  $("hull-roll-read").innerHTML = `<span>The blade lifts the paddle side by up to <b>${fmtNum(-Math.min(...c.roll), 0)} N·m</b> in the drive</span>` +
-    `<span>Balance it: hips <b>${fmtNum(Math.abs(c.hipShift) * 1000, 0)} mm</b> toward the ${c.hipShift >= 0 ? "paddle" : "off"} side</span>` +
-    `<span>Held still: <b>±${fmtNum(heel, 1)}°</b> each stroke. The boat rolls back every <b>${fmtNum(c.rollPeriod, 1)} s</b>${inStep ? ", in step with your strokes, so each one pumps the roll" : ""}</span>`;
-}
-function drawHeading() {
-  const r = results[hullBoat], W = 360, H = 120, m = { l: 40, r: 70, t: 14, b: 22 }, pw = W - m.l - m.r, ph = H - m.t - m.b;
-  const per = r.strokesPerSide, wander = Math.max(0.1, r.headingWanderDeg), strokes = Math.max(12, Math.round(per * 4));
-  const lim = Math.max(1, Math.ceil(wander)), X = (s) => m.l + (s / strokes) * pw, Y = (d) => m.t + ph / 2 - (d / (lim * 1.25)) * (ph / 2);
-  let g = hullDefs;
-  for (const d of [-lim, 0, lim]) g += `<line class="${d ? "grid" : "axis"}" x1="${m.l}" x2="${W - m.r}" y1="${Y(d)}" y2="${Y(d)}"/><text x="${m.l - 5}" y="${Y(d) + 4}" text-anchor="end">${d > 0 ? "+" : ""}${d}°</text>`;
-  let s = 0, h = -wander, side = 1, p = `M${X(0)},${Y(h)}`;
-  const step = (2 * wander) / per;
-  while (s < strokes) {
-    const s1 = Math.min(strokes, s + per), h1 = h + side * step * (s1 - s);
-    p += ` L${X(s1)},${Y(h1)}`;
-    if (s1 < strokes) g += `<line x1="${X(s1)}" x2="${X(s1)}" y1="${m.t}" y2="${m.t + ph}" stroke="var(--muted)" stroke-dasharray="2 3"/>`;
-    s = s1; h = h1; side = -side;
+  const W = W_HV, H = 150, m = { l: 40, r: 44, t: 10, b: 22 }, pw = W - m.l - m.r, ph = H - m.t - m.b;
+  const all = BOATS.map((x) => hullCyc[x]), top = Math.max(...all.flatMap((c) => c.push)) * 1.1;
+  const ys = niceStep(top, 2), fMax = Math.ceil(top / ys) * ys;
+  const sp = all.flatMap((c) => c.speed), v0 = Math.min(...sp) * 3.6 - 0.2, v1 = Math.max(...sp) * 3.6 + 0.2;
+  const Y = (f) => m.t + ph - (f / fMax) * ph, YV = (v) => m.t + ph - ((v * 3.6 - v0) / (v1 - v0)) * ph;
+  for (const { svg, bs } of panesIn("hp-chart")) {
+    const c0 = hullCyc[bs[0]], n = c0.t.length, X = (i) => m.l + (i / (n - 1)) * pw;
+    let g = `<rect class="drive" x="${m.l}" y="${m.t}" width="${(c0.drive / c0.cycle) * pw}" height="${ph}"/><text x="${m.l + 4}" y="${m.t + 12}">drive</text>` +
+      `<text x="${m.l + (c0.drive / c0.cycle) * pw + 4}" y="${m.t + 12}">recovery</text>`;
+    for (let f = 0; f <= fMax + 1e-9; f += ys) g += `<line class="${f ? "grid" : "axis"}" x1="${m.l}" x2="${W - m.r}" y1="${Y(f)}" y2="${Y(f)}"/><text x="${m.l - 5}" y="${Y(f) + 4}" text-anchor="end">${fmtNum(f, 0)}${f + ys > fMax + 1e-9 ? " N" : ""}</text>`;
+    g += `<text x="${W - m.r + 5}" y="${YV(v1 / 3.6 - 0.2 / 3.6) + 4}">${fmtNum(v1 - 0.2, 1)}</text><text x="${W - m.r + 5}" y="${YV(v0 / 3.6 + 0.2 / 3.6) + 4}">${fmtNum(v0 + 0.2, 1)}</text>` +
+      `<text x="${W - m.r + 5}" y="${m.t + ph + 16}">km/h</text><text x="${m.l}" y="${H - 6}">0</text><text x="${W - m.r}" y="${H - 6}" text-anchor="end">${fmtNum(c0.cycle, 1)} s</text>`;
+    const path = (arr, Yf) => arr.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Yf(v).toFixed(1)}`).join(" ");
+    for (const x of bs) {
+      const c = hullCyc[x];
+      g += `<path class="ln push" style="stroke:${COL[x]}" d="${path(c.push, Y)}"/><path class="ln drag" style="stroke:${COL[x]}" d="${path(c.drag, Y)}"/>` +
+        `<path class="ln speed" style="stroke:${COL[x]}" d="${path(c.speed, YV)}"/>`;
+    }
+    g += `<line class="hull-cursor" data-x0="${m.l}" data-w="${pw}" x1="${m.l}" x2="${m.l}" y1="${m.t}" y2="${m.t + ph}" stroke="var(--text-primary)" opacity=".35"/>` + tagFor(bs);
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    svg.innerHTML = g;
   }
-  g += `<path d="${p}" fill="none" stroke="var(${hullBoat === "a" ? "--series-1" : "--series-2"})" stroke-width="2"/>` +
-    `<text x="${m.l}" y="${H - 6}">0</text><text x="${W - m.r}" y="${H - 6}" text-anchor="end">${strokes} strokes</text>` +
-    `<text x="${X(Math.min(per, strokes) / 2)}" y="${m.t - 3}" text-anchor="middle">right</text>` + (per * 1.5 < strokes ? `<text x="${X(per * 1.5)}" y="${m.t - 3}" text-anchor="middle">left</text>` : "");
-  const cx = W - 34, cy = 64;
-  g += `<path class="hull" transform="rotate(8 ${cx} ${cy})" d="M${cx},${cy - 38} Q${cx + 10},${cy} ${cx},${cy + 38} Q${cx - 10},${cy} ${cx},${cy - 38} Z"/>` +
-    `<path d="M${cx - 20},${cy - 40} A 24 24 0 0 1 ${cx + 18},${cy - 42}" fill="none" stroke="var(--text-primary)" stroke-width="2" marker-end="url(#ha3)"/>`;
-  $("hull-heading").innerHTML = g;
-  $("hull-heading-read").innerHTML = r.params.switchStrokes ? `<span>Switching every <b>${r.params.switchStrokes}</b> strokes, the bow wanders <b>±${fmtNum(wander, 1)}°</b></span>` :
-    `<span>The stroke turns the bow away; you switch every <b>${fmtNum(per, 1)} strokes</b> to stay within ±${fmtNum(wander, 1)}°</span>`;
+}
+// One line per boat shown, each starting with its letter.
+function hullReadouts() {
+  const bs = hullShown(), tag = (x) => (bs.length > 1 ? `<b style="color:${COL[x]}">${x.toUpperCase()}</b> ` : "");
+  const lines = (f) => bs.map((x) => `<span>${tag(x)}${f(x, hullCyc[x], results[x].at(effortW), results[x])}</span>`).join("");
+  $("hull-surge-read").innerHTML = lines((x, c, e) => `Speed swings <b>${fmtNum(Math.min(...c.speed) * 3.6, 1)}–${fmtNum(Math.max(...c.speed) * 3.6, 1)} km/h</b>, costing <b>${fmtNum(e.shares.surge * 100, 1)}%</b>; peak push <b>${fmtNum(Math.max(...c.push), 0)} N</b> against <b>${fmtNum(e.hullK * e.waterSpeed ** 2, 0)} N</b> of drag`);
+  $("hull-bob-read").innerHTML = lines((x, c, e) => `Rides <b>${fmtNum(Math.abs(e.sinkMm), 1)} mm ${e.sinkMm < 0 ? "higher" : "lower"}</b> (${fmtNum(Math.abs(e.shares.sink) * 100, 1)}% ${e.shares.sink < 0 ? "less" : "more"} drag), bobs <b>±${fmtNum(e.bounceMm, 1)} mm</b> (${fmtNum(e.shares.bounce * 100, 1)}%)`);
+  $("hull-roll-read").innerHTML = lines((x, c) => {
+    const heel = Math.max(...c.heel.map(Math.abs)) * 180 / Math.PI, inStep = Math.abs(c.rollPeriod / c.cycle - 1) < 0.15;
+    return `Lifts the paddle side up to <b>${fmtNum(-Math.min(...c.roll), 0)} N·m</b>; balance with hips <b>${fmtNum(Math.abs(c.hipShift) * 1000, 0)} mm</b> toward the ${c.hipShift >= 0 ? "paddle" : "off"} side. ` +
+      `Held still: <b>±${fmtNum(heel, 1)}°</b>, rolling back every ${fmtNum(c.rollPeriod, 1)} s${inStep ? ", in step with the strokes, so each one pumps it" : ""}`;
+  });
+  $("hull-heading-read").innerHTML = lines((x, c, e, r) => r.params.switchStrokes ? `Switching every <b>${r.params.switchStrokes}</b> strokes, the bow wanders <b>±${fmtNum(r.headingWanderDeg, 1)}°</b>` :
+    `Switch every <b>${fmtNum(r.strokesPerSide, 1)} strokes</b> to stay within ±${fmtNum(r.headingWanderDeg, 1)}°`);
+}
+// The bow's heading over strokes, switching sides.
+function drawHeading() {
+  const W = W_HV, H = 120, m = { l: 40, r: 70, t: 14, b: 22 }, pw = W - m.l - m.r, ph = H - m.t - m.b;
+  const per = (x) => results[x].strokesPerSide, wan = (x) => Math.max(0.1, results[x].headingWanderDeg);
+  const strokes = Math.max(12, Math.round(Math.max(...BOATS.map(per)) * 4)), lim = Math.max(1, Math.ceil(Math.max(...BOATS.map(wan))));
+  const X = (k) => m.l + (k / strokes) * pw, Y = (d) => m.t + ph / 2 - (d / (lim * 1.25)) * (ph / 2);
+  for (const { svg, bs } of panesIn("hp-heading")) {
+    let g = hullDefs;
+    for (const d of [-lim, 0, lim]) g += `<line class="${d ? "grid" : "axis"}" x1="${m.l}" x2="${W - m.r}" y1="${Y(d)}" y2="${Y(d)}"/><text x="${m.l - 5}" y="${Y(d) + 4}" text-anchor="end">${d > 0 ? "+" : ""}${d}°</text>`;
+    for (const x of bs) {
+      const pr = per(x), w = wan(x), step = (2 * w) / pr;
+      let k = 0, h = -w, side = 1, p = `M${X(0)},${Y(h)}`;
+      while (k < strokes) { const k1 = Math.min(strokes, k + pr), h1 = h + side * step * (k1 - k); p += ` L${X(k1).toFixed(1)},${Y(h1).toFixed(1)}`; k = k1; h = h1; side = -side; }
+      g += `<path d="${p}" fill="none" stroke="${COL[x]}" stroke-width="2"/>`;
+    }
+    g += `<text x="${m.l}" y="${H - 6}">0</text><text x="${W - m.r}" y="${H - 6}" text-anchor="end">${strokes} strokes</text>`;
+    // The C1 from above, bow up, turning away from the paddle.
+    const cx = W - 34, cy = 64, st = 13, P = (q) => [cx - q[1] * st, cy - q[0] * st];
+    g += `<g transform="rotate(8 ${cx} ${cy})"><path class="hull" d="${hullPath("top", P)}"/><path class="hull-in" d="${hullPath("top-in", P)}"/></g>` +
+      `<path d="M${cx - 20},${cy - 40} A 24 24 0 0 1 ${cx + 18},${cy - 42}" fill="none" stroke="var(--text-primary)" stroke-width="2" marker-end="url(#ha3)"/>` + tagFor(bs).replace(/x="(\d+(\.\d+)?)"/g, (mm, v) => `x="${+v - 70}"`);
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    svg.innerHTML = g;
+  }
 }
 function drawPower() {
   const W = 360, x0 = 8, bw = W - 16;
@@ -1894,12 +1940,12 @@ function drawPower() {
     g += `<text class="strong" x="${x0}" y="${y - 4}">${NAME[x]}</text><text x="${W - 8}" y="${y - 4}" text-anchor="end">moves the boat: ${fmtNum((ps[0][1] + ps[1][1]) * 100, 0)}%</text>`;
     for (const [, v, c] of ps) { const w = (Math.max(0, v) / tot) * bw; g += `<rect x="${xx}" y="${y}" width="${Math.max(0.5, w)}" height="18" fill="${c}"/>`; xx += w; }
   });
-  parts(hullBoat).forEach(([nm, v, c], i) => {
+  parts(hullFocus()).forEach(([nm, v, c], i) => {
     const tx = x0 + (i % 2) * 180, ty = 104 + Math.floor(i / 2) * 18;
     g += `<rect x="${tx}" y="${ty - 9}" width="10" height="10" fill="${c}"/><text x="${tx + 14}" y="${ty}">${nm} <tspan style="fill:var(--text-primary);font-weight:600">${fmtNum(v * 100, v < 0.01 ? 1 : 0)}%</tspan></text>`;
   });
-  const sink = results[hullBoat].at(effortW).shares.sink;
-  g += `<text x="${x0}" y="162">${NAME[hullBoat]}'s figures. Riding ${sink < 0 ? "higher saves" : "lower costs"} ${fmtNum(Math.abs(sink) * 100, 1)}% more.</text>`;
+  const sink = results[hullFocus()].at(effortW).shares.sink;
+  g += `<text x="${x0}" y="162">${NAME[hullFocus()]}'s figures. Riding ${sink < 0 ? "higher saves" : "lower costs"} ${fmtNum(Math.abs(sink) * 100, 1)}% more.</text>`;
   $("hull-power").innerHTML = g;
 }
 function drawShallow() {
@@ -1927,7 +1973,7 @@ function drawShallow() {
     if (depth < 3) g += `<circle cx="${px}" cy="${YD(depth)}" r="5" fill="var(${cl})" stroke="var(--surface-1)" stroke-width="2"/>`;
   });
   if (depth < 3) {
-    const v = results[hullBoat].at(effortW).waterSpeed, px = XV(v);
+    const v = results[hullFocus()].at(effortW).waterSpeed, px = XV(v);
     g += `<rect x="${px - 128}" y="${YD(depth) - 13}" width="120" height="17" rx="4" fill="var(--surface-1)" opacity=".9"/>` +
       `<text class="strong" x="${px - 10}" y="${YD(depth) + 1}" text-anchor="end">${fmtNum(depth, 1)} m deep: +${fmtNum(extra(v, depth), 0)}%</text>`;
   }
@@ -2235,18 +2281,45 @@ function viewport(svg, v) {
 }
 const f2 = (q) => `${q[0].toFixed(1)},${q[1].toFixed(1)}`;
 
-// Canoe outline: 5.6 m, 0.72 m beam, 0.22 m freeboard, 0.12 m draft.
+// A USCA C1 marathon canoe: 18'6" long, 32" at its widest (just aft of
+// midships, a little above the waterline), pulled in to 17" at the gunwale
+// (tumblehome), 12" deep at the centre and stern and 16" at the bow, with
+// near-vertical stems. Metres; x toward the bow, y to the
+// left, z up from the waterline (the boat floats about 9 cm deep).
+const C1 = { half: 2.82, beam: 0.405, gun: 0.215, xw: -0.15, keel: -0.09, mid: 0.215, bow: 0.316, stern: 0.225, wide: 0.03 };
+// Half-width at x: the hull at its widest, and the gunwale.
+function c1Beam(x) {
+  const u = x >= C1.xw ? (x - C1.xw) / (C1.half - C1.xw) : (C1.xw - x) / (C1.half + C1.xw);
+  return C1.beam * Math.max(0, 1 - Math.pow(Math.min(1, u), 1.25));   // a near-straight diamond, as C1s are
+}
+function c1Gun(x) {   // the gunwale tapers with the hull, a little fuller
+  const u = x >= C1.xw ? (x - C1.xw) / (C1.half - C1.xw) : (C1.xw - x) / (C1.half + C1.xw);
+  return Math.max(0, Math.min(c1Beam(x) - 0.008, C1.gun * (1 - Math.pow(Math.min(1, u), 1.8))));
+}
+// Sheer and keel heights along the boat.
+const c1Sheer = (x) => (x >= 0 ? C1.mid + (C1.bow - C1.mid) * Math.pow(x / C1.half, 2.2) : C1.mid + (C1.stern - C1.mid) * Math.pow(-x / C1.half, 2));
+function c1Keel(x) {
+  const r = Math.abs(x) / C1.half;
+  // Near-vertical stems with a small round at the foot.
+  if (x > 0 && r > 0.95) return C1.keel + (C1.bow - C1.keel) * Math.pow((r - 0.95) / 0.05, 1.8);
+  if (x < 0 && r > 0.96) return C1.keel + (C1.stern - C1.keel) * Math.pow((r - 0.96) / 0.04, 1.8);
+  return C1.keel + 0.004 * r * r;                                                              // a little rocker
+}
+const c1Xs = Array.from({ length: 61 }, (_, i) => -C1.half + (2 * C1.half * i) / 60);
+// The boat in a view (P maps [x, y, z] to the page). "top-in" is the gunwale.
 function hullPath(view, P) {
-  const L = 2.8, B = 0.36, top = 0.22, keel = -0.12;
-  if (view === "side")
-    return `M${f2(P([-L, 0, top + 0.12]))} Q${f2(P([0, 0, top - 0.04]))} ${f2(P([L, 0, top + 0.12]))}` +
-      ` Q${f2(P([L * 0.92, 0, keel]))} ${f2(P([L * 0.6, 0, keel]))} L${f2(P([-L * 0.6, 0, keel]))}` +
-      ` Q${f2(P([-L * 0.92, 0, keel]))} ${f2(P([-L, 0, top + 0.12]))} Z`;
-  if (view === "end")
-    return `M${f2(P([0, B, top]))} Q${f2(P([0, B, keel]))} ${f2(P([0, 0, keel]))}` +
-      ` Q${f2(P([0, -B, keel]))} ${f2(P([0, -B, top]))} Z`;
-  return `M${f2(P([L, 0, 0]))} Q${f2(P([0.2, -B * 1.15, 0]))} ${f2(P([-L, 0, 0]))}` +
-    ` Q${f2(P([0.2, B * 1.15, 0]))} ${f2(P([L, 0, 0]))} Z`;
+  const line = (pts) => pts.map((q, i) => `${i ? "L" : "M"}${f2(P(q))}`).join(" ") + " Z";
+  if (view === "side") return line([...c1Xs.map((x) => [x, 0, c1Sheer(x)]), ...c1Xs.slice().reverse().map((x) => [x, 0, c1Keel(x)])]);
+  if (view === "end") {
+    // The widest section: tumblehome from the gunwale out to the widest
+    // point just above the water, a firm bilge, and a shallow-arch bottom.
+    const g = C1.gun, b = C1.beam, z0 = C1.mid, zw = C1.wide, k = C1.keel;
+    const pt = (y, z) => f2(P([0, y, z]));
+    return `M${pt(g, z0)} C${pt(0.29, z0 - 0.03)} ${pt(b - 0.01, 0.1)} ${pt(b, zw)} C${pt(b, -0.05)} ${pt(0.3, k)} ${pt(0.1, k)} L${pt(-0.1, k)}` +
+      ` C${pt(-0.3, k)} ${pt(-b, -0.05)} ${pt(-b, zw)} C${pt(-(b - 0.01), 0.1)} ${pt(-0.29, z0 - 0.03)} ${pt(-g, z0)} Z`;
+  }
+  const w = view === "top-in" ? c1Gun : c1Beam;
+  return line([...c1Xs.map((x) => [x, w(x), 0]), ...c1Xs.slice().reverse().map((x) => [x, -w(x), 0])]);
 }
 
 let paths = {};  // cached blade path per boat and view
@@ -2321,7 +2394,7 @@ function drawView(svg, name, ph) {
       `<line class="water-line" x1="0" x2="${vp.W}" y1="${water}" y2="${water}"/>`;
   else {
     g += `<rect class="water" x="0" y="0" width="${vp.W}" height="${vp.H}"/>` +
-      `<path class="hull" d="${hullPath(name, P)}"/>`;
+      `<path class="hull" d="${hullPath(name, P)}"/><path class="hull-in" d="${hullPath("top-in", P)}"/>`;
     const c0 = P([1.6, 0, 0]), c1 = P([-1.6, 0, 0]);
     g += `<line class="centre" x1="${c0[0]}" y1="${c0[1]}" x2="${c1[0]}" y2="${c1[1]}"/>`;
   }
