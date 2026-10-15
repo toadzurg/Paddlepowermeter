@@ -163,6 +163,14 @@ function liveHex(seq, tMs, inDrive, force) {
     check("boat speed km/h", (await page.textContent("#v-speed")) === "8.9km/h",
           await page.textContent("#v-speed"));
     check("battery", (await page.textContent("#v-batt")) === "87%");
+    // Help tips on the jargon tiles
+    check("help on jargon tiles", (await page.$$("#tab-paddle button.info")).length === 9);
+    const leverInfo = page.locator(".label", { hasText: "Lever arm" }).locator("button.info");
+    await leverInfo.click();
+    check("tap shows the lever arm tip", /pivot to where the blade pushes/.test(await page.textContent("#tip")) &&
+          (await page.$eval("#tip", (e) => !e.hidden)));
+    await page.mouse.click(3, 3);
+    check("tap elsewhere hides it", await page.$eval("#tip", (e) => e.hidden));
 
     // ------------------------------------------------------ force curve
     let seq = 100, t = 1000;

@@ -169,6 +169,17 @@
 
   .notice { border-left: 4px solid var(--warning); }
   .notice p { margin: 4px 0; }
+  /* Help: a small ? that shows a tip on hover (mouse) or tap (touch). */
+  button.info { display: inline-flex; align-items: center; justify-content: center; position: relative;
+    width: 18px; height: 18px; min-height: 0; padding: 0; margin-left: 5px; vertical-align: 1px;
+    border-radius: 50%; border: 1px solid var(--axis); background: transparent; color: var(--text-secondary);
+    font-size: 11px; font-weight: 700; line-height: 1; cursor: help; }
+  button.info::before { content: ""; position: absolute; inset: -9px; }   /* bigger tap target */
+  button.info[aria-expanded="true"] { border-color: var(--series-1); color: var(--series-1); }
+  #tip { position: fixed; z-index: 50; max-width: min(280px, calc(100vw - 24px)); padding: 8px 10px;
+    background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.18); font-size: 13px; line-height: 1.35; font-weight: 400;
+    text-transform: none; letter-spacing: 0; }
   [hidden] { display: none !important; }
   footer { margin-top: 24px; font-size: 13px; color: var(--text-secondary); }
 </style>
@@ -202,7 +213,7 @@
   <section id="tab-paddle">
     <div class="grid tiles">
       <div class="card hero" style="grid-column: 1 / -1">
-        <div class="label">Stroke power</div>
+        <div class="label">Stroke power<button type="button" class="info" data-tip="Your average power over the last full stroke, drive and recovery together." aria-label="What is this?">?</button></div>
         <div class="value" id="v-power">—<span class="unit">W</span></div>
         <div class="sub" id="v-power-sub">Average appears after 2 strokes</div>
       </div>
@@ -216,22 +227,22 @@
         <div class="sub" id="v-speed-sub">&nbsp;</div>
       </div>
       <div class="card tile">
-        <div class="label">Efficiency</div>
+        <div class="label">Efficiency<button type="button" class="info" data-tip="Share of your power that pushes the boat forward; the rest churns water. Needs boat speed from the impeller." aria-label="What is this?">?</button></div>
         <div class="value" id="v-eff">—<span class="unit">%</span></div>
         <div class="sub" id="v-eff-sub">needs boat speed</div>
       </div>
       <div class="card tile">
-        <div class="label">Impulse per stroke</div>
+        <div class="label">Impulse per stroke<button type="button" class="info" data-tip="The forward push added up over the drive. At the same stroke rate, more impulse means more speed." aria-label="What is this?">?</button></div>
         <div class="value" id="v-impulse">—<span class="unit">N·s</span></div>
         <div class="sub" id="v-impulse-sub">forward push × time</div>
       </div>
       <div class="card tile">
-        <div class="label">Mean push</div>
+        <div class="label">Mean push<button type="button" class="info" data-tip="Impulse spread over the whole stroke. At steady speed it equals the boat's drag." aria-label="What is this?">?</button></div>
         <div class="value" id="v-push">—<span class="unit">N</span></div>
         <div class="sub" id="v-push-sub">over the whole stroke</div>
       </div>
       <div class="card tile">
-        <div class="label">Lever arm</div>
+        <div class="label">Lever arm<button type="button" class="info" data-tip="Distance from the pivot to where the blade pushes. It turns shaft rotation into blade speed." aria-label="What is this?">?</button></div>
         <div class="value" id="v-lever">—<span class="unit">m</span></div>
         <div class="sub" id="v-lever-sub">&nbsp;</div>
       </div>
@@ -265,12 +276,12 @@
     </div>
 
     <div class="grid live-row">
-      <div class="card"><div class="label">Power now</div><div class="value" id="v-inst">—</div></div>
+      <div class="card"><div class="label">Power now<button type="button" class="info" data-tip="Power at this instant: blade force × blade speed. Stroke power averages it over a stroke." aria-label="What is this?">?</button></div><div class="value" id="v-inst">—</div></div>
       <div class="card"><div class="label">Force</div><div class="value" id="v-force">—</div></div>
-      <div class="card"><div class="label">Shaft rate</div><div class="value" id="v-omega">—</div></div>
-      <div class="card"><div class="label">Pivot</div><div class="value" id="v-pivot">—</div></div>
+      <div class="card"><div class="label">Shaft rate<button type="button" class="info" data-tip="How fast the shaft is rotating, in radians per second." aria-label="What is this?">?</button></div><div class="value" id="v-omega">—</div></div>
+      <div class="card"><div class="label">Pivot<button type="button" class="info" data-tip="The point on the shaft that stays still as you pull, measured from the upper sensor (minus is toward the grip). It moves with your technique." aria-label="What is this?">?</button></div><div class="value" id="v-pivot">—</div></div>
       <div class="card"><div class="label">Battery</div><div class="value" id="v-batt">—</div></div>
-      <div class="card"><div class="label">SD log</div><div class="value" id="v-log">—</div></div>
+      <div class="card"><div class="label">SD log<button type="button" class="info" data-tip="Whether raw sensor data is being recorded to the SD card." aria-label="What is this?">?</button></div><div class="value" id="v-log">—</div></div>
     </div>
 
     <div class="row" style="margin-top:12px">
@@ -383,7 +394,7 @@
 // scripts into the page, and shared global names would break one or both.
 (() => {
 "use strict";
-const APP_VERSION = "2026-10-15.8";
+const APP_VERSION = "2026-10-15.9";
 // Must match src/BleProtocol.h.
 const UUID = {
   service: "7e1a0001-5c3b-4c2e-9a77-0f5d3e2b9c10",
@@ -1060,6 +1071,40 @@ if (/[?&]demo\b/.test(location.search)) {
 if (!hasBluetooth()) $("unsupported").hidden = false;
 
 // Exposed for tests.
+// --------------------------------------------------------------- help tips
+// Hover with a mouse, tap on touch; tap again, tap elsewhere or Escape hides.
+{
+  const tip = document.createElement("div");
+  tip.id = "tip"; tip.setAttribute("role", "tooltip"); tip.hidden = true;
+  document.body.append(tip);
+  let owner = null, pinned = false;
+  const show = (btn) => {
+    if (owner && owner !== btn) owner.setAttribute("aria-expanded", "false");
+    owner = btn;
+    tip.textContent = btn.dataset.tip;
+    tip.hidden = false;
+    btn.setAttribute("aria-expanded", "true");
+    const r = btn.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+    tip.style.left = `${Math.min(innerWidth - w - 12, Math.max(12, r.left + r.width / 2 - w / 2))}px`;
+    tip.style.top = `${r.bottom + 8 + h < innerHeight ? r.bottom + 8 : r.top - h - 8}px`;
+  };
+  const hide = () => {
+    tip.hidden = true; pinned = false;
+    if (owner) owner.setAttribute("aria-expanded", "false");
+    owner = null;
+  };
+  const infoOf = (e) => e.target.closest && e.target.closest("button.info");
+  document.addEventListener("pointerover", (e) => { const b = infoOf(e); if (b && e.pointerType === "mouse" && !pinned) show(b); });
+  document.addEventListener("pointerout", (e) => { const b = infoOf(e); if (b && e.pointerType === "mouse" && !pinned) hide(); });
+  document.addEventListener("click", (e) => {
+    const b = infoOf(e);
+    if (b) { e.preventDefault(); e.stopPropagation(); if (pinned && owner === b) hide(); else { show(b); pinned = true; } }
+    else if (!tip.hidden) hide();
+  }, true);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") hide(); });
+  addEventListener("scroll", () => { if (!tip.hidden && !pinned) hide(); }, { passive: true });
+}
+
 window.ppm = { decodeLive, decodeStroke, onLive, onStroke, onReplyChunk, state };
 })();
 </script>

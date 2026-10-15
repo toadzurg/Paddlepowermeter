@@ -239,6 +239,21 @@
   svg.race .flow { stroke: var(--water-line); stroke-width: 1.5; fill: none; }
   svg.race .progress-track { fill: var(--grid); }
   svg.race .progress-a { fill: var(--series-1); } svg.race .progress-b { fill: var(--series-2); }
+
+  /* Help: a small ? that shows a tip on hover (mouse) or tap (touch). */
+  button.info { display: inline-flex; align-items: center; justify-content: center; position: relative;
+    width: 18px; height: 18px; min-height: 0; padding: 0; margin-left: 5px; vertical-align: 1px;
+    border-radius: 50%; border: 1px solid var(--axis); background: transparent; color: var(--text-secondary);
+    font-size: 11px; font-weight: 700; line-height: 1; cursor: help; }
+  button.info::before { content: ""; position: absolute; inset: -9px; }   /* bigger tap target */
+  button.info[aria-expanded="true"] { border-color: var(--series-1); color: var(--series-1); }
+  #tip { position: fixed; z-index: 50; max-width: min(280px, calc(100vw - 24px)); padding: 8px 10px;
+    background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.18); font-size: 13px; line-height: 1.35; font-weight: 400; }
+  /* The race chart's opener looks like a button so it's easy to find. */
+  #race-curve-d > summary { display: inline-flex; gap: 6px; align-items: center; margin-top: 8px; padding: 6px 12px;
+    border: 1px solid var(--border); border-radius: 10px; background: var(--surface-1); font-size: 14px; }
+  #race-curve-d[open] > summary { border-color: var(--series-1); }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -255,7 +270,7 @@
         <div class="card-head">
           <h2>Efficiency: A vs B</h2>
           <div class="ctl" style="margin:0;min-width:220px;flex:0 1 280px">
-            <label class="top"><span>Compare at</span><output id="o-effortW"></output></label>
+            <label class="top"><span>Compare at<button type="button" class="info" data-tip="The paddler power used for the speed and force numbers, so both strokes are compared at the same effort." aria-label="What is this?">?</button></span><output id="o-effortW"></output></label>
             <input type="range" id="c-effortW" min="50" max="400" step="10" value="150" aria-label="Effort for comparing">
           </div>
         </div>
@@ -265,12 +280,12 @@
         </table>
         <div class="split2">
           <div>
-            <h3>Where the power goes</h3>
+            <h3>Where the power goes<button type="button" class="info" data-tip="Your power splits into what moves the boat and what's lost. Only the first part makes speed." aria-label="What is this?">?</button></h3>
             <div class="bars" id="bars-power"></div>
             <table class="legend" id="leg-power"></table>
           </div>
           <div>
-            <h3>Which way the blade pushes</h3>
+            <h3>Which way the blade pushes<button type="button" class="info" data-tip="Share of the blade's push in each direction. Only forward moves you; sideways turns the boat, vertical lifts or sinks it." aria-label="What is this?">?</button></h3>
             <div class="bars" id="bars-force"></div>
             <table class="legend" id="leg-force"></table>
           </div>
@@ -288,7 +303,7 @@
           <h2>Force curve</h2>
           <div class="row">
             <div class="row chips" id="curve-mode" role="group" aria-label="Force shown"></div>
-            <div class="row chips" id="curve-live-ctl"><button type="button" id="curve-live" aria-pressed="false">Live</button></div>
+            <div class="row chips" id="curve-live-ctl"><button type="button" id="curve-live" aria-pressed="false">Live</button><button type="button" class="info" data-tip="Blade force: the water's total push on the blade. Forward push: the part along the boat; the area under it is the impulse. Live: traces the curve in time with the animation." aria-label="What is this?">?</button></div>
           </div>
         </div>
         <div class="sub" id="curve-sub"></div>
@@ -303,7 +318,7 @@
       <!-- ---------------------------------------------------- views -->
       <section class="card" id="views-card">
         <div class="card-head">
-          <h2>Stroke views</h2>
+          <h2>Stroke views<button type="button" class="info" data-tip="Split: A and B side by side. Overlay: both in one picture (one line if they match). A only / B only: one boat." aria-label="What is this?">?</button></h2>
           <div class="row chips" id="view-mode" role="group" aria-label="View mode"></div>
         </div>
         <div class="views">
@@ -344,7 +359,7 @@
             </div>
           </section>
           <section>
-            <h3>Course</h3>
+            <h3>Course<button type="button" class="info" data-tip="River: current and depth vary across the channel and around bends. Point to point: one way. There and back: turn at halfway, so wind and current reverse." aria-label="What is this?">?</button></h3>
             <div class="row chips" id="water" role="group" aria-label="Water"></div>
             <div class="row chips" id="course" role="group" aria-label="Course" style="margin-top:6px"></div>
             <div class="ctl"><label class="top"><span>Distance</span><output id="o-dist"></output></label>
@@ -380,6 +395,7 @@
           </div>
           <div class="verdict" id="verdict"></div>
           <details id="race-curve-d"><summary id="race-curve-sum"></summary>
+            <div class="curve-legend" id="race-curve-cap"></div>
             <svg class="curve" id="race-curve" role="img" aria-label="Force per stroke for each boat at its race effort"></svg>
           </details>
           <svg class="race river-only" id="river-map" role="img" aria-label="River map with each boat's line" hidden></svg>
@@ -390,6 +406,7 @@
 
     <!-- -------------------------------------------------- controls -->
     <aside class="card controls" id="controls">
+      <div class="sub" style="margin-bottom:6px">Sliders change<button type="button" class="info" data-tip="Pick a boat, then the presets and sliders below change only that boat." aria-label="What is this?">?</button></div>
       <div class="boats" role="group" aria-label="Boat to edit" id="boats">
         <button class="a" data-boat="a"><span><span class="a-dot"></span>Boat A</span><span class="nm" id="nm-a"></span></button>
         <button class="b" data-boat="b"><span><span class="b-dot"></span>Boat B</span><span class="nm" id="nm-b"></span></button>
@@ -431,6 +448,7 @@
   </div>
 </main>
 
+<div id="tip" role="tooltip" hidden></div>
 <script src="stroke-sim.js"></script>
 <script>
 (() => {
@@ -598,6 +616,21 @@ function summary(r) {
     peak: r.peakForce * Math.pow(effortW / Math.max(1e-9, r.paddlerPower), 2 / 3), at,
   };
 }
+// What each table row and breakdown entry means.
+const HELP = {
+  eff: "Share of your power that actually moves the boat. The rest churns water or goes into sideways and up-down push.",
+  speed: "Boat speed along the course at the Compare at effort.",
+  fwd: "How much of the blade's push points straight ahead.",
+  side: "Strokes on one side before you switch to keep straight.",
+  wander: "How far the bow swings either side of straight between switches. More zigzag, more distance.",
+  yaw: "How hard each stroke turns the boat. Lower means fewer switches.",
+  peak: "The hardest the blade pulls in a stroke. Not better or worse on its own.",
+  "moves the boat": "Power that overcomes hull drag: the useful part.",
+  slip: "Power lost pushing water backwards as the blade slips through it.",
+  "sideways drag": "Drag from the hull crabbing against the stroke's sideways push.",
+  "surge & bounce": "Lost to the boat speeding up and slowing within each stroke, and bobbing up and down.",
+};
+const info = (t) => `<button type="button" class="info" data-tip="${t.replace(/"/g, "&quot;")}" aria-label="What is this?">?</button>`;
 // label, key, unit, digits, higher is better
 const ROWS = [
   ["Efficiency", "eff", "%", 1, true, "hero"],
@@ -631,7 +664,7 @@ function showEfficiency() {
       win = tiny ? "even" : (diff > 0) === hi ? "A" : "B";
       better = tiny ? "even" : `<span class="${win.toLowerCase()}-dot"></span>${win} by ${fmtNum(Math.abs(diff), d)}${u}`;
     }
-    return `<tr class="${cls || ""}" data-row="${k}"><td>${label}</td>` +
+    return `<tr class="${cls || ""}" data-row="${k}"><td>${label}${info(HELP[k])}</td>` +
       `${cell(A, k, unit, d, win === "A" ? "win a" : "")}${cell(B, k, unit, d, win === "B" ? "win b" : "")}<td class="d">${better}</td></tr>`;
   }).join("");
 
@@ -802,7 +835,7 @@ function breakdown(id, names, a, b, digits) {
   $(`bars-${id}`).innerHTML = `<span class="who">A</span>${bar(a)}<span class="who">B</span>${bar(b)}`;
   const f = (v) => `${fmtNum(v, v < 10 ? digits : 0)}%`;
   $(`leg-${id}`).innerHTML = `<tr><td></td><td class="n">A</td><td class="n">B</td></tr>` +
-    names.map((n, i) => `<tr><td><i class="s${i + 1}"></i>${n}</td><td class="n">${f(a[i])}</td><td class="n">${f(b[i])}</td></tr>`).join("");
+    names.map((n, i) => `<tr><td><i class="s${i + 1}"></i>${n}${HELP[n] ? info(HELP[n]) : ""}</td><td class="n">${f(a[i])}</td><td class="n">${f(b[i])}</td></tr>`).join("");
 }
 function why(r, at) {
   const yaw = r.yawAt(effortW), sh = at.shares, lift = at.meanLift;
@@ -938,8 +971,9 @@ const raceEnd = () => {
 // one comparison effort). Folded away by default; a summary line says the peaks.
 function drawRaceCurve(effA, effB) {
   const C = { a: curveOf(results.a, effA), b: curveOf(results.b, effB) };
-  $("race-curve-sum").textContent =
-    `Force per stroke · peak A ${fmtNum(C.a.peakForce, 0)} N, B ${fmtNum(C.b.peakForce, 0)} N`;
+  $("race-curve-sum").textContent = `${$("race-curve-d").open ? "Hide" : "Show"} force per stroke`;
+  $("race-curve-cap").innerHTML = `<i class="key a"></i>A at ${effA} W: peak ${fmtNum(C.a.peakForce, 0)} N · ` +
+    `<i class="key b"></i>B at ${effB} W: peak ${fmtNum(C.b.peakForce, 0)} N`;
   const svg = $("race-curve");
   if (!$("race-curve-d").open) return;
   const same = C.a.pts.length === C.b.pts.length && Math.abs(C.a.Td - C.b.Td) < 1e-9 &&
@@ -1207,6 +1241,47 @@ function frame(now) {
   }
   requestAnimationFrame(frame);
 }
+
+// --------------------------------------------------------------- help tips
+// Hover with a mouse, tap on touch; tap again, tap elsewhere or Escape hides.
+(() => {
+  const tip = $("tip");
+  let owner = null, pinned = false;
+  const show = (btn) => {
+    owner = btn;
+    tip.textContent = btn.dataset.tip;
+    tip.hidden = false;
+    for (const b of document.querySelectorAll('button.info[aria-expanded="true"]')) b.setAttribute("aria-expanded", "false");
+    btn.setAttribute("aria-expanded", "true");
+    const r = btn.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+    const left = Math.min(innerWidth - w - 12, Math.max(12, r.left + r.width / 2 - w / 2));
+    const below = r.bottom + 8 + h < innerHeight;
+    tip.style.left = `${left}px`;
+    tip.style.top = `${below ? r.bottom + 8 : r.top - h - 8}px`;
+  };
+  const hide = () => {
+    tip.hidden = true; pinned = false;
+    if (owner) owner.setAttribute("aria-expanded", "false");
+    owner = null;
+  };
+  document.addEventListener("pointerover", (e) => {
+    const b = e.target.closest && e.target.closest("button.info");
+    if (b && e.pointerType === "mouse" && !pinned) show(b);
+  });
+  document.addEventListener("pointerout", (e) => {
+    const b = e.target.closest && e.target.closest("button.info");
+    if (b && e.pointerType === "mouse" && !pinned) hide();
+  });
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest && e.target.closest("button.info");
+    if (b) {
+      e.preventDefault(); e.stopPropagation();   // don't toggle a parent <details> or chip
+      if (pinned && owner === b) hide(); else { show(b); pinned = true; }
+    } else if (!tip.hidden) hide();
+  }, true);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") hide(); });
+  addEventListener("scroll", () => { if (!tip.hidden && !pinned) hide(); }, { passive: true });
+})();
 
 renderModes();
 layoutViews();

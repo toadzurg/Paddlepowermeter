@@ -294,6 +294,26 @@ console.log("\nStroke simulator physics");
     check(`${tag}: compare-at effort raises speed`, (await cellVal("speed", 2)) > s150 && (await text("#o-effortW")) === "300 W");
     await slide("#c-effortW", 150); await settle();
 
+    // Help tips: tap (or click) shows, again or elsewhere hides; mouse hover shows.
+    const tipShown = () => page.$eval("#tip", (e) => !e.hidden);
+    const effInfo = '#cmp tr[data-row="eff"] button.info';
+    check(`${tag}: help buttons on table rows and breakdowns`, (await page.$$("#cmp button.info")).length === 7 &&
+          (await page.$$("#leg-power button.info")).length === 4);
+    await page.click(effInfo);
+    check(`${tag}: tap shows the tip`, (await tipShown()) && /actually moves the boat/.test(await text("#tip")) &&
+          (await page.$eval(effInfo, (b) => b.getAttribute("aria-expanded"))) === "true");
+    const tb = await (await page.$("#tip")).boundingBox();
+    check(`${tag}: tip fits on screen`, tb.x >= 0 && tb.x + tb.width <= width + 1, `${tb.x.toFixed(0)}+${tb.width.toFixed(0)} in ${width}`);
+    await page.click(effInfo);
+    check(`${tag}: tap again hides it`, !(await tipShown()));
+    await page.click('#views-card h2 button.info');
+    await page.mouse.click(5, 5);
+    check(`${tag}: tap elsewhere hides it`, !(await tipShown()));
+    await page.hover('#curve-card button.info');
+    check(`${tag}: hover shows a tip`, (await tipShown()) && /impulse/.test(await text("#tip")));
+    await page.mouse.move(2, 2);
+    check(`${tag}: moving away hides it`, !(await tipShown()));
+
     // Force curve: A and B through the drive
     check(`${tag}: different settings: no blend note`, (await page.$$("#curve-same")).length === 0 &&
           (await page.$$("#curve text.peak")).length === 2);
@@ -385,13 +405,16 @@ console.log("\nStroke simulator physics");
     // Force per stroke at race effort: folded away, summary shows the peaks.
     const sumTxt = () => text("#race-curve-sum");
     check(`${tag}: race force curve closed, with peaks`, !(await page.$eval("#race-curve-d", (d) => d.open)) &&
-          /^Force per stroke · peak A \d+ N, B \d+ N$/.test(await sumTxt()), await sumTxt());
+          (await sumTxt()) === "Show force per stroke", await sumTxt());
     await page.click("#race-curve-sum"); await settle();
-    check(`${tag}: race force curve opens to both boats`, (await page.$$("#race-curve path.ln")).length === 2);
-    const before = await sumTxt();
+    check(`${tag}: race force curve opens to both boats`, (await page.$$("#race-curve path.ln")).length === 2 &&
+          (await sumTxt()).startsWith("Hide"));
+    const cap = () => text("#race-curve-cap");
+    check(`${tag}: race curve caption: each boat's effort and peak`, /^A at 150 W: peak \d+ N · B at 150 W: peak \d+ N$/.test(await cap()), await cap());
+    const before = await cap();
     await slide("#effB", 250);
-    check(`${tag}: race curve follows each boat's effort`, (await sumTxt()) !== before && (await sumTxt()).startsWith(before.split(", B")[0]),
-          `${before} → ${await sumTxt()}`);
+    check(`${tag}: race curve follows each boat's effort`, (await cap()) !== before && (await cap()).startsWith(before.split(" · B")[0]) &&
+          (await cap()).includes("B at 250 W"), `${before} → ${await cap()}`);
     await slide("#effB", 150);
     await page.click("#race-curve-sum");
     check(`${tag}: point to point by default`, JSON.stringify(await pressed("#course")) === '["point"]');
