@@ -190,6 +190,11 @@ between them.
   - Shallow water raises the hull's wave drag. A crosswind makes the boat
     crab and turn into the wind, so you take more strokes on the windward
     side (a strong one can out-turn the stroke).
+  - River: current and depth fall from mid-channel to the banks, and bends
+    have a deep, fast outside and a shallow, slack inside. Each boat picks a
+    line (middle, between, edges, or the best line for each leg), and a map
+    shows both. Edges meet less current and cut the corners, but in shallow
+    water and with crossings between bends.
 
 The physics: blade drag square to its motion, hull drag, hit-and-switch
 yaw, leeway drag from the sideways push, surge through each stroke, and the
@@ -202,7 +207,9 @@ Several pieces are checked against Shawn Burke's
 - surge grows at slower rates for the same power (Parts 25 and 33);
 - there-and-back times with current match his formula (Part 7);
 - shallow water follows his wave-speed picture (Part 4), applied as
-  Schlichting's intermediate speed.
+  Schlichting's intermediate speed;
+- the river's current across the channel and corner cutting follow
+  Parts 18 and 20.
 
 It is a simplified drag model, good for comparing techniques rather than
 predicting exact speeds. The switching assumptions (how far off course
