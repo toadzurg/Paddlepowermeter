@@ -628,6 +628,41 @@
 (() => {
 "use strict";
 const $ = (id) => document.getElementById(id);
+// Buttons on animated cards: act when the finger lifts. iPhone Safari can
+// swallow the click of a tap while the page keeps changing (it takes the
+// tap for a hover), so a touch acts on pointerup and the click after it is
+// ignored. Mouse and keyboard still use the click.
+function onTap(el, f) {
+  let touched = -1e9;
+  el.addEventListener("pointerup", (e) => {
+    if (e.pointerType === "mouse" || !e.isPrimary || el.disabled) return;
+    const r = el.getBoundingClientRect();
+    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;   // slid off: no tap
+    touched = performance.now();
+    f(e);
+  });
+  el.addEventListener("click", (e) => { if (performance.now() - touched > 800) f(e); });
+}
+// Widths, read once and then kept up to date as elements resize: measuring
+// while drawing forces the browser to lay out the page, every frame.
+let resized = 0;
+const widths = new WeakMap(), sizeObs = new ResizeObserver((es) => {
+  let changed = false;
+  for (const e of es) { if (Math.abs((widths.get(e.target) || 0) - e.contentRect.width) > 0.5) changed = true; widths.set(e.target, e.contentRect.width); }
+  // A view that was hidden when first drawn (or the window resized): draw the race again at its size.
+  if (changed && !resized) resized = requestAnimationFrame(() => { resized = 0; if (race && !run) showAt(shownT); });
+});
+function widthOf(el) {
+  if (!widths.has(el)) { widths.set(el, el.getBoundingClientRect().width); sizeObs.observe(el); }
+  return widths.get(el);
+}
+// Whether an element is on screen (or nearly), so animations skip what can't be seen.
+const onScreen = new WeakMap(), visObs = new IntersectionObserver((es) => { for (const e of es) onScreen.set(e.target, e.isIntersecting); }, { rootMargin: "150px" });
+function shown(el) {
+  if (!el) return false;
+  if (!onScreen.has(el)) { onScreen.set(el, true); visObs.observe(el); }
+  return onScreen.get(el);
+}
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
 const NEEDS_API = 32;
@@ -1010,7 +1045,7 @@ function drawCurve() {
     (same ? `<span id="curve-same"><i class="key both"></i>A and B are the same: one blended line</span>` : "");
   const svg = $("curve");
   svg.classList.toggle("same", same);
-  const W = Math.max(280, Math.round(svg.getBoundingClientRect().width)) || 320, H = 220;
+  const W = Math.max(280, Math.round(widthOf(svg))) || 320, H = 220;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   const m = { l: 52, r: 12, t: 12, b: 30 }, pw = W - m.l - m.r, ph = H - m.t - m.b;
   const tMax = Math.max(C.a.Td, C.b.Td), fMax = Math.max(1, C.a[peakKey], C.b[peakKey]) * 1.08;
@@ -1292,9 +1327,16 @@ function finalGap() {
 // Zoom: 1 is Fit (the scale above); each step halves or doubles the view.
 // The view stays between minSpan metres and the whole course.
 let raceZoom = 1;
+// While a race runs, the followed view is at least as wide as the boats go
+// in about 4 s of the replay, so the map doesn't lurch kilometres a frame.
+function liveSpan() {
+  if (!run || run.paused) return 0;
+  const slowed = $("race-slow").getAttribute("aria-pressed") === "true" ? 0.25 : 1;
+  return Math.max(run.A.v, run.B.v) * run.scale * slowed * 4;
+}
 function zoomSpan(fit, minSpan, L) {
   raceZoom = Math.min(fit / minSpan, Math.max(fit / L, raceZoom));
-  const span = Math.min(L, Math.max(minSpan, fit / raceZoom));
+  const span = Math.min(L, Math.max(minSpan, fit / raceZoom, liveSpan()));
   $("zoom-in").disabled = span <= minSpan * 1.001;
   $("zoom-out").disabled = span >= L * 0.999;
   $("zoom-fit").disabled = Math.abs(raceZoom - 1) < 1e-9;
@@ -1312,7 +1354,7 @@ const boatIcon = (x, y, deg, cls) =>
 // boats are dots on their lines.
 function drawRiverRace(dA, dB) {
   const svg = $("river-map"), L = race.metres;
-  const W = Math.max(280, Math.round(svg.getBoundingClientRect().width)) || 320, H = 150;
+  const W = Math.max(280, Math.round(widthOf(svg))) || 320, H = 150;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   const left = 24, right = W - 14, top = 22, band = 88, mid = top + band / 2, half = 20;
   const centres = race.profileA.filter((g) => g.kind === "bend").map((g) => (g.d0 + g.d1) / 2);
@@ -1387,7 +1429,7 @@ function drawRiverRace(dA, dB) {
 // Follow the leader with a fixed window wide enough to show the finishing gap.
 function drawRace(dA, dB, elapsed) {
   const svg = $("race-view");
-  const W = Math.max(280, Math.round(svg.getBoundingClientRect().width)) || 320, H = 112;
+  const W = Math.max(280, Math.round(widthOf(svg))) || 320, H = 112;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   const L = race.metres, lead = Math.max(dA, dB);
   const span = zoomSpan(Math.min(L, Math.max(40, finalGap() * 2.5)), 10, L);
@@ -1613,7 +1655,7 @@ function renderBuilder() {
 }
 let cbMapGeom = null;
 function drawBuilderMap() {
-  const svg = $("cb-map"), W = Math.max(280, Math.round(svg.getBoundingClientRect().width)) || 320, H = 240;
+  const svg = $("cb-map"), W = Math.max(280, Math.round(widthOf(svg))) || 320, H = 240;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   const xs = cb.xy.map((p) => p[0]), ys = cb.xy.map((p) => p[1]);
   const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
@@ -1653,7 +1695,7 @@ function drawBuilderMap() {
   svg.innerHTML = g;
 }
 function drawStrip() {
-  const svg = $("cb-strip"), W = Math.max(280, Math.round(svg.getBoundingClientRect().width)) || 320, H = 96;
+  const svg = $("cb-strip"), W = Math.max(280, Math.round(widthOf(svg))) || 320, H = 96;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   const l = 56, r = W - 8, X = (d) => l + (d / cb.L) * (r - l);
   let g = `<text x="0" y="22">Current</text><text x="0" y="66">Depth</text>`;
@@ -1855,7 +1897,7 @@ $("cb-gauge-list").addEventListener("change", (e) => {
 function drawCourseRace(dA, dB) {
   if (!cb) return;
   const svg = $("course-view"), L = race.metres;
-  const W = Math.max(280, Math.round(svg.getBoundingClientRect().width)) || 320, H = 220;
+  const W = Math.max(280, Math.round(widthOf(svg))) || 320, H = 220;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   const S = zoomSpan(Math.min(L, Math.max(500, finalGap() * 2.5)), 50, L);
   let k, ox, oy, d0, d1;
@@ -1891,11 +1933,13 @@ function drawCourseRace(dA, dB) {
   const z = P(cb.at(L));
   if (L >= d0 && L <= d1) g += `<rect x="${z[0] - 5}" y="${z[1] - 5}" width="10" height="10" fill="var(--text-primary)"/>`;
   const behind = [];
+  // Close together, B's label goes below its boat so the two don't print on top of each other.
+  const qa = P(cb.at(dA)), qb = P(cb.at(dB)), near = Math.hypot(qa[0] - qb[0], qa[1] - qb[1]) < 16;
   for (const [x, d] of [["B", dB], ["A", dA]]) {
     const q = P(cb.at(d)), p = P(cb.at(d - Math.max(5, S / 200)));
     if (q[0] < 0 || q[0] > W || q[1] < 0 || q[1] > H - 20) { behind.push(`${x} ${fmtNum(Math.abs(dA - dB), 0)} m ${d < Math.max(dA, dB) ? "behind" : "ahead"}`); continue; }
     g += boatIcon(q[0], q[1], (Math.atan2(q[1] - p[1], q[0] - p[0]) * 180) / Math.PI, `boat-${x.toLowerCase()}`) +
-      `<text class="strong" x="${q[0].toFixed(1)}" y="${(q[1] - 10).toFixed(1)}" text-anchor="middle">${x}</text>`;
+      `<text class="strong" x="${q[0].toFixed(1)}" y="${(q[1] + (near && x === "B" ? 20 : -10)).toFixed(1)}" text-anchor="middle">${x}</text>`;
   }
   const bar = niceStep((W / k) / 4, 1), bw = bar * k;
   g += `<line x1="10" x2="${10 + bw}" y1="${H - 10}" y2="${H - 10}" stroke="var(--text-secondary)" stroke-width="2"/>` +
@@ -1960,7 +2004,7 @@ const sideP = (cx, wl, s) => (q) => [cx + q[0] * s, wl - q[2] * s];
 const panesIn = (id) => [...document.querySelectorAll(`#${id} svg`)].map((svg) => ({ svg, bs: svg.dataset.boats.split("") }));
 // The drawings that move with the stroke views.
 function drawHullLive(ph) {
-  if (!hullCyc.a || $("hull-card").getBoundingClientRect().bottom < 0) return;
+  if (!hullCyc.a || !shown($("hull-card"))) return;
   const at = (x) => { const c = hullCyc[x], n = c.t.length; return [c, Math.min(n - 1, Math.floor(ph * n))]; };
   const s = 300 / 5.64;   // px per m
   // Surge: side view, bow right, against a steady boat at the same average speed.
@@ -2244,7 +2288,7 @@ function drawScoreCard(out, setup) {
     .sort((p, q) => Math.max(val("a", q), val("b", q)) - Math.max(val("a", p), val("b", p)));
   const rows = [...sorted, ...(setup.map ? ["Portages"] : []), "Blade slip"];
   // Drawn at the width it shows at, so the text stays its size on a wide screen.
-  const W = Math.max(300, Math.round($("score-bars").getBoundingClientRect().width) || 360), l = 132, r = 56, rowH = 30, H = rows.length * rowH + 22;
+  const W = Math.max(300, Math.round(widthOf($("score-bars"))) || 360), l = 132, r = 56, rowH = 30, H = rows.length * rowH + 22;
   const top = Math.max(1, ...sorted.flatMap((k) => BOATS.map((x) => Math.abs(val(x, k)) || 0))), step = niceStep(top, 2), max = Math.ceil(top / step) * step;
   const X = (s) => l + Math.min(1, Math.abs(s) / max) * (W - l - r);
   let g = `<text x="${l}" y="12">0</text><text x="${X(max)}" y="12" text-anchor="end">${span(max)}</text><line class="grid" x1="${l}" x2="${l}" y1="16" y2="${H}"/>`;
@@ -2358,7 +2402,7 @@ function drawStats(st) {
 // the recorded run. Bends shaded; the marker follows the replay.
 function drawSpeed(st) {
   const svg = $("race-speed"), L = race.metres;
-  const W = Math.max(280, Math.round(svg.getBoundingClientRect().width)) || 320, H = 120;
+  const W = Math.max(280, Math.round(widthOf(svg))) || 320, H = 120;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   const m = { l: 60, r: 12, t: 10, b: 22 }, pw = W - m.l - m.r, ph = H - m.t - m.b;
   // On a real course the river's pieces are too fine to draw one by one:
@@ -2428,10 +2472,13 @@ function raceFrame(now) {
     run.samples.push({ t: run.t, A: Object.assign({}, run.A), B: Object.assign({}, run.B) });
   }
   for (const x of ["A", "B"]) run[x].d = Math.min(run[x].d, L);
-  if (!dragging) liveShow();
   const stuck = (x) => run[x].fin === null && segAt(race[`profile${x}`], Math.min(run[x].d, L - 1e-6)).v <= 0;
   const done = (run.A.fin !== null || stuck("A")) && (run.B.fin !== null || stuck("B"));
-  $("race-status").textContent = run.paused ? `Paused at ${clock(run.t)}.` : done ? finishText() : "";
+  // Redraw at most ~15 times a second, and not at all while paused (the
+  // pause draws once): a phone stays free to answer taps.
+  if (!dragging && !run.paused && (done || now - run.shownAt >= 66)) { liveShow(); run.shownAt = now; }
+  const msg = run.paused ? `Paused at ${clock(run.t)}.` : done ? finishText() : "";
+  if ($("race-status").textContent !== msg) $("race-status").textContent = msg;
   if (done) endRun(false);
   else requestAnimationFrame(raceFrame);
 }
@@ -2447,7 +2494,7 @@ function finishText() {
 function startRun() {
   if (!race) return;
   const boatRun = () => ({ d: 0, v: 0, fin: null, strokes: 0, switches: 0, energy: 0, g: null });
-  run = { t: 0, A: boatRun(), B: boatRun(), last: performance.now(), paused: false, changed: false, samples: [],
+  run = { t: 0, A: boatRun(), B: boatRun(), last: performance.now(), shownAt: -1e9, paused: false, changed: false, samples: [],
           scale: raceEnd() / (window.sim && window.sim.raceWallS || 12) };
   run.A.g = segAt(race.profileA, 0); run.B.g = segAt(race.profileB, 0);
   run.samples.push({ t: 0, A: Object.assign({}, run.A), B: Object.assign({}, run.B) });
@@ -2470,14 +2517,15 @@ function endRun(stopped) {
   $("race-status").textContent = status;
   showAt(scrubT);
 }
-$("race-start").addEventListener("click", () => { scrubT = null; startRun(); });
-$("race-pause").addEventListener("click", () => {
+onTap($("race-start"), () => { scrubT = null; startRun(); });
+onTap($("race-pause"), () => {
   if (!run) return;
   run.paused = !run.paused;
   $("race-pause").textContent = run.paused ? "Resume" : "Pause";
+  if (run.paused) liveShow();   // the moment it stopped, drawn once
 });
-$("race-stop").addEventListener("click", () => { if (run) endRun(true); });
-$("race-slow").addEventListener("click", () => {
+onTap($("race-stop"), () => { if (run) endRun(true); });
+onTap($("race-slow"), () => {
   const on = $("race-slow").getAttribute("aria-pressed") !== "true";
   $("race-slow").setAttribute("aria-pressed", String(on));
 });
@@ -2491,13 +2539,13 @@ function scrubTo(frac) {
   showAt(scrubT);
 }
 $("scrub").addEventListener("input", (e) => { dragging = true; scrubTo(+e.target.value / 1000); dragging = false; });
-$("scrub-back").addEventListener("click", () => scrubTo(+$("scrub").value / 1000 - 0.01));
-$("scrub-fwd").addEventListener("click", () => scrubTo(+$("scrub").value / 1000 + 0.01));
+onTap($("scrub-back"), () => scrubTo(+$("scrub").value / 1000 - 0.01));
+onTap($("scrub-fwd"), () => scrubTo(+$("scrub").value / 1000 + 0.01));
 // Zoom buttons, pinch on touch screens, Ctrl + scroll (and trackpad pinch) on computers.
 function setZoom(z) { raceZoom = z; if (race) showAt(shownT); }
-$("zoom-in").addEventListener("click", () => setZoom(raceZoom * 2));
-$("zoom-out").addEventListener("click", () => setZoom(raceZoom / 2));
-$("zoom-fit").addEventListener("click", () => setZoom(1));
+onTap($("zoom-in"), () => setZoom(raceZoom * 2));
+onTap($("zoom-out"), () => setZoom(raceZoom / 2));
+onTap($("zoom-fit"), () => setZoom(1));
 for (const id of ["race-view", "river-map"]) {
   const el = $(id), touches = new Map();
   let pinch = null;
@@ -2558,7 +2606,7 @@ function layoutViews() {
   }
 }
 function viewport(svg, v) {
-  const W = Math.max(150, Math.round(svg.getBoundingClientRect().width)) || 320;
+  const W = Math.max(150, Math.round(widthOf(svg))) || 320;
   const H = Math.round(v.h(W));
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   const sx = W / (v.xr[1] - v.xr[0]), sy = H / (v.yr[1] - v.yr[0]), s = Math.min(sx, sy);
@@ -2611,8 +2659,8 @@ function hullPath(view, P) {
 
 let paths = {};  // cached blade path per boat and view
 let playing = true, slow = false, phase = 0, lastT = performance.now();
-$("play").addEventListener("click", () => { playing = !playing; $("play").textContent = playing ? "Pause" : "Play"; });
-$("slow").addEventListener("click", () => { slow = !slow; $("slow").textContent = slow ? "Normal speed" : "Slow motion"; });
+onTap($("play"), () => { playing = !playing; $("play").textContent = playing ? "Pause" : "Play"; });
+onTap($("slow"), () => { slow = !slow; $("slow").textContent = slow ? "Normal speed" : "Slow motion"; });
 
 // Pose and forces at cycle phase ∈ [0, 1): drive, then a recovery that lifts
 // the blade out and swings it back to the catch.
@@ -2743,8 +2791,8 @@ function frame(now) {
   if (results.a && results.b) {
     // Both boats share one phase (each over its own drive and recovery), timed by the boat being edited.
     if (playing) phase = (((phase + dt / (results[editing].cycle * (slow ? 4 : 1))) % 1) + 1) % 1;
-    for (const svg of document.querySelectorAll("svg.view")) drawView(svg, svg.closest(".pair").dataset.view, phase);
-    drawCurveLive(phase);
+    for (const svg of document.querySelectorAll("svg.view")) if (shown(svg)) drawView(svg, svg.closest(".pair").dataset.view, phase);
+    if (shown($("curve-live-g").closest("svg"))) drawCurveLive(phase);
     drawHullLive(phase);
   }
   requestAnimationFrame(frame);

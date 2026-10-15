@@ -860,6 +860,29 @@ console.log("\nStroke simulator physics");
       check(`${tag}: stale engine shows a reload prompt`, /kept an old copy/.test(await old.textContent("main")) &&
             (await old.$$("main > .card button.primary")).length === 1);
       await old.close();
+      // A phone: taps act once each, a paused race stops redrawing, and the
+      // followed map widens so it doesn't lurch kilometres a frame.
+      const { devices } = require("playwright");
+      const phone = await browser.newContext({ ...devices["iPhone 13"] });
+      const mob = await phone.newPage();
+      await mob.goto("file://" + path.resolve(__dirname, "../../docs/app/simulator.html"));
+      await mob.waitForTimeout(500);
+      await mob.tap("#water >> text=AuSable / GPX"); await mob.waitForTimeout(800);
+      await mob.$eval("#race-start", (e) => e.scrollIntoView({ block: "center" }));
+      const barKm = async () => { const m = (await mob.textContent("#course-view")).match(/([\d.]+) (k?m)N/); return m ? +m[1] * (m[2] === "km" ? 1 : 0.001) : 0; };
+      const still = await barKm();
+      await mob.tap("#race-start"); await mob.waitForTimeout(700);
+      const moving = await barKm();
+      await mob.tap("#race-pause"); await mob.waitForTimeout(150);
+      const pausedSvg = await mob.$eval("#course-view", (e) => e.innerHTML);
+      await mob.waitForTimeout(300);
+      check(`${tag}: phone: a tap pauses (once), and a paused race holds still`, (await mob.textContent("#race-pause")) === "Resume" &&
+            /^Paused at /.test(await mob.textContent("#race-status")) && pausedSvg === (await mob.$eval("#course-view", (e) => e.innerHTML)));
+      check(`${tag}: phone: the map widens while the race runs`, moving > still * 4, `${still} km → ${moving} km`);
+      await mob.tap("#race-pause"); await mob.waitForTimeout(150);
+      check(`${tag}: phone: resume and stop`, (await mob.textContent("#race-pause")) === "Pause" &&
+            (await mob.tap("#race-stop"), await mob.waitForTimeout(150), (await mob.textContent("#race-status")) === "Stopped."));
+      await phone.close();
     }
     await ctx.close();
   }
