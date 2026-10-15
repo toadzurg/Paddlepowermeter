@@ -112,6 +112,23 @@
   details { font-size: 14px; color: var(--text-secondary); }
   details p { margin: 6px 0; }
   .note { font-size: 13px; color: var(--text-secondary); margin-top: 6px; }
+  svg.race { display: block; width: 100%; height: auto; margin-top: 6px; }
+  svg.race text { fill: var(--text-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
+  svg.race text.strong { fill: var(--text-primary); font-weight: 600; }
+  svg.race .lane { fill: var(--water); }
+  svg.race .tick { stroke: var(--axis); }
+  svg.race .finish { stroke: var(--text-primary); stroke-width: 2; stroke-dasharray: 4 3; }
+  svg.race .boat-a { fill: var(--series-1); } svg.race .boat-b { fill: var(--series-2); }
+  svg.race .progress-track { fill: var(--grid); }
+  svg.race .progress-a { fill: var(--series-1); } svg.race .progress-b { fill: var(--series-2); }
+  .race-grid { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; margin-top: 8px; }
+  .race-grid .who { font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .race-grid .who i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  .race-grid .a i { background: var(--series-1); } .race-grid .b i { background: var(--series-2); }
+  .race-grid .time { font-size: 24px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  select { font: inherit; padding: 8px 10px; min-height: 40px; border-radius: 10px; border: 1px solid var(--border);
+           background: var(--surface-0); color: var(--text-primary); max-width: 100%; }
+  .verdict { font-size: 16px; font-weight: 600; margin-top: 10px; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -130,8 +147,8 @@
           <div class="value" id="r-eff">—</div>
           <div class="delta" id="d-eff"></div>
           <div class="sub">Share of your power that moves the boat. The rest is lost to slip (churning
-            water) and to steering out the turn the stroke creates. Doesn't depend on effort or
-            rate, only on technique and geometry.</div>
+            water) and to sideways drag, and switching sides more often costs time. Doesn't depend
+            on effort or rate, only on technique and geometry.</div>
         </div>
         <div class="card">
           <div class="label">Boat speed at <span id="effort-label">150</span> W</div>
@@ -144,9 +161,10 @@
           <div class="delta" id="d-fwd"></div>
         </div>
         <div class="card">
-          <div class="label">Turning moment</div>
-          <div class="value" id="r-yaw">—</div>
-          <div class="delta" id="d-yaw"></div>
+          <div class="label">Switch sides every</div>
+          <div class="value" id="r-side">—</div>
+          <div class="delta" id="d-side"></div>
+          <div class="sub" id="r-yaw-sub"></div>
         </div>
         <div class="card">
           <div class="label">Peak blade force</div>
@@ -186,6 +204,35 @@
         <button id="play">Pause</button>
         <button id="slow">Slow motion</button>
       </div>
+
+      <div class="card" style="margin-top:10px" id="race-card">
+        <h2>Race: two boats, same canoe</h2>
+        <div class="sub">Boat A paddles the stroke set by the sliders. Pick Boat B's stroke, set each
+          paddler's effort, and race them at steady speed (starts and turns aren't modelled).</div>
+        <div class="race-grid">
+          <div class="a">
+            <div class="who"><i></i>Boat A</div>
+            <div class="sub">Current sliders</div>
+            <div class="ctl"><label class="top"><span>Effort</span><output id="o-effA"></output></label>
+              <input type="range" id="c-effA" min="50" max="400" step="10" value="150" aria-label="Boat A effort"></div>
+          </div>
+          <div class="b">
+            <div class="who"><i></i>Boat B</div>
+            <select id="race-b" aria-label="Boat B stroke"></select>
+            <div class="ctl"><label class="top"><span>Effort</span><output id="o-effB"></output></label>
+              <input type="range" id="c-effB" min="50" max="400" step="10" value="150" aria-label="Boat B effort"></div>
+          </div>
+        </div>
+        <div class="ctl"><label class="top"><span>Race distance</span><output id="o-dist"></output></label>
+          <input type="range" id="c-dist" min="0.2" max="40" step="0.1" value="10" aria-label="Race distance"></div>
+        <div class="race-grid">
+          <div class="a"><div class="label">Boat A finishes in</div><div class="time" id="t-a">—</div><div class="sub" id="s-a"></div></div>
+          <div class="b"><div class="label">Boat B finishes in</div><div class="time" id="t-b">—</div><div class="sub" id="s-b"></div></div>
+        </div>
+        <div class="verdict" id="verdict"></div>
+        <svg class="race" id="race-view" role="img" aria-label="Race between boat A and boat B"></svg>
+        <div class="row" style="margin-top:8px"><button class="primary" id="race-start">Start race</button></div>
+      </div>
     </div>
 
     <div class="card controls">
@@ -204,7 +251,7 @@
       <div class="group" id="ctl-stroke"><h3>Stroke shape</h3></div>
       <div class="group" id="ctl-paddle"><h3>Paddle</h3></div>
       <div class="group" id="ctl-paddler"><h3>Paddler</h3></div>
-      <div class="group" id="ctl-steer"><h3>Steering (assumptions)</h3></div>
+      <div class="group" id="ctl-switch"><h3>Switching sides</h3></div>
       <details>
         <summary>How this is calculated</summary>
         <p>The paddle swings about a pivot point on the shaft. Your top hand rises or drops so
@@ -214,13 +261,17 @@
           with drag that grows with the square of the blade's speed through the water. The boat
           settles where the average forward push equals hull drag (a C1 marathon canoe).</p>
         <p>Pushing off the boat's centreline turns it: paddling on the right turns the bow left.
-          The simulator charges for cancelling that turn as a J-stroke behind you, using the
-          blade as a rudder, which adds drag. Both settings are under Steering, so you can see
-          how much the answer depends on them, or set them to match how you correct.</p>
-        <p>Your power then splits exactly into moving the boat, steering, and slip (churning
-          water). Sideways and vertical pushing aren't charged directly. They make the blade
-          move faster for the same forward push (more slip) and usually turn the boat more
-          (more steering).</p>
+          You correct by switching sides. The hull resists turning in proportion to its speed,
+          so the boat drifts off course at a steady rate, and you switch when it's off by the
+          set heading. Each switch loses part of a stroke. A stroke that turns the boat more
+          means more switches, so more lost time. The hull's turning resistance is set so a clean
+          vertical stroke allows about 8 strokes per side.</p>
+        <p>Sideways push slows you too. The boat sways under it, and the hull resists by crabbing
+          slightly through the water, like a keel, which creates drag. Brief pushes mostly just
+          sway the boat; steady ones cost the most.</p>
+        <p>Your power splits exactly into moving the boat, sideways drag, and slip (churning
+          water). Vertical pushing isn't charged directly. It means the blade has to move faster
+          for the same forward push, which shows up as slip.</p>
         <p>This is a simplified model for comparing techniques. It doesn't model boat surge,
           waves, the blade's lift, or your body. Absolute speeds are approximate; differences
           between strokes are the useful part.</p>
@@ -261,10 +312,10 @@ const CONTROLS = [
     help: "Changes speed and power together; efficiency stays the same." },
   { group: "ctl-paddler", key: "effortW", label: "Effort for comparing speed", min: 50, max: 400, step: 10, unit: " W",
     help: "Boat speed is shown at this paddler power, so strokes compare fairly." },
-  { group: "ctl-steer", key: "steerArmM", label: "Correction point behind you", min: 0.3, max: 1.2, step: 0.05, unit: " m",
-    help: "Where the J-stroke acts, aft of the boat's centre. Farther back needs less force." },
-  { group: "ctl-steer", key: "steerLD", label: "Correction efficiency (lift/drag)", min: 2, max: 20, step: 1, unit: "",
-    help: "Sideways force per unit of drag when steering. ~4 for a J-stroke; set high if you switch sides instead." },
+  { group: "ctl-switch", key: "switchHeadingDeg", label: "Switch when off course by", min: 1, max: 10, step: 0.5, unit: "°",
+    fmt: (v) => `±${v}°`, help: "How far you let the boat turn before switching sides." },
+  { group: "ctl-switch", key: "switchLossStrokes", label: "Time lost per switch", min: 0, max: 1, step: 0.05, unit: "",
+    fmt: (v) => `${v.toFixed(2)} of a stroke`, help: "No propulsion while the paddle changes sides." },
 ];
 const params = Object.assign({}, S.DEFAULTS, { effortW: 150 });
 for (const c of CONTROLS) {
@@ -293,6 +344,7 @@ const PRESETS = {
   "Shaft leaning out": { leanDeg: 30, handOutM: 0.55 },
   "Wide sweep": { leanDeg: 40, sweepDeg: 70, handOutM: 0.5, catchDeg: 25, exitDeg: 25 },
   "Long reach": { catchDeg: 55, exitDeg: 45 },
+  "Short reach, pull behind": { catchDeg: 12, exitDeg: 45 },
   "Defaults": {},
 };
 for (const [name, p] of Object.entries(PRESETS)) {
@@ -325,6 +377,7 @@ function summarize(r, effort) {
     speed: r.speedAt(effort),
     fwd: r.forceShare.forward * 100,
     yaw: Math.abs(r.yawAt(effort)),
+    perSide: r.strokesPerSide,
     peak: r.peakForce * Math.pow(effort / Math.max(1e-9, r.paddlerPower), 2 / 3),
   };
 }
@@ -343,46 +396,150 @@ function update() {
     setValue("r-eff", fmtNum(s.eff, 1), "%");
     setValue("r-speed", fmtNum(s.speed, 2), "m/s");
     setValue("r-fwd", fmtNum(s.fwd, 0), "%");
-    setValue("r-yaw", fmtNum(s.yaw, 0), "N·m");
+    setValue("r-side", s.perSide >= S.MAX_STROKES_PER_SIDE - 0.05 ? `${S.MAX_STROKES_PER_SIDE}+` : fmtNum(s.perSide, 1), "strokes");
+    $("r-yaw-sub").textContent = `turning moment ${fmtNum(s.yaw, 0)} N·m`;
     setValue("r-peak", fmtNum(s.peak, 0), "N");
     delta("d-eff", s.eff, b && b.eff, " pts", 1, true);
     delta("d-speed", s.speed, b && b.speed, " m/s", 2, true);
     delta("d-fwd", s.fwd, b && b.fwd, " pts", 0, true);
-    delta("d-yaw", s.yaw, b && b.yaw, " N·m", 0, false);
+    delta("d-side", s.perSide, b && b.perSide, " strokes", 1, true);
     delta("d-peak", s.peak, b && b.peak, " N", 0, false);
 
     const pw = result.paddlerPower || 1;
     bar("bar-power", "leg-power", [["moves the boat", 100 * result.hullPower / pw, "s1"],
                                   ["slip", 100 * result.slipPower / pw, "s2"],
-                                  ["steering", 100 * result.steeringPower / pw, "s3"]]);
+                                  ["sideways drag", 100 * result.leewayPower / pw, "s3"]], 1);
     const f = result.forceShare;
     bar("bar-force", "leg-force", [["forward", f.forward * 100, "s1"], ["sideways", f.sideways * 100, "s2"],
                                   ["vertical", f.vertical * 100, "s3"]]);
     const yaw = result.yawAt(e);
-    $("yaw-note").textContent = Math.abs(yaw) < 1 ? "Practically no turning." :
-      `At ${e} W this turns the bow ${yaw > 0 ? "away from" : "toward"} your paddle side with ${fmtNum(Math.abs(yaw))} N·m on average, ` +
-      `which you correct with a J-stroke or by switching sides. A stroke closer to the hull turns less.`;
+    const lostPct = (1 - result.switchDuty) * 100;
+    $("yaw-note").textContent = Math.abs(yaw) < 1 ? "Practically no turning, so no need to switch sides to steer." :
+      `This stroke turns the bow ${yaw > 0 ? "away from" : "toward"} your paddle side (${fmtNum(Math.abs(yaw))} N·m at ${e} W), ` +
+      `so you switch about every ${fmtNum(result.strokesPerSide, 1)} strokes, losing ${fmtNum(lostPct, 1)}% of your paddling time ` +
+      `to switches. A stroke closer to the hull turns less.`;
     path = null;  // redraw the blade path
+    updateRace();
   });
 }
-function bar(barId, legId, parts) {
-  $(barId).innerHTML = parts.filter((p) => p[1] > 0.5)
-    .map(([, v, cls]) => `<span class="${cls}" style="flex:${v.toFixed(2)}"></span>`).join("");
-  $(legId).innerHTML = parts.map(([name, v, cls]) => `<span><i class="${cls}"></i>${name} <b>${fmtNum(v, 0)}%</b></span>`).join("");
+function bar(barId, legId, parts, digits = 0) {
+  // Tiny parts still get a sliver, so every legend entry has a mark.
+  $(barId).innerHTML = parts.filter((p) => p[1] > 0.05)
+    .map(([, v, cls]) => `<span class="${cls}" style="flex:${Math.max(0.6, v).toFixed(2)}"></span>`).join("");
+  $(legId).innerHTML = parts.map(([name, v, cls]) =>
+    `<span><i class="${cls}"></i>${name} <b>${fmtNum(v, v < 10 ? digits : 0)}%</b></span>`).join("");
 }
 
 $("save").addEventListener("click", () => {
   baseline = result;
   $("clear-cmp").hidden = false;
-  $("cmp-note").textContent = "Saved. Change the sliders to compare against it.";
+  $("cmp-note").textContent = "Saved. Change the sliders to compare against it; it's also Boat B in the race.";
+  fillRaceOptions("saved");
   update();
 });
 $("clear-cmp").addEventListener("click", () => {
   baseline = null;
   $("clear-cmp").hidden = true;
   $("cmp-note").textContent = "Save a stroke, change sliders, and the results show the difference.";
+  fillRaceOptions();
   update();
 });
+
+// ----------------------------------------------------------------- race
+// Boat A: the sliders. Boat B: the saved stroke or a preset. Same canoe,
+// steady speeds at each paddler's effort.
+const presetCache = {};
+function fillRaceOptions(select) {
+  const el = $("race-b"), keep = select || el.value || "Wide sweep";
+  el.innerHTML = (baseline ? `<option value="saved">Saved stroke</option>` : "") +
+    Object.keys(PRESETS).map((n) => `<option value="${n}">${n}</option>`).join("");
+  el.value = [...el.options].some((o) => o.value === keep) ? keep : "Wide sweep";
+}
+function boatB() {
+  const v = $("race-b").value;
+  if (v === "saved" && baseline) return baseline;
+  if (!presetCache[v]) presetCache[v] = S.simulate(Object.assign({}, S.DEFAULTS, PRESETS[v]));
+  return presetCache[v];
+}
+const clock = (sec) => {
+  const t = Math.round(sec), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+  return h ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+};
+const gapText = (sec) => sec < 60 ? `${fmtNum(sec, 1)} s` : clock(sec);
+let race = null, raceAnim = null;
+function updateRace() {
+  if (!result) return;
+  const effA = parseFloat($("c-effA").value), effB = parseFloat($("c-effB").value);
+  const km = parseFloat($("c-dist").value);
+  $("o-effA").textContent = `${effA} W`;
+  $("o-effB").textContent = `${effB} W`;
+  $("o-dist").textContent = km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`;
+  race = S.race(result, boatB(), km * 1000, effA, effB);
+  $("t-a").textContent = clock(race.tA);
+  $("t-b").textContent = clock(race.tB);
+  $("s-a").textContent = `${fmtNum(race.vA, 2)} m/s · ${fmtNum(race.vA * 3.6, 1)} km/h`;
+  $("s-b").textContent = `${fmtNum(race.vB, 2)} m/s · ${fmtNum(race.vB * 3.6, 1)} km/h`;
+  const gap = Math.abs(race.timeGap), dist = Math.abs(race.distanceGap);
+  $("verdict").textContent = gap < 0.05 ? "Dead heat." :
+    `Boat ${race.timeGap > 0 ? "A" : "B"} wins by ${gapText(gap)}, ${fmtNum(dist, dist < 10 ? 1 : 0)} m ahead at the finish ` +
+    `(${fmtNum(Math.abs(race.vA - race.vB) / Math.min(race.vA, race.vB) * 100, 1)}% faster).`;
+  if (!raceAnim) drawRace(race.metres, race.metres);  // show the finish
+}
+
+// Follow the leader with a window wide enough to show the finishing gap.
+function drawRace(dA, dB, elapsed) {
+  const svg = $("race-view");
+  const W = Math.max(280, Math.round(svg.getBoundingClientRect().width)) || 320, H = 150;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const L = race.metres, lead = Math.max(dA, dB);
+  const span = Math.min(L, Math.max(40, Math.abs(race.distanceGap) * 2.5));
+  const left = 36, right = W - 14;
+  const x = (d) => left + ((d - (lead - span * 0.8)) / span) * (right - left);
+  let g = "";
+  const laneY = [30, 72];
+  for (const y of laneY) g += `<rect class="lane" x="${left}" y="${y - 16}" width="${right - left}" height="32" rx="6"/>`;
+  // Course markers inside the window
+  const raw = span / 4, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 5, 10].map((m) => m * mag).find((v) => v >= raw);
+  for (let d = Math.ceil((lead - span * 0.8) / step) * step; d <= lead + span * 0.2; d += step) {
+    if (d < 0 || d > L) continue;
+    const xx = x(d);
+    g += `<line class="tick" x1="${xx}" x2="${xx}" y1="12" y2="90"/>` +
+      `<text x="${xx}" y="104" text-anchor="middle">${d >= 1000 ? `${+(d / 1000).toFixed(2)} km` : `${Math.round(d)} m`}</text>`;
+  }
+  if (x(L) <= right + 1) g += `<line class="finish" x1="${x(L)}" x2="${x(L)}" y1="8" y2="94"/>`;
+  const canoe = (d, y, cls) => {
+    const nose = Math.min(right, x(d)), len = 26;
+    return `<path class="${cls}" d="M${nose},${y} Q${nose - len * 0.5},${y - 7} ${nose - len},${y} Q${nose - len * 0.5},${y + 7} ${nose},${y} Z"/>`;
+  };
+  g += canoe(dA, laneY[0], "boat-a") + canoe(dB, laneY[1], "boat-b") +
+    `<text class="strong" x="8" y="${laneY[0] + 4}">A</text><text class="strong" x="8" y="${laneY[1] + 4}">B</text>`;
+  // Whole-course progress
+  const py = 124, pw = right - left;
+  g += `<rect class="progress-track" x="${left}" y="${py}" width="${pw}" height="4" rx="2"/>` +
+    `<rect class="progress-a" x="${left}" y="${py}" width="${pw * dA / L}" height="2" rx="1"/>` +
+    `<rect class="progress-b" x="${left}" y="${py + 2}" width="${pw * dB / L}" height="2" rx="1"/>` +
+    `<text x="${left}" y="${H - 4}">${elapsed === undefined ? "Finish" : clock(elapsed)}</text>` +
+    `<text x="${right}" y="${H - 4}" text-anchor="end">${fmtNum(Math.max(dA, dB) / 1000, 2)} of ${fmtNum(L / 1000, 2)} km</text>`;
+  svg.innerHTML = g;
+}
+$("race-start").addEventListener("click", () => {
+  if (!race) return;
+  const total = Math.max(race.tA, race.tB), wall = 12;  // seconds on screen
+  const t0 = performance.now();
+  $("race-start").textContent = "Restart race";
+  const step = (now) => {
+    const raceT = Math.min(total, ((now - t0) / 1000 / wall) * total);
+    drawRace(Math.min(race.metres, race.vA * raceT), Math.min(race.metres, race.vB * raceT), raceT);
+    if (raceT < total) raceAnim = requestAnimationFrame(step);
+    else raceAnim = null;
+  };
+  if (raceAnim) cancelAnimationFrame(raceAnim);
+  raceAnim = requestAnimationFrame(step);
+});
+for (const id of ["c-effA", "c-effB", "c-dist"]) $(id).addEventListener("input", updateRace);
+$("race-b").addEventListener("change", updateRace);
+fillRaceOptions();
 
 // ---------------------------------------------------------------- views
 // World: X toward the bow, Y to port, Z up (stroke-sim.js). Each view maps
@@ -508,7 +665,7 @@ function frame(now) {
 
 update();
 requestAnimationFrame(frame);
-window.sim = { params, setParams, get result() { return result; }, get baseline() { return baseline; } };
+window.sim = { params, setParams, get result() { return result; }, get baseline() { return baseline; }, get race() { return race; } };
 })();
 </script>
 </body>

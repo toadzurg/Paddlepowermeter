@@ -175,12 +175,20 @@ time (up to three devices).
 for the pivot point, reach and exit angles, shaft lean, stroke direction,
 sweep, top-hand position, hand travel, bend and rate, with animated side,
 end and top views. It works out stroke efficiency (the share of your power
-that moves the boat) and splits the rest into slip and the cost of steering
-out the turn an off-centre stroke creates. It also gives boat speed at a
+that moves the boat) and splits the rest into slip and sideways (leeway)
+drag. Paddling hit-and-switch, an off-centre stroke turns the boat, so you
+switch sides more often and lose drive time on each switch; the page shows
+how many strokes per side the stroke allows. It also gives boat speed at a
 chosen effort and the turning moment. Save a stroke to compare against it.
 
+The race card puts two boats in the same canoe: Boat A uses the sliders,
+Boat B the saved stroke or a preset, each at its own effort over a chosen
+distance. It shows finishing times, speeds and the gap at the finish, and
+animates the race.
+
 It is a simplified drag model, good for comparing techniques rather than
-predicting exact speeds. Its steering assumptions are adjustable on the page.
+predicting exact speeds. The switching assumptions (how far off course
+before you switch, time lost per switch) are adjustable on the page.
 
 **Opening it:**
 - iPhone: open the link in the free **Bluefy** browser. Safari, Chrome and
