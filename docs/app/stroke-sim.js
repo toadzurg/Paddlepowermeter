@@ -137,6 +137,12 @@
     switchHeadingDeg: 3,       // switch sides when this far off course
     switchLossStrokes: 0.3,    // time lost per switch, in strokes
     switchStrokes: 0,          // fixed strokes per side; 0 = switch by heading
+    // Body motion, relative to the boat.
+    swingM: 0,                 // torso fore-aft, ± m (half the travel)
+    swingTiming: 1,            // 1: moving back (aft) through the drive; -1: forward
+    dropM: 0,                  // drop onto the paddle at the catch, m
+    heelDeg: 0,                // boat heeled toward the paddle side
+    hipRock: 0,                // share of the blade's roll the hips cancel, 0–1
   };
 
   const rad = (d) => (d * Math.PI) / 180;
@@ -286,7 +292,7 @@
     const avg = last.reduce((a, x) => a + x, 0) / n;
     let extra = 0;
     for (const x of last) { const v = V + x - avg; extra += k * (v * v * v - V * V * V) / n; }
-    return { power: Math.max(0, extra), swing: Math.max(...last) - Math.min(...last) };
+    return { power: Math.max(0, extra), swing: Math.max(...last) - Math.min(...last), series: last.map((x) => x - avg), dt };
   }
 
   // Heave under the vertical push, at stroke period Tc (s), with the force
@@ -339,8 +345,33 @@
     return { perSide, duty: perSide / (perSide + p.switchLossStrokes), wander, course: 1 - (wander * wander) / 6, turnPerStroke };
   }
 
+  // Body motion relative to the boat over one stroke (period Tc, drive Td).
+  // Swing: the torso moves aft through the drive and forward through the
+  // recovery (timing 1), or the other way, ± A. Drop: down by d over the
+  // first 40% of the drive, held, and back up through the recovery.
+  // Velocity (fore-aft) and vertical acceleration, as functions of time.
+  function bodySwingVel(A, timing, Tc, Td) {
+    return (t) => timing * (t < Td ? (-A * Math.PI / Td) * Math.sin(Math.PI * t / Td) : (A * Math.PI / (Tc - Td)) * Math.sin(Math.PI * (t - Td) / (Tc - Td)));
+  }
+  function bodyDropAcc(d, Tc, Td) {
+    const t1 = 0.4 * Td;
+    return (t) => (t < t1 ? (-d / 2) * Math.pow(Math.PI / t1, 2) * Math.cos(Math.PI * t / t1) :
+      t < Td ? 0 : (d / 2) * Math.pow(Math.PI / (Tc - Td), 2) * Math.cos(Math.PI * (t - Td) / (Tc - Td)));
+  }
+  // Extra hull drag power (W) when the hull's speed is V + δ(t) − (m_p/m)·u(t),
+  // u the body's speed relative to the boat: momentum is shared, drag isn't.
+  function hullCubic(k, V, delta, dt, u, share) {
+    const n = delta.length;
+    let extra = 0;
+    for (let i = 0; i < n; i++) { const v = V + delta[i] - share * u(i * dt); extra += k * (v * v * v - V * V * V) / n; }
+    return Math.max(0, extra);
+  }
+
   function simulate(params) {
     const p = Object.assign({}, DEFAULTS, params);
+    // Heeling the boat toward the paddle brings the hands (about 0.9 m up)
+    // nearer the keel line: the stroke works as if the top hand were further in.
+    const pg = p.heelDeg ? Object.assign({}, p, { handOutM: Math.max(0.1, p.handOutM - 0.9 * Math.sin(rad(p.heelDeg))) }) : p;
     const k = HULL_K * Math.pow(p.massKg / MASS_REF, 2 / 3);  // drag ∝ wetted area
     // Boat speed: mean thrust falls as the boat speeds up (less slip), so
     // bisect for thrust (less the time lost switching) = hull drag.
@@ -348,15 +379,15 @@
     let lo = 0, hi = 8;
     for (let i = 0; i < 40; i++) {
       const V = (lo + hi) / 2;
-      const m = means(p, V, k);
-      const sw = switching(p, V, m.yaw, Tc0);
+      const m = means(pg, V, k);
+      const sw = switching(pg, V, m.yaw, Tc0);
       if (sw.duty * m.thrust > k * V * V + m.leeway) lo = V; else hi = V;
     }
     const V = (lo + hi) / 2;
-    const { samples, Tc } = drive(p, V);
+    const { samples, Tc } = drive(pg, V);
     const sum = (f) => samples.reduce((a, s) => a + f(s) * s.dt, 0);
     const yawMean = sum((s) => s.yaw) / Tc;
-    const sw = switching(p, V, yawMean, Tc);
+    const sw = switching(pg, V, yawMean, Tc);
     // Averages over a whole side, switches included.
     const paddler = sw.duty * sum((s) => s.paddler) / Tc;
     const useful = sw.duty * sum((s) => s.useful) / Tc;
@@ -381,13 +412,18 @@
       const scale = Math.pow(watts / pd, 2 / 3);
       const Vw = V * Math.cbrt(watts / pd);
       const Tc1 = 60 / p.rateSpm, Td1 = Tc1 * p.driveFraction;
-      const h = heave(replay(samples, Td0, Td1, scale, 2), Tc1, p.massKg);
+      const fz = replay(samples, Td0, Td1, scale, 2), mp = p.massKg - BOAT_KG;
+      const h = heave(fz, Tc1, p.massKg);
       const sg = surge(replay(samples, Td0, Td1, scale * sw.duty, 0), Tc1, Vw, p.massKg, k);
+      // The body's motion: the swing shakes the hull's speed, the drop pushes it up and down.
+      const swingPower = p.swingM ? hullCubic(k, Vw, sg.series, sg.dt, bodySwingVel(p.swingM, p.swingTiming, Tc1, Td1), mp / p.massKg) - sg.power : 0;
+      const dropAcc = bodyDropAcc(p.dropM, Tc1, Td1);
+      const hd = p.dropM ? heave((t) => fz(t) - mp * dropAcc(t), Tc1, p.massKg) : h;
       const weight = p.massKg * G;
       const sink = Math.pow(Math.max(0.05, 1 - h.meanLift / weight), 2 / 3) - 1;
-      const bounce = h.power / (k * Vw * Vw * Vw);
-      const surgeFrac = sg.power / (k * Vw * Vw * Vw);
-      const eps = sink + bounce + surgeFrac, f = 1 / (1 + eps);
+      const bounce = h.power / (k * Vw * Vw * Vw), drop = (hd.power - h.power) / (k * Vw * Vw * Vw);
+      const surgeFrac = sg.power / (k * Vw * Vw * Vw), swing = Math.max(0, swingPower) / (k * Vw * Vw * Vw);
+      const eps = sink + bounce + surgeFrac + swing + drop, f = 1 / (1 + eps);
       const r = {
         speed: Vw * Math.cbrt(f) * sw.course,     // made good along the course
         waterSpeed: Vw * Math.cbrt(f),            // through the water
@@ -395,13 +431,22 @@
         // Shares of your power. They add to 1; `sink` is negative (a saving)
         // when the stroke lifts the boat.
         shares: { hull: base * f, slip: slip / pd, leeway: leeway / pd, surge: base * surgeFrac * f,
-                  sink: base * sink * f, bounce: base * bounce * f },
+                  sink: base * sink * f, bounce: base * bounce * f, swing: base * swing * f, drop: base * drop * f },
         meanLift: h.meanLift,            // N, + lifts the boat
         sinkMm: -h.meanLift / (RHO * G * WATERPLANE) * 1000,  // + deeper
-        bounceMm: h.amplitude * 1000,
+        bounceMm: hd.amplitude * 1000,      // with the drop, if any
+        bounceStillMm: h.amplitude * 1000,  // the stroke alone
         surgeSwing: sg.swing / Vw,        // speed swing over a stroke, peak to peak / mean
         hullK: k * (1 + eps),            // effective drag constant at this effort
       };
+      // Boat score (0–100): how much of the push on the hull becomes steady
+      // forward speed. Points off for time lost switching, the zigzag, and
+      // the power that goes into surging, bobbing, crabbing and the body's
+      // motion; riding higher earns some back. Blade slip isn't counted.
+      const sh = r.shares, over = (x) => (x / Math.max(1e-9, sh.hull)) * 100;
+      const parts = { switching: (1 - sw.duty) * 100, zigzag: (1 - sw.course) * 100, swing: over(sh.swing), drop: over(sh.drop),
+                      surge: over(sh.surge), bob: over(sh.bounce), crab: over(sh.leeway), riding: over(sh.sink) };
+      r.boatScore = { total: Math.max(0, 100 - Object.values(parts).reduce((a, x) => a + x, 0)), parts };
       cache.set(key, r);
       return r;
     }
@@ -432,25 +477,30 @@
         }
         return { xs, vs, mean };
       };
-      const V = e.waterSpeed, ms = p.massKg * (1 + SURGE_ADDED);
+      const V = e.waterSpeed, ms = p.massKg * (1 + SURGE_ADDED), mp = p.massKg - BOAT_KG;
       const sg = periodic(push, ms, 2 * k * V, 0);
       const vAvg = sg.vs.reduce((a, x) => a + x, 0) / n;
-      const speed = sg.vs.map((x) => V + x - vAvg);
+      const still = sg.vs.map((x) => V + x - vAvg);
+      const uB = bodySwingVel(p.swingM, p.swingTiming, Tc1, Td1), aB = bodyDropAcc(p.dropM, Tc1, Td1);
+      const speed = still.map((v, i) => v - (mp / p.massKg) * uB(i * dt));
       let ahead = 0;
       const gap = speed.map((v) => (ahead += (v - V) * dt));
       const gAvg = gap.reduce((a, x) => a + x, 0) / n;
       const Kh = RHO * G * WATERPLANE, mh = p.massKg * (1 + HEAVE_ADDED);
-      const hv = periodic(up, mh, 2 * HEAVE_ZETA * Math.sqrt(Kh * mh), Kh);
+      const hv = periodic(up.map((f, i) => f - mp * aB(i * dt)), mh, 2 * HEAVE_ZETA * Math.sqrt(Kh * mh), Kh);
       const hAvg = hv.xs.reduce((a, x) => a + x, 0) / n;
       // Roll stiffness Δ·g·GM; inertia mostly the paddler's.
       const vol = p.massKg / RHO, BM = (ROLL_CIT * HULL_L * Math.pow(ROLL_BEAM, 3)) / 12 / vol;
       const GM = ROLL_KB + BM - ROLL_KG, Kr = p.massKg * G * GM;
       const Ir = (p.massKg - BOAT_KG) * ROLL_GYR * ROLL_GYR + BOAT_KG * 0.25 * 0.25;
-      const rl = periodic(roll, Ir, 2 * ROLL_ZETA * Math.sqrt(Kr * Ir), Kr);
+      const rl = periodic(roll.map((m) => m * (1 - p.hipRock)), Ir, 2 * ROLL_ZETA * Math.sqrt(Kr * Ir), Kr);
       const rAvg = rl.xs.reduce((a, x) => a + x, 0) / n;
+      const r0 = p.hipRock ? periodic(roll, Ir, 2 * ROLL_ZETA * Math.sqrt(Kr * Ir), Kr) : rl;
+      const span = (a) => (Math.max(...a) - Math.min(...a)) / 2;
       return {
         t, push, side, up, speed, drag: speed.map((v) => k * v * v), ahead: gap.map((x) => x - gAvg),
-        heave: hv.xs.map((x) => x - hAvg), roll, heel: rl.xs.map((x) => x - rAvg),
+        heave: hv.xs.map((x) => x - hAvg), roll, heel: rl.xs.map((x) => x - rAvg), speedStill: still,
+        heelStill: span(r0.xs), hipMax: p.hipRock * Math.max(...roll.map(Math.abs)) / (mp * G),
         rollMean: rl.mean, hipShift: -rl.mean / ((p.massKg - BOAT_KG) * G),
         rollPeriod: 2 * Math.PI * Math.sqrt(Ir / Kr), GM, drive: Td1, cycle: Tc1,
       };
@@ -815,7 +865,7 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 27;
+  const API_LEVEL = 28;
   const PADDLE = paddleOf(DEFAULTS);
   const api = { API_LEVEL, simulate, race, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
