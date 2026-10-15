@@ -495,7 +495,7 @@ const CONTROLS = [
     help: "Heavier sits deeper, so more drag." },
   { group: "ctl-switch", key: "switchStrokes", label: "Strokes per side", min: 0, max: 20, step: 1, unit: "",
     fmt: (v) => v === 0 ? "auto, by heading" : `${v} stroke${v === 1 ? "" : "s"}`,
-    help: "Set how many strokes you take before switching; the boat then wanders off course as far as it must. Fewer means more time lost switching, more means a wider zigzag. Auto switches by heading instead." },
+    help: "Set how many strokes you take before switching; the boat then wanders off course as far as it must. Fewer means more time lost switching, more means a wider zigzag. In a crosswind (race) this is the average: you take more on the windward side to hold course. Auto switches by heading instead." },
   { group: "ctl-switch", key: "switchHeadingDeg", label: "Switch when off course by", min: 1, max: 10, step: 0.5, unit: "°",
     fmt: (v) => `±${v}°`, help: "How far you let the boat turn before switching sides (auto)." },
   { group: "ctl-switch", key: "switchLossStrokes", label: "Time lost per switch", min: 0, max: 1, step: 0.05, unit: "",
@@ -822,7 +822,8 @@ function legNote(l, both) {
   const bits = [];
   if (l.steer) bits.push("the wind out-turns the stroke: you'd stay on the windward side and steer");
   else if (Math.abs(l.windward - l.lee) > 0.15)
-    bits.push(`${fmtNum(l.leewayDeg, 1)}° crab; switching ${fmtNum(l.windward, 1)} strokes windward, ${fmtNum(l.lee, 1)} lee`);
+    bits.push(`${fmtNum(l.leewayDeg, 1)}° crab; switching ${fmtNum(l.windward, 1)} strokes windward, ${fmtNum(l.lee, 1)} lee ` +
+      `to hold course, wandering ±${fmtNum(l.wanderDeg, 1)}°`);
   if (l.river) {
     const legs = both ? [["out", both[0]], ["back", both[1]]] : [["", l]];
     for (const [w, x] of legs) bits.push((w ? `${w}: ` : "") + riverNote(x));

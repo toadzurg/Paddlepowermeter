@@ -203,6 +203,17 @@ console.log("\nStroke simulator physics");
   const swp = (n) => S.simulate({ leanDeg: 40, sweepDeg: 70, handOutM: 0.5, catchDeg: 25, exitDeg: 25, switchStrokes: n }).speedAt(150);
   check("a turning stroke wants fewer strokes per side", swp(4) > swp(12));
   check("race in calm matches speedAt with a fixed count", Math.abs(S.race(fixedN(12), fixedN(12), 10000, 150, 150).vA - sp(12)) < 1e-6);
+
+  // Crosswind with a fixed count: average N per side, more windward, course held.
+  const f10 = fixedN(10), beamF = S.race(f10, f10, 10000, 150, 150, { windSpeed: 20 / 3.6, windAngle: 90 }).legsA[0];
+  check("fixed count in a crosswind: more windward, average kept", beamF.windward > beamF.lee + 2 &&
+        Math.abs((beamF.windward + beamF.lee) / 2 - 10) < 1e-9, `${beamF.windward.toFixed(1)} / ${beamF.lee.toFixed(1)}`);
+  check("fixed count in a crosswind: wander no wider than calm", beamF.wanderDeg <= f10.headingWanderDeg + 1e-9);
+  const calmF = S.race(f10, f10, 10000, 150, 150).legsA[0];
+  check("fixed count, calm: even split, the stroke's own wander", calmF.windward === 10 && calmF.lee === 10 &&
+        Math.abs(calmF.wanderDeg - f10.headingWanderDeg) < 1e-6);
+  const galeF = S.race(f10, f10, 10000, 150, 150, { windSpeed: 45 / 3.6, windAngle: 90 }).legsA[0];
+  check("fixed count: a gale still means steering", galeF.steer);
 }
 
 (async () => {
@@ -339,6 +350,11 @@ console.log("\nStroke simulator physics");
     check(`${tag}: wind readouts`, (await text("#o-wind")) === "20 km/h" && (await text("#o-windDir")) === "the side");
     check(`${tag}: crosswind slows and makes switching lopsided`, secs(await text("#t-a")) > secs(t0) &&
           /crab; switching [\d.]+ strokes windward, [\d.]+ lee/.test(await text("#c-a")), await text("#c-a"));
+    await page.click("#boats [data-boat=a]");
+    await slide("#c-switchStrokes", 10); await settle();
+    check(`${tag}: fixed count in a crosswind holds course`, /switching [\d.]+ strokes windward, [\d.]+ lee to hold course, wandering ±[\d.]+°/.test(await text("#c-a")),
+          await text("#c-a"));
+    await slide("#c-switchStrokes", 0); await settle();
     await slide("#windDir", 0);
     check(`${tag}: headwind readout`, (await text("#o-windDir")) === "dead ahead" && (await text("#c-a")) === "");
     await slide("#wind", 0);
