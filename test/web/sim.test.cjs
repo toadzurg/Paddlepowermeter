@@ -512,6 +512,8 @@ console.log("\nStroke simulator physics");
     await page.click("#water >> text=River");
     await slide("#current", -3); await slide("#depth", 2.5);
     check(`${tag}: bends shaded`, (await page.$$("#race-speed rect.bendband")).length > 5);
+    check(`${tag}: river view replaces the lanes, with both boats on it`, (await page.$eval("#race-view", (e) => e.hasAttribute("hidden"))) &&
+          !(await page.$eval("#river-map", (e) => e.hasAttribute("hidden"))) && (await page.$$("#river-map circle.boatdot")).length === 2);
     const wheres = new Set();
     for (let v = 0; v <= 1000; v += 7) {
       await page.$eval("#scrub", (el, v) => { el.value = v; el.dispatchEvent(new Event("input")); }, v);
@@ -526,11 +528,15 @@ console.log("\nStroke simulator physics");
     // Race controls: pause, resume, slow motion, stop; a change mid-race applies from then on.
     await page.evaluate(() => { window.sim.raceWallS = 1.5; });
     const run = () => page.evaluate(() => window.sim.run && { t: window.sim.run.t, dA: window.sim.run.A.d, paused: window.sim.run.paused });
-    // Scrubbing during a run pauses it.
+    // The slider runs from the start line during a race; scrubbing pauses it.
     await page.click("#race-start");
     await page.waitForTimeout(250);
+    const sv = () => page.$eval("#scrub", (e) => +e.value);
+    check(`${tag}: slider starts from 0 on a new race`, (await sv()) > 0 && (await sv()) < 600, `${await sv()}`);
     await page.$eval("#scrub", (el) => { el.value = 300; el.dispatchEvent(new Event("input")); });
     check(`${tag}: scrubbing a run pauses it`, (await run()).paused && (await text("#race-pause")) === "Resume");
+    check(`${tag}: can't scrub past what's been raced`, (await run()).t >= (await page.evaluate(() => window.sim.run.t)) &&
+          (await page.$eval("#scrub-time", (e) => e.textContent)).length > 0);
     await page.click("#race-stop");
     check(`${tag}: pause and stop start disabled`, await page.$eval("#race-pause", (b) => b.disabled) && await page.$eval("#race-stop", (b) => b.disabled));
     await page.click("#race-start");
@@ -543,6 +549,8 @@ console.log("\nStroke simulator physics");
     check(`${tag}: resume`, (await run()).t > p1.t && (await text("#race-pause")) === "Pause");
     await page.click("#race-stop");
     check(`${tag}: stop`, !(await run()) && (await text("#race-status")) === "Stopped." && await page.$eval("#race-pause", (b) => b.disabled));
+    check(`${tag}: stop puts the slider back at the start`, (await page.$eval("#scrub", (e) => +e.value)) === 0 &&
+          /^0:00 · 0.00 of/.test(await text("#scrub-time")), await text("#scrub-time"));
     await page.click("#race-slow");
     check(`${tag}: slow motion toggle`, (await page.$eval("#race-slow", (b) => b.getAttribute("aria-pressed"))) === "true");
     await page.click("#race-slow");
