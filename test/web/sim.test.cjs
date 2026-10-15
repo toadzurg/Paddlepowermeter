@@ -466,7 +466,11 @@ console.log("\nStroke simulator physics");
     check(`${tag}: upstream, best line beats the middle`, /^Boat A wins/.test(await verdict()) &&
           /^edges: current [\d.]+ km\/h against you/.test(await text("#c-a")) && /^middle:/.test(await text("#c-b")),
           `${await text("#c-a")} | ${await text("#c-b")}`);
-    check(`${tag}: river map draws both lines`, (await page.$$("#river-map .line-a, #river-map .line-b")).length === 2);
+    // A big gap squeezes the bends into the zoomed-out band; zoom in to see the lines.
+    const lines = () => page.$$("#river-map .line-a, #river-map .line-b").then((l) => l.length);
+    for (let i = 0; i < 6 && (await lines()) === 0; i++) await page.click("#zoom-in");
+    check(`${tag}: river map draws both lines`, (await lines()) === 2);
+    await page.click("#zoom-fit");
     await page.click("#line-b >> text=Edges");
     await slide("#current", 4);
     check(`${tag}: downstream, edges lose`, /^Boat A wins/.test(await verdict()) && /^middle:/.test(await text("#c-a")), await text("#c-a"));
@@ -501,6 +505,21 @@ console.log("\nStroke simulator physics");
     };
     const [g2, g6, g9] = [await pxGap(200), await pxGap(600), await pxGap(900)];
     check(`${tag}: lanes gap grows through the race`, g2 < g6 && g6 < g9 && g9 > 20, `${g2} < ${g6} < ${g9} px`);
+    // Zoom: Fit by default; zoom out to the whole course; zoom in hides the trailing boat behind a marker.
+    const dis = (id) => page.$eval(id, (e) => e.disabled);
+    const ticks = () => page.$$eval("#race-view text", (ts) => ts.map((t) => t.textContent).join(" "));
+    check(`${tag}: zoom starts at Fit`, (await dis("#zoom-fit")) && !(await dis("#zoom-in")) && !(await dis("#zoom-out")));
+    for (let i = 0; i < 12 && !(await dis("#zoom-out")); i++) await page.click("#zoom-out");
+    check(`${tag}: zoomed out shows the whole course`, /^0 m .*10 km A B$/.test(await ticks()) && !(await dis("#zoom-fit")), await ticks());
+    await page.click("#zoom-fit");
+    for (let i = 0; i < 3; i++) await page.click("#zoom-in");
+    check(`${tag}: zoomed in: a boat behind the view shows how far back`, /◀ \d+ m/.test(await ticks()) &&
+          (await page.$$("#race-view path.boat-a, #race-view path.boat-b")).length === 1, await ticks());
+    await page.click("#zoom-fit");
+    const zbox = await page.$eval("#race-view", (e) => { const r = e.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
+    await page.mouse.move(...zbox); await page.keyboard.down("Control"); await page.mouse.wheel(0, -300); await page.keyboard.up("Control");
+    check(`${tag}: Ctrl + scroll zooms`, !(await dis("#zoom-fit")));
+    await page.click("#zoom-fit");
     await page.$eval("#scrub", (el) => { el.value = 490; el.dispatchEvent(new Event("input")); });
     check(`${tag}: speed chart: two boats with markers`, (await page.$$("#race-speed path.ln")).length === 2 &&
           (await page.$$("#race-speed circle.dot")).length === 2);
@@ -522,6 +541,10 @@ console.log("\nStroke simulator physics");
     }
     check(`${tag}: scrubbing doesn't move the page`, below.size === 1, [...below].join(", "));
     const all = [...wheres].join(" | ");
+    for (let i = 0; i < 12 && !(await dis("#zoom-out")); i++) await page.click("#zoom-out");
+    check(`${tag}: river zoomed out: a plain band, both boats`, (await page.$$("#river-map .line-a")).length === 0 &&
+          (await page.$$("#river-map path.boat-a, #river-map path.boat-b")).length === 2 && /bends not drawn/.test(await text("#river-map")));
+    await page.click("#zoom-fit");
     check(`${tag}: replay passes straights, crossings and bends`, /along the bank/.test(all) && /crossing the river/.test(all) &&
           /inside of a bend/.test(all), all.slice(0, 160));
     await slide("#current", 0); await slide("#depth", 5);
