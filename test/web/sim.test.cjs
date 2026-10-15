@@ -906,6 +906,31 @@ console.log("\nStroke simulator physics");
       check(`${tag}: phone: resume and stop`, (await mob.textContent("#race-pause")) === "Pause" &&
             (await mob.tap("#race-stop"), await mob.waitForTimeout(150), (await mob.textContent("#race-status")) === "Stopped."));
       await phone.close();
+      // Racing lines: open water weaves (hit and switch), the AuSable shows each
+      // boat's line across the channel, and the river view holds one scale.
+      const lp = await ctx.newPage();
+      await lp.goto("file://" + path.resolve(__dirname, "../../docs/app/simulator.html"));
+      await lp.waitForTimeout(500);
+      await lp.$eval("#scrub", (el) => { el.value = 500; el.dispatchEvent(new Event("input")); });
+      await lp.click("#zoom-out"); await lp.waitForTimeout(100);
+      check(`${tag}: open water: each boat's weave`, (await lp.$$("#race-view path.line-a")).length === 1 && (await lp.$$("#race-view path.line-b")).length === 1);
+      await lp.click("#water >> text=River"); await lp.waitForTimeout(300);
+      await lp.click("#race-start"); await lp.waitForTimeout(300);
+      const spacings = await lp.evaluate(() => new Promise((res) => {
+        const seen = new Set(); let n = 0;
+        const f = () => { const xs = [...document.querySelectorAll("#river-map text")].filter((t) => / k?m$/.test(t.textContent)).map((t) => +t.getAttribute("x"));
+          if (xs.length > 1) seen.add(Math.round((xs[1] - xs[0]) * 10)); if (++n < 60) requestAnimationFrame(f); else res(seen.size); };
+        requestAnimationFrame(f);
+      }));
+      await lp.click("#race-stop");
+      check(`${tag}: river view keeps one scale through a run (no flicker)`, spacings === 1, `${spacings} scales`);
+      await lp.click("#water >> text=AuSable / GPX"); await lp.waitForTimeout(800);
+      await lp.click("#line-b >> text=Edges"); await lp.waitForTimeout(300);
+      await lp.$eval("#scrub", (el) => { el.value = 8; el.dispatchEvent(new Event("input")); });
+      for (let i = 0; i < 5; i++) await lp.click("#zoom-in");
+      const ld = await lp.$$eval("#course-view path.line-a, #course-view path.line-b", (ps) => ps.map((q) => q.getAttribute("d")));
+      check(`${tag}: AuSable: each boat's line across the channel`, ld.length === 2 && ld[0] !== ld[1] && /A solid · B dashed/.test(await lp.textContent("#course-view")));
+      await lp.close();
     }
     await ctx.close();
   }

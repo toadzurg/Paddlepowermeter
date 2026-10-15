@@ -1332,11 +1332,13 @@ let raceZoom = 1;
 // Zoom in further and the replay slows to match: the boats then cross at
 // most a quarter of the view each second.
 const slowFactor = () => ($("race-slow").getAttribute("aria-pressed") === "true" ? 0.25 : 1);
-const travel4s = () => (run ? Math.max(run.A.v, run.B.v, 0.5) * run.scale * slowFactor() * 4 : 0);
+// From the race's average speed, not the boats' speed this instant: that
+// changes through every bend, and the view would rescale every frame.
+const travel4s = () => (run ? (race.metres / Math.max(1, Math.min(race.tA, race.tB))) * run.scale * slowFactor() * 4 : 0);
 let viewFit = 1, viewSpan = 1, viewFollows = false;
 function zoomSpan(fit, minSpan, L, follows = false) {
   raceZoom = Math.min(fit / minSpan, Math.max(fit / L, raceZoom));
-  const floor = follows && run && !run.paused && !run.userZoomed ? travel4s() : 0;
+  const floor = follows && run && !run.userZoomed ? travel4s() : 0;   // paused too, so pausing doesn't jump the view
   const span = Math.min(L, Math.max(minSpan, fit / raceZoom, floor));
   viewFit = fit; viewSpan = span; viewFollows = follows;
   $("zoom-in").disabled = span <= minSpan * 1.001;
@@ -1451,10 +1453,37 @@ function drawRace(dA, dB, elapsed) {
       `<text x="${xx}" y="104" text-anchor="middle">${distLabel(d, step)}</text>`;
   }
   if (x(L) <= right + 1) g += `<line class="finish" x1="${x(L)}" x2="${x(L)}" y1="8" y2="94"/>`;
+  // Each boat's track: hit and switch. The heading swings ±wander between
+  // switches, so the boat weaves; drawn sideways ×ex (the bigger weave fills
+  // 9 px of its lane). Where a side is under 4 px long it's drawn straight.
+  const weave = (X) => {
+    const r = results[X.toLowerCase()], v = race.metres / Math.max(1, race[`t${X}`]);
+    const side = r.strokesPerSide * (v * 60) / r.params.rateSpm, w = (r.headingWanderDeg * Math.PI) / 180;
+    return { side, w, amp: (w * side) / 4 };
+  };
+  const wv = { A: weave("A"), B: weave("B") }, ex = 9 / Math.max(1e-6, wv.A.amp, wv.B.amp);
+  const sway = (X, d) => {
+    const { side, w } = wv[X], k = Math.floor(d / side), u = d - k * side;
+    return (k % 2 ? -1 : 1) * w * (u - (u * u) / side) * ex;
+  };
+  const track = (X, d, y) => {
+    if (x(d) < left) return "";
+    const from = Math.max(0, s0), to = Math.min(d, s0 + span), px = (wv[X].side / span) * (right - left);
+    if (px < 4) return `<line class="line-${X.toLowerCase()}" x1="${x(from)}" x2="${x(to)}" y1="${y}" y2="${y}"/>`;
+    const n = Math.min(2000, Math.max(2, Math.ceil(x(to) - x(from)) / 2));
+    let dd = "";
+    for (let i = 0; i <= n; i++) { const di = from + ((to - from) * i) / n; dd += `${i ? "L" : "M"}${x(di).toFixed(1)},${(y - sway(X, di)).toFixed(1)}`; }
+    return `<path class="line-${X.toLowerCase()}" d="${dd}"/>`;
+  };
+  g += track("A", dA, laneY[0]) + track("B", dB, laneY[1]);
   // A boat behind the view shows how far back it is.
-  const canoe = (d, y, cls) => x(d) < left ? `<text class="strong" x="${left + 6}" y="${y + 4}">◀ ${fmtNum(lead - d, 0)} m</text>` :
-    boatIcon(Math.min(right, Math.max(left + 26, x(d))), y, 0, cls);
-  g += canoe(dA, laneY[0], "boat-a") + canoe(dB, laneY[1], "boat-b") +
+  const canoe = (X, d, y, cls) => {
+    if (x(d) < left) return `<text class="strong" x="${left + 6}" y="${y + 4}">◀ ${fmtNum(lead - d, 0)} m</text>`;
+    const px = (wv[X].side / span) * (right - left), yy = px < 4 ? y : y - sway(X, d);
+    const ang = px < 4 ? 0 : (Math.atan2(-(sway(X, d + 0.5) - sway(X, d - 0.5)), x(d + 0.5) - x(d - 0.5)) * 180) / Math.PI;
+    return boatIcon(Math.min(right, Math.max(left + 26, x(d))), yy, ang, cls);
+  };
+  g += canoe("A", dA, laneY[0], "boat-a") + canoe("B", dB, laneY[1], "boat-b") +
     `<text class="strong" x="8" y="${laneY[0] + 4}">A</text><text class="strong" x="8" y="${laneY[1] + 4}">B</text>`;
   svg.innerHTML = g;
 }
@@ -1909,9 +1938,11 @@ function drawCourseRace(dA, dB) {
     k = Math.min((W - 24) / Math.max(1, x1 - x0), (H - 34) / Math.max(1, y1 - y0));
     ox = (W - (x1 - x0) * k) / 2 - x0 * k; oy = (H - 10 - (y1 - y0) * k) / 2 - y0 * k; d0 = 0; d1 = L;
   } else {
-    const c = cb.at((dA + dB) / 2);
+    // Between the boats; when they're further apart than the view, on the
+    // leader (the other shows how far behind it is).
+    const lead = Math.max(dA, dB), dc = lead - Math.min(Math.abs(dA - dB) / 2, 0.3 * S), c = cb.at(dc);
     k = (2 * (H - 40)) / S; ox = W / 2 - c[0] * k; oy = (H - 10) / 2 - c[1] * k;
-    d0 = (dA + dB) / 2 - 1.5 * S; d1 = (dA + dB) / 2 + 1.5 * S;
+    d0 = dc - 1.5 * S; d1 = dc + 1.5 * S;
   }
   const P = (p) => [ox + p[0] * k, oy + p[1] * k];
   const line = (a, b) => {
@@ -1925,20 +1956,53 @@ function drawCourseRace(dA, dB) {
     return s;
   };
   let g = `<rect class="bank" x="0" y="0" width="${W}" height="${H}"/>`;
+  // Zoomed in, each boat's line shows: the river is then drawn at least 22 px
+  // wide (a sketch, like the River view's band) so the lines can be told apart.
+  const showLines = S < Math.min(L * 0.999, 2500);
+  const riverPx = (s) => s.kind === "portage" ? 2 : s.kind === "pond" ? Math.max(4, Math.min(60, Math.max(60, s.width) * k)) :
+    Math.max(showLines ? 22 : 4, Math.min(60, s.width * k));
   for (const s of cb.sections) {
     if (s.d1 < d0 || s.d0 > d1) continue;
     const a = Math.max(d0, s.d0), b = Math.min(d1, s.d1);
-    const w = s.kind === "portage" ? 2 : Math.max(4, Math.min(60, (s.kind === "pond" ? Math.max(60, s.width) : s.width) * k));
+    const w = riverPx(s);
     g += `<path d="${line(a, b)}" fill="none" stroke="${s.kind === "portage" ? "var(--muted)" : "var(--water-line)"}" stroke-opacity="${s.kind === "portage" ? 1 : 0.55}" ` +
       `stroke-width="${w.toFixed(1)}" stroke-linecap="round" stroke-linejoin="round"${s.kind === "portage" ? ' stroke-dasharray="4 3"' : ""}/>`;
   }
   const z = P(cb.at(L));
   if (L >= d0 && L <= d1) g += `<rect x="${z[0] - 5}" y="${z[1] - 5}" width="10" height="10" fill="var(--text-primary)"/>`;
+  // Each boat's line across the channel (Middle, Between, Edges, Best line):
+  // toward the inside of the bend by its line × half the river's width, as drawn.
+  const R = 40, kappa0 = 1 / 120;   // m; full offset on a bend of radius 120 m or tighter
+  const offsetAt = (x, d, sec) => {
+    if (!sec || sec.kind !== "river") return [0, 0];
+    const hw = riverPx(sec) / 2 - 3, u = segAt(race[`profile${x}`], Math.min(d, L - 1e-6)).line || 0;
+    if (hw < 4 || !u) return [0, 0];
+    const a = cb.at(Math.max(0, d - R)), b = cb.at(d), c = cb.at(Math.min(L, d + R));
+    const m = [(a[0] + c[0]) / 2 - b[0], (a[1] + c[1]) / 2 - b[1]], len = Math.hypot(...m);
+    if (len < 1e-6) return [0, 0];
+    const f = Math.min(1, (2 * len) / (R * R) / kappa0) * u * hw;   // toward the centre of the bend
+    return [(m[0] / len) * f, (m[1] / len) * f];
+  };
+  const secAt = (d) => cb.sections.find((q) => d >= q.d0 && d < q.d1) || cb.sections[cb.sections.length - 1];
+  if (showLines) {
+    for (const x of ["B", "A"]) {
+      let dstr = "", last = null;
+      for (let i = 0; i < cb.cum.length; i++) {
+        const d = cb.cum[i];
+        if (d < d0 || d > d1) continue;
+        const q = P(cb.xy[i]);
+        if (last && Math.hypot(q[0] - last[0], q[1] - last[1]) < 2) continue;
+        const o = offsetAt(x, d, secAt(d));
+        dstr += `${dstr ? "L" : "M"}${(q[0] + o[0]).toFixed(1)},${(q[1] + o[1]).toFixed(1)}`; last = q;
+      }
+      g += `<path class="line-${x.toLowerCase()}" d="${dstr}"/>`;
+    }
+  }
   const behind = [];
   // Close together, B's label goes below its boat so the two don't print on top of each other.
   const qa = P(cb.at(dA)), qb = P(cb.at(dB)), near = Math.hypot(qa[0] - qb[0], qa[1] - qb[1]) < 16;
   for (const [x, d] of [["B", dB], ["A", dA]]) {
-    const q = P(cb.at(d)), p = P(cb.at(d - Math.max(5, S / 200)));
+    const o = showLines ? offsetAt(x, d, secAt(d)) : [0, 0], q0 = P(cb.at(d)), q = [q0[0] + o[0], q0[1] + o[1]], p = P(cb.at(d - Math.max(5, S / 200)));
     if (q[0] < 0 || q[0] > W || q[1] < 0 || q[1] > H - 20) { behind.push(`${x} ${fmtNum(Math.abs(dA - dB), 0)} m ${d < Math.max(dA, dB) ? "behind" : "ahead"}`); continue; }
     g += boatIcon(q[0], q[1], (Math.atan2(q[1] - p[1], q[0] - p[0]) * 180) / Math.PI, `boat-${x.toLowerCase()}`) +
       `<text class="strong" x="${q[0].toFixed(1)}" y="${(q[1] + (near && x === "B" ? 20 : -10)).toFixed(1)}" text-anchor="middle">${x}</text>`;
@@ -1950,6 +2014,7 @@ function drawCourseRace(dA, dB) {
   const sec = segAt(race.profileA, Math.min(Math.max(dA, dB), L - 1e-6));
   g += `<text class="strong" x="8" y="16">${S >= L * 0.999 ? "Whole course" : sec.name || ""}</text>`;
   if (behind.length) g += `<text class="strong" x="8" y="34">◀ ${behind.join(" · ")}</text>`;
+  if (showLines) g += `<text class="strong" x="8" y="${behind.length ? 52 : 34}"><tspan fill="var(--series-1)">A</tspan> solid · <tspan fill="var(--series-2)">B</tspan> dashed</text>`;
   const wind = parseFloat($("wind").value);
   if (wind > 0) {
     const a = rd(parseFloat($("windDir").value) + 180), cx = W - 22, cy = 22;   // arrow points where the wind blows
