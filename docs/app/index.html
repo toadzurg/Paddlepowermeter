@@ -148,6 +148,10 @@
 </head>
 <body>
 <main>
+  <div class="card notice" id="js-status">
+    <p id="js-status-text">Starting the app… If this message stays, the
+      app's script didn't run in this browser.</p>
+  </div>
   <header>
     <h1>Paddle Power</h1>
     <span class="pill" id="pill" data-state="off"><i></i><span id="pill-text">Not connected</span></span>
@@ -285,11 +289,34 @@
   </section>
 
   <footer>Works with Chrome or Edge on a laptop, and Bluefy on iPhone. Your bike
-    computer can stay connected at the same time.</footer>
+    computer can stay connected at the same time.
+    <span id="version"></span></footer>
 </main>
 
 <script>
+// Deliberately old-style JavaScript, in its own script block, so it runs
+// even if the main script below fails to parse in this browser. Shows any
+// error on the page: phone browsers like Bluefy have no developer console.
+(function () {
+  function show(msg) {
+    var box = document.getElementById("js-status");
+    var text = document.getElementById("js-status-text");
+    if (!box || !text) return;
+    box.hidden = false;
+    box.style.borderLeftColor = "var(--critical)";
+    text.textContent = "App error (please send this to the developer): " + msg;
+  }
+  window.addEventListener("error", function (e) {
+    show((e.message || "unknown error") + " at line " + (e.lineno || "?") + ":" + (e.colno || "?"));
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    show("unhandled: " + (e.reason && e.reason.message ? e.reason.message : String(e.reason)));
+  });
+})();
+</script>
+<script>
 "use strict";
+const APP_VERSION = "2026-10-15.2";
 // Must match src/BleProtocol.h.
 const UUID = {
   service: "7e1a0001-5c3b-4c2e-9a77-0f5d3e2b9c10",
@@ -726,19 +753,27 @@ function startDemo() {
   };
   setValue("v-batt", "87", "%");
   $("connect").textContent = "Stop demo";
+  $("demo").textContent = "Stop demo";
   setPill("live", "Demo");
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 function stopDemo() {
   if (!state.demo) return;
   clearInterval(state.demo.timer);
   state.demo = null;
   $("connect").textContent = "Connect";
+  $("demo").textContent = "Try demo";
   setPill("off", "Not connected");
 }
-$("demo").addEventListener("click", startDemo);
+$("demo").addEventListener("click", () => (state.demo ? stopDemo() : startDemo()));
 $("demo-2").addEventListener("click", startDemo);
 
 if (!navigator.bluetooth) $("unsupported").hidden = false;
+$("version").textContent = `App version ${APP_VERSION}.`;
+if (/[?&]demo\b/.test(location.search)) startDemo();
+// The script got this far, so the "Starting the app…" note can go (unless
+// the error reporter has already replaced it with an error).
+if (!$("js-status-text").textContent.startsWith("App error")) $("js-status").hidden = true;
 
 // Exposed for tests.
 window.ppm = { decodeLive, decodeStroke, onLive, onStroke, onReplyChunk, state };

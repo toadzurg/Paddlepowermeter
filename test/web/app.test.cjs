@@ -229,6 +229,26 @@ function liveHex(seq, tMs, inDrive, force) {
     await ctx.close();
   }
 
+  // ------------------------------------------------- startup diagnostics
+  console.log("\nWeb app: startup diagnostics");
+  {
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    await page.goto(pageUrl);
+    check("'Starting the app' note hidden once the script runs", !(await page.isVisible("#js-status")));
+    check("version shown", /App version \d{4}-\d\d-\d\d/.test(await page.textContent("#version")));
+
+    // A copy of the page whose main script can't parse, as an engine
+    // missing some syntax would see it.
+    const broken = path.resolve(shotDir || "/tmp", "broken.html");
+    fs.writeFileSync(broken, fs.readFileSync(path.join(root, "docs/app/index.html"), "utf8")
+      .replace('const APP_VERSION', 'const APP_VERSION = = '));
+    await page.goto("file://" + broken);
+    const msg = await page.textContent("#js-status-text");
+    check("parse error reported on the page", msg.startsWith("App error") && /line \d+/.test(msg), msg);
+    await ctx.close();
+  }
+
   // ----------------------------------------------------------------- demo
   console.log("\nWeb app: demo mode");
   {
@@ -240,10 +260,18 @@ function liveHex(seq, tMs, inDrive, force) {
     await page.goto(pageUrl);
     await page.click("#demo-2");
     await page.waitForTimeout(4000);
+    check("demo button shows it's running", (await page.textContent("#demo")) === "Stop demo");
     check("demo shows stroke power", /^\d+W$/.test(await page.textContent("#v-power")),
           await page.textContent("#v-power"));
     check("demo draws force curves", await page.isVisible("#chart"));
+    await page.click("#demo");
+    check("demo button stops it", (await page.textContent("#demo")) === "Try demo" &&
+          (await page.textContent("#pill-text")) === "Not connected");
     check("no page errors", errors.length === 0, errors.join("; "));
+
+    await page.goto(pageUrl + "?demo");
+    await page.waitForTimeout(1500);
+    check("?demo link starts the demo", (await page.textContent("#pill-text")) === "Demo");
     await ctx.close();
   }
 
