@@ -92,6 +92,7 @@
     background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border);
   }
   button.primary { background: var(--button); color: var(--button-text); border-color: var(--button); }
+  button:disabled { opacity: 0.4; cursor: default; }
   button.small { min-height: 34px; padding: 5px 10px; font-size: 14px; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   /* Choice chips: the selected one gets a coloured outline, tint and tick. */
@@ -115,7 +116,7 @@
   table.cmp td.d { font-size: 13px; color: var(--text-secondary); white-space: nowrap; }
   table.cmp tr.hero td.v { font-size: 26px; }
   @media (max-width: 480px) { table.cmp tr.hero td.v { font-size: 21px; } table.cmp td.v { font-size: 15px; }
-    table.cmp th:last-child, table.cmp td.d { display: none; } table.cmp th, table.cmp td { padding: 6px 4px; } }
+    #cmp th:last-child, #cmp td.d { display: none; } table.cmp th, table.cmp td { padding: 6px 4px; } }
   table.cmp td.v.win { border-radius: 6px; }
   table.cmp td.v.win.a { background: color-mix(in srgb, var(--series-1) 14%, transparent); }
   table.cmp td.v.win.b { background: color-mix(in srgb, var(--series-2) 14%, transparent); }
@@ -237,8 +238,16 @@
   svg.race .line-a, svg.race .line-b { fill: none; stroke-width: 2.5; stroke-linecap: round; }
   svg.race .line-a { stroke: var(--series-1); } svg.race .line-b { stroke: var(--series-2); stroke-dasharray: 6 4; }
   svg.race .flow { stroke: var(--water-line); stroke-width: 1.5; fill: none; }
-  svg.race .progress-track { fill: var(--grid); }
-  svg.race .progress-a { fill: var(--series-1); } svg.race .progress-b { fill: var(--series-2); }
+  /* Replay scrubber, speed along the course, stats at the scrubbed point. */
+  .scrub { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
+  .scrub input[type=range] { flex: 1; margin: 0; }
+  .scrub button { min-height: 36px; padding: 4px 10px; }
+  .scrub-info { display: flex; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap; }
+  svg.curve .bendband { fill: var(--water); }
+  svg.curve .turn { stroke: var(--text-secondary); stroke-dasharray: 3 3; }
+  svg.curve .marker { stroke: var(--text-primary); stroke-width: 1; }
+  table.stats td.v { font-size: 15px; white-space: nowrap; }
+  table.stats td.v small { margin-left: 3px; }
 
   /* Help: a small ? that shows a tip on hover (mouse) or tap (touch). */
   button.info { display: inline-flex; align-items: center; justify-content: center; position: relative;
@@ -403,6 +412,12 @@
           </details>
           <svg class="race river-only" id="river-map" role="img" aria-label="River map with each boat's line" hidden></svg>
           <svg class="race" id="race-view" role="img" aria-label="Race between boat A and boat B"></svg>
+          <div class="scrub">
+            <button id="scrub-back" aria-label="Step back">◀</button>
+            <input type="range" id="scrub" min="0" max="1000" step="1" value="1000" aria-label="Race time: drag to replay">
+            <button id="scrub-fwd" aria-label="Step forward">▶</button>
+          </div>
+          <div class="sub scrub-info"><span id="scrub-time"></span><span id="scrub-where"></span></div>
           <div class="row" style="margin-top:8px">
             <button class="primary" id="race-start">Start race</button>
             <button id="race-pause" disabled>Pause</button>
@@ -410,6 +425,10 @@
             <span class="row chips"><button type="button" id="race-slow" aria-pressed="false">Slow motion</button></span>
           </div>
           <div class="note" id="race-status"></div>
+          <h3>Speed along the course<button type="button" class="info" data-tip="Each boat's speed over the ground at each point. Shaded: bends. Drag the slider above to move the marker." aria-label="What is this?">?</button></h3>
+          <svg class="curve" id="race-speed" role="img" aria-label="Each boat's speed along the course"></svg>
+          <h3>At this point<button type="button" class="info" data-tip="Where each boat is at the time on the slider, and how it got there. Drag to replay any part of the race." aria-label="What is this?">?</button></h3>
+          <table class="cmp stats" id="race-stats"><thead><tr><th></th><th><span class="a-dot"></span>A</th><th><span class="b-dot"></span>B</th></tr></thead><tbody></tbody></table>
         </div>
       </section>
 
@@ -969,12 +988,14 @@ function updateRace() {
     gap < 0.05 ? "Dead heat." :
     `Boat ${winner} wins by ${gapText(gap)}, ${fmtNum(dist, dist < 10 ? 1 : 0)} m ahead at the finish ` +
     `(${fmtNum(Math.abs(race.vA - race.vB) / Math.min(race.vA, race.vB) * 100, 1)}% faster).`;
-  // Show the moment the winner crosses the line.
-  const won = [race.tA, race.tB].filter(isFinite);
-  const tWin = won.length ? Math.min(...won) : 3600;
-  if (!run) drawRace(race.posA(tWin), race.posB(tWin));
-  else run.changed = true;   // settings changed mid-race: they apply from here on
+  if (run) run.changed = true;   // settings changed mid-race: they apply from here on
+  else { rec = null; showAt(scrubT === null ? winTime() : Math.min(scrubT, replayEnd())); }
 }
+// The moment the winner crosses the line (an hour in if neither can).
+const winTime = () => {
+  const won = [race.tA, race.tB].filter(isFinite);
+  return won.length ? Math.min(...won) : 3600;
+};
 // Race clock when the animation ends: when the last boat that can finish
 // does (an hour if neither can).
 const raceEnd = () => {
@@ -1056,7 +1077,7 @@ function drawRiver(width, bends, current) {
 // Follow the leader with a window wide enough to show the finishing gap.
 function drawRace(dA, dB, elapsed) {
   const svg = $("race-view");
-  const W = Math.max(280, Math.round(svg.getBoundingClientRect().width)) || 320, H = 150;
+  const W = Math.max(280, Math.round(svg.getBoundingClientRect().width)) || 320, H = 112;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   const L = race.metres, lead = Math.max(dA, dB);
   const span = Math.min(L, Math.max(40, Math.abs(dA - dB) * 2.5));
@@ -1080,56 +1101,164 @@ function drawRace(dA, dB, elapsed) {
   };
   g += canoe(dA, laneY[0], "boat-a") + canoe(dB, laneY[1], "boat-b") +
     `<text class="strong" x="8" y="${laneY[0] + 4}">A</text><text class="strong" x="8" y="${laneY[1] + 4}">B</text>`;
-  const py = 124, pw = right - left;
-  g += `<rect class="progress-track" x="${left}" y="${py}" width="${pw}" height="4" rx="2"/>` +
-    `<rect class="progress-a" x="${left}" y="${py}" width="${pw * dA / L}" height="2" rx="1"/>` +
-    `<rect class="progress-b" x="${left}" y="${py + 2}" width="${pw * dB / L}" height="2" rx="1"/>` +
-    `<text x="${left}" y="${H - 4}">${elapsed === undefined ? "Finish" : clock(elapsed)}</text>` +
-    `<text x="${right}" y="${H - 4}" text-anchor="end">${fmtNum(Math.max(dA, dB) / 1000, 2)} of ${fmtNum(L / 1000, 2)} km</text>`;
   svg.innerHTML = g;
 }
-// A race run. Each frame, each boat moves on at the speed the current
-// settings give it where it is now (its leg), so a change mid-race applies
-// from that moment and the finish times are the ones actually raced. Race
-// time runs so the whole race takes about 12 s on screen (×¼ in slow motion).
-const speedAt = (legs, d) => {
-  let cum = 0;
-  for (const l of legs) { if (d < cum + l.len) return l.v; cum += l.len; }
-  return legs[legs.length - 1].v;
+// ----------------------------------------------------------- race replay
+// A race can be replayed at any moment: from the prediction for the current
+// settings, or, after a run, from what was recorded (settings may have
+// changed during it). A state at time t holds, for each boat, where it is,
+// how fast it's going there, and its totals so far.
+let rec = null;      // { samples, end, changed } of the last finished run
+let scrubT = null;   // replay time; null = the winner's finish
+let dragging = false;
+const segAt = (prof, d) => prof.find((g) => d < g.d1) || prof[prof.length - 1];
+function predicted(x, t) {
+  const prof = race[`profile${x}`], fin = race[`t${x}`], L = race.metres;
+  const tt = Math.min(t, fin), d = Math.min(L, race[`pos${x}`](tt)), g = segAt(prof, Math.min(d, L - 1e-6));
+  const strokes = (tt * g.rate) / 60 * (g.perSide / (g.perSide + g.loss));
+  return { d, v: t >= fin ? 0 : g.v, g, strokes, switches: strokes / g.perSide, energy: g.watts * tt, fin: isFinite(fin) ? fin : null,
+           avgP: g.watts, t: tt };
+}
+function recorded(x, t) {
+  const ss = rec.samples;
+  let i = ss.findIndex((q) => q.t >= t);
+  if (i < 0) i = ss.length - 1;
+  const q = ss[i][x], fin = rec[`fin${x}`];
+  const tt = fin === null ? Math.min(t, ss[i].t) : Math.min(t, fin);
+  return Object.assign({}, q, { fin, t: tt, avgP: tt > 0 ? q.energy / tt : q.g.watts, v: fin !== null && t >= fin ? 0 : q.v });
+}
+const replayEnd = () => (rec ? rec.end : raceEnd());
+const stateAtT = (t) => ({ t, A: (rec ? recorded : predicted)("A", t), B: (rec ? recorded : predicted)("B", t) });
+
+const whereText = (g) => {
+  const leg = race.legsA.length > 1 ? (g.leg === 0 ? "going out" : "coming back") : "";
+  const edge = g.line > 0.88, mid = g.line < 0.12;
+  const kind = { open: "", straight: mid ? "mid-channel" : edge ? "along the bank" : "straight",
+                 crossing: "crossing the river", bend: mid ? "mid-channel bend" : "inside of a bend" }[g.kind];
+  return [kind, leg].filter(Boolean).join(", ");
 };
+function showAt(t) {
+  const st = stateAtT(t), L = race.metres;
+  drawRace(st.A.d, st.B.d, t);
+  const end = run ? Math.max(run.t, 1e-9) : replayEnd();
+  if (!dragging) $("scrub").value = String(Math.round(Math.min(1, t / Math.max(1e-9, end)) * 1000));
+  $("scrub-time").textContent = `${clock(t)} · ${fmtNum(Math.max(st.A.d, st.B.d) / 1000, 2)} of ${fmtNum(L / 1000, 2)} km`;
+  const w = (x) => whereText(st[x].g);
+  $("scrub-where").textContent = [w("A") && `A ${w("A")}`, w("B") && `B ${w("B")}`].filter(Boolean).join(" · ");
+  drawStats(st);
+  drawSpeed(st);
+}
+function drawStats(st) {
+  const row = (label, a, b, unitA = "", unitB = unitA) =>
+    `<tr><td>${label}</td><td class="v">${a}<small>${unitA}</small></td><td class="v">${b}<small>${unitB}</small></td></tr>`;
+  const both = (f, unit) => [f(st.A), f(st.B), unit];
+  const kmh = (v) => fmtNum(v * 3.6, 1);
+  const time = (s) => (s.fin !== null && st.t >= s.fin ? clock(s.fin) : clock(st.t));
+  // + ahead, − behind
+  const lead = st.A.d - st.B.d, gap = (me) => Math.abs(lead) < 0.5 ? "level" :
+    `${(me === "A") === (lead > 0) ? "+" : "−"}${fmtNum(Math.abs(lead), 0)} m`;
+  const rows = [
+    row("Time", ...both((s) => time(s) + (s.fin !== null && st.t >= s.fin ? " ✓" : ""), "")),
+    row("Distance", ...both((s) => fmtNum(s.d / 1000, 2), " km")),
+    row("Speed now", ...both((s) => (s.v > 0 ? kmh(s.v) : "—"), " km/h")),
+    row("Avg speed", ...both((s) => (s.t > 0 ? kmh(s.d / s.t) : "—"), " km/h")),
+    row("Power", ...both((s) => fmtNum(s.g.watts, 0), " W")),
+  ];
+  // Average power only says something new if the power changed mid-race.
+  if (rec && rec.changed && [st.A, st.B].some((s) => Math.abs(s.avgP - s.g.watts) > 0.5))
+    rows.push(row("Avg power", ...both((s) => fmtNum(s.avgP, 0), " W")));
+  rows.push(
+    row("Stroke rate", ...both((s) => fmtNum(s.g.rate, 0), " spm")),
+    row("Strokes", ...both((s) => fmtNum(s.strokes, 0), "")),
+    row("Distance per stroke", ...both((s) => (s.v > 0 ? fmtNum((s.v * 60) / s.g.rate, 2) : "—"), " m")),
+    row("Switches", ...both((s) => fmtNum(s.switches, 0), "")),
+    row("Energy", ...both((s) => fmtNum(s.energy / 1000, 0), " kJ")),
+    `<tr><td>Gap${info("+ ahead, − behind, in metres along the course.")}</td><td class="v">${gap("A")}</td><td class="v">${gap("B")}</td></tr>`,
+  );
+  $("race-stats").tBodies[0].innerHTML = rows.join("");
+}
+// Speed over the ground along the course: the prediction's segments, or
+// the recorded run. Bends shaded; the marker follows the replay.
+function drawSpeed(st) {
+  const svg = $("race-speed"), L = race.metres;
+  const W = Math.max(280, Math.round(svg.getBoundingClientRect().width)) || 320, H = 120;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const m = { l: 60, r: 12, t: 10, b: 22 }, pw = W - m.l - m.r, ph = H - m.t - m.b;
+  const series = (x) => rec
+    ? rec.samples.map((q) => [q[x].d, q[x].v]).filter((p, i, a) => i === 0 || p[0] > a[i - 1][0])
+    : race[`profile${x}`].flatMap((g) => [[g.d0, g.v], [g.d1, g.v]]);
+  const S2 = { A: series("A"), B: series("B") };
+  const vMax = Math.max(0.5, ...S2.A.map((p) => p[1]), ...S2.B.map((p) => p[1])) * 3.6 * 1.1;
+  const ys = niceStep(vMax, 2), yTop = Math.ceil(vMax / ys) * ys;
+  const X = (d) => m.l + (d / L) * pw, Y = (kmh) => m.t + ph - (kmh / yTop) * ph;
+  let g = "";
+  for (const s of race.profileA) if (s.kind === "bend") g += `<rect class="bendband" x="${X(s.d0)}" y="${m.t}" width="${Math.max(1, X(s.d1) - X(s.d0))}" height="${ph}"/>`;
+  for (let f = 0; f <= yTop + 1e-9; f += ys)
+    g += `<line class="${f === 0 ? "axis" : "grid"}" x1="${m.l}" x2="${W - m.r}" y1="${Y(f)}" y2="${Y(f)}"/>` +
+      `<text x="${m.l - 6}" y="${Y(f) + 4}" text-anchor="end">${fmtNum(f, 0)}${f + ys > yTop + 1e-9 ? " km/h" : ""}</text>`;
+  if (race.legsA.length > 1) g += `<line class="turn" x1="${X(L / 2)}" x2="${X(L / 2)}" y1="${m.t}" y2="${m.t + ph}"/>` +
+    `<text x="${X(L / 2) + 4}" y="${m.t + 10}">turn</text>`;
+  g += `<text x="${m.l}" y="${H - 6}">0</text><text x="${W - m.r}" y="${H - 6}" text-anchor="end">${fmtNum(L / 1000, L < 1000 ? 2 : 1)} km</text>`;
+  for (const x of ["A", "B"])
+    g += `<path class="ln ${x.toLowerCase()}" d="${S2[x].map((p, i) => `${i ? "L" : "M"}${X(p[0]).toFixed(1)},${Y(p[1] * 3.6).toFixed(1)}`).join(" ")}"/>`;
+  for (const x of ["A", "B"]) {
+    const s = st[x];
+    g += `<line class="marker" x1="${X(s.d)}" x2="${X(s.d)}" y1="${m.t}" y2="${m.t + ph}" opacity="0.35"/>` +
+      `<circle class="dot ${x.toLowerCase()}" cx="${X(s.d)}" cy="${Y((s.v > 0 ? s.v : segAt(race["profile" + x], Math.min(s.d, L - 1e-6)).v) * 3.6)}" r="4.5"/>`;
+  }
+  svg.innerHTML = g;
+}
+
+// A race run. Each frame, each boat moves on at the speed the current
+// settings give it where it is now (on the course profile), so a change
+// mid-race applies from that moment and the finish times are the ones
+// actually raced. The run is recorded for replay. Race time runs so the
+// whole race takes about 12 s on screen (×¼ in slow motion).
 function raceFrame(now) {
   if (!run) return;
   const dtWall = Math.min(0.1, Math.max(0, (now - run.last) / 1000));
   run.last = now;
+  const L = race.metres;
   if (!run.paused) {
     const dt = dtWall * run.scale * ($("race-slow").getAttribute("aria-pressed") === "true" ? 0.25 : 1);
-    const L = race.metres;
-    for (const [x, legs] of [["A", race.legsA], ["B", race.legsB]]) {
-      if (run[`fin${x}`] !== null) continue;
-      const v = Math.max(0, speedAt(legs, run[`d${x}`]));
-      const d = run[`d${x}`] + v * dt;
-      if (d >= L) { run[`fin${x}`] = run.t + (L - run[`d${x}`]) / v; run[`d${x}`] = L; }
-      else run[`d${x}`] = d;
+    for (const x of ["A", "B"]) {
+      const b = run[x];
+      if (b.fin !== null) continue;
+      const g = segAt(race[`profile${x}`], Math.min(b.d, L - 1e-6)), v = Math.max(0, g.v);
+      let step = dt;
+      if (b.d + v * dt >= L) { step = v > 0 ? (L - b.d) / v : dt; b.fin = run.t + step; b.d = L; }
+      else b.d += v * dt;
+      const strokes = (step * g.rate) / 60 * (g.perSide / (g.perSide + g.loss));
+      b.strokes += strokes; b.switches += strokes / g.perSide; b.energy += g.watts * step;
+      b.v = b.fin !== null ? 0 : v; b.g = g;
     }
     run.t += dt;
+    run.samples.push({ t: run.t, A: Object.assign({}, run.A), B: Object.assign({}, run.B) });
   }
-  const L = race.metres;
-  run.dA = Math.min(run.dA, L); run.dB = Math.min(run.dB, L);
-  drawRace(run.dA, run.dB, run.t);
-  const stuck = (x, legs) => run[`fin${x}`] === null && speedAt(legs, run[`d${x}`]) <= 0;
-  const done = (run.finA !== null || stuck("A", race.legsA)) && (run.finB !== null || stuck("B", race.legsB));
+  for (const x of ["A", "B"]) run[x].d = Math.min(run[x].d, L);
+  if (!dragging) liveShow();
+  const stuck = (x) => run[x].fin === null && segAt(race[`profile${x}`], Math.min(run[x].d, L - 1e-6)).v <= 0;
+  const done = (run.A.fin !== null || stuck("A")) && (run.B.fin !== null || stuck("B"));
   $("race-status").textContent = run.paused ? `Paused at ${clock(run.t)}.` : done ? finishText() : "";
   if (done) endRun(false);
   else requestAnimationFrame(raceFrame);
 }
+// During a run the replay source is the run's own recording so far.
+function liveShow() {
+  rec = { samples: run.samples, end: run.t, finA: run.A.fin, finB: run.B.fin, changed: run.changed };
+  showAt(run.t);
+}
 function finishText() {
-  const t = (x) => (run[`fin${x}`] === null ? "didn't finish" : clock(run[`fin${x}`]));
+  const t = (x) => (run[x].fin === null ? "didn't finish" : clock(run[x].fin));
   return `Raced: A ${t("A")}, B ${t("B")}.` + (run.changed ? " Settings changed mid-race, so this differs from the prediction above." : "");
 }
 function startRun() {
   if (!race) return;
-  run = { t: 0, dA: 0, dB: 0, finA: null, finB: null, last: performance.now(), paused: false, changed: false,
+  const boatRun = () => ({ d: 0, v: 0, fin: null, strokes: 0, switches: 0, energy: 0, g: null });
+  run = { t: 0, A: boatRun(), B: boatRun(), last: performance.now(), paused: false, changed: false, samples: [],
           scale: raceEnd() / (window.sim && window.sim.raceWallS || 12) };
+  run.A.g = segAt(race.profileA, 0); run.B.g = segAt(race.profileB, 0);
+  run.samples.push({ t: 0, A: Object.assign({}, run.A), B: Object.assign({}, run.B) });
   $("race-start").textContent = "Restart race";
   $("race-pause").disabled = $("race-stop").disabled = false;
   $("race-pause").textContent = "Pause";
@@ -1137,14 +1266,19 @@ function startRun() {
   requestAnimationFrame(raceFrame);
 }
 function endRun(stopped) {
-  const status = $("race-status").textContent;
+  const status = $("race-status").textContent, r = run;
   run = null;
   $("race-pause").disabled = $("race-stop").disabled = true;
   $("race-pause").textContent = "Pause";
-  if (stopped) { $("race-status").textContent = "Stopped."; updateRace(); }
-  else $("race-status").textContent = status;
+  if (stopped) { $("race-status").textContent = "Stopped."; rec = null; scrubT = null; updateRace(); return; }
+  // Finished: keep the recording to replay, starting at the winner's finish.
+  const fins = [r.A.fin, r.B.fin].filter((f) => f !== null);
+  rec = { samples: r.samples, end: fins.length ? Math.max(...fins) : r.t, finA: r.A.fin, finB: r.B.fin, changed: r.changed };
+  scrubT = fins.length ? Math.min(...fins) : r.t;
+  $("race-status").textContent = status;
+  showAt(scrubT);
 }
-$("race-start").addEventListener("click", startRun);
+$("race-start").addEventListener("click", () => { scrubT = null; startRun(); });
 $("race-pause").addEventListener("click", () => {
   if (!run) return;
   run.paused = !run.paused;
@@ -1155,6 +1289,17 @@ $("race-slow").addEventListener("click", () => {
   const on = $("race-slow").getAttribute("aria-pressed") !== "true";
   $("race-slow").setAttribute("aria-pressed", String(on));
 });
+// Scrubbing: drag (or step) through the race. During a run it pauses and
+// replays what has been raced so far.
+function scrubTo(frac) {
+  if (run && !run.paused) { run.paused = true; $("race-pause").textContent = "Resume"; }
+  const end = run ? run.t : replayEnd();
+  scrubT = Math.max(0, Math.min(1, frac)) * end;
+  showAt(scrubT);
+}
+$("scrub").addEventListener("input", (e) => { dragging = true; scrubTo(+e.target.value / 1000); dragging = false; });
+$("scrub-back").addEventListener("click", () => scrubTo(+$("scrub").value / 1000 - 0.01));
+$("scrub-fwd").addEventListener("click", () => scrubTo(+$("scrub").value / 1000 + 0.01));
 for (const id of ["effA", "effB", "dist", "depth", "wind", "windDir", "current", "width", "bends"]) $(id).addEventListener("input", updateRace);
 renderCourse();
 

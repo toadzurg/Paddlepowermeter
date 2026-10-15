@@ -204,7 +204,11 @@ and move the sliders.
   Too few loses time switching; too many zigzags.
 - **Race:** A against B, point to point or there and back, with wind,
   current, shallow water, or a river with bends. It also shows each boat's
-  force per stroke at its race effort.
+  force per stroke at its race effort. Drag the slider under the race to
+  replay any moment: a chart of speed along the course, and a table of
+  time, distance, speed, power, stroke rate, strokes, distance per stroke,
+  switches, energy and the gap. After a run it replays what happened,
+  including any changes you made mid-race.
 
 Hull drag comes from a coast-down test of a USCA C-1. The rest follows
 standard hydrodynamics. It's a simplified model: use it to compare
