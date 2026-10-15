@@ -929,6 +929,16 @@ console.log("\nStroke simulator physics");
       await lp.$eval("#scrub", (el) => { el.value = 8; el.dispatchEvent(new Event("input")); });
       for (let i = 0; i < 5; i++) await lp.click("#zoom-in");
       const ld = await lp.$$eval("#course-view path.line-a, #course-view path.line-b", (ps) => ps.map((q) => q.getAttribute("d")));
+      await lp.click("#race-start"); await lp.waitForTimeout(300);
+      const wideHint = /Close-up shows each boat's line/.test(await lp.textContent("#course-view"));
+      await lp.click("#zoom-close"); await lp.waitForTimeout(200);
+      check(`${tag}: AuSable mid-race: Close-up shows the lines in one tap`, wideHint && (await lp.$$("#course-view path.line-a")).length === 1 &&
+            /^Zoomed in, so slowed/.test(await lp.textContent("#race-status")));
+      await lp.click("#race-stop");
+      await lp.$eval("#scrub", (el) => { el.value = 8; el.dispatchEvent(new Event("input")); });
+      for (let i = 0; i < 5; i++) await lp.click("#zoom-in");
+      const ld2 = await lp.$$eval("#course-view path.line-a, #course-view path.line-b", (ps) => ps.map((q) => q.getAttribute("d")));
+      check(`${tag}: Close-up only on a real course`, ld2.length === 2 && (await lp.click("#water >> text=Open water"), await lp.isHidden("#zoom-close")));
       check(`${tag}: AuSable: each boat's line across the channel`, ld.length === 2 && ld[0] !== ld[1] && /A solid · B dashed/.test(await lp.textContent("#course-view")));
       await lp.close();
     }

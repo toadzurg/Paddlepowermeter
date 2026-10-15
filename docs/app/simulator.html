@@ -550,7 +550,7 @@
           </div>
           <div class="verdict" id="verdict"></div>
           <div class="row chips" id="race-zoom" role="group" aria-label="Zoom">
-            <button type="button" id="zoom-out" aria-label="Zoom out">−</button><button type="button" id="zoom-in" aria-label="Zoom in">+</button><button type="button" id="zoom-fit">Fit</button><button type="button" class="info" data-tip="Zoom the race view. Fit shows the finishing gap. Pinch works too (Ctrl + scroll on a computer)." aria-label="What is this?">?</button>
+            <button type="button" id="zoom-out" aria-label="Zoom out">−</button><button type="button" id="zoom-in" aria-label="Zoom in">+</button><button type="button" id="zoom-fit">Fit</button><button type="button" id="zoom-close" hidden>Close-up</button><button type="button" class="info" data-tip="Zoom the race view. Fit shows the finishing gap. Pinch works too (Ctrl + scroll on a computer)." aria-label="What is this?">?</button>
           </div>
           <svg class="race river-only" id="river-map" role="img" aria-label="The river from above: each boat on its line" hidden></svg>
           <svg class="race" id="race-view" role="img" aria-label="Race between boat A and boat B"></svg>
@@ -2015,6 +2015,8 @@ function drawCourseRace(dA, dB) {
   g += `<text class="strong" x="8" y="16">${S >= L * 0.999 ? "Whole course" : sec.name || ""}</text>`;
   if (behind.length) g += `<text class="strong" x="8" y="34">◀ ${behind.join(" · ")}</text>`;
   if (showLines) g += `<text class="strong" x="8" y="${behind.length ? 52 : 34}"><tspan fill="var(--series-1)">A</tspan> solid · <tspan fill="var(--series-2)">B</tspan> dashed</text>`;
+  else g += `<text x="8" y="${behind.length ? 52 : 34}">Close-up shows each boat's line</text>`;
+
   const wind = parseFloat($("wind").value);
   if (wind > 0) {
     const a = rd(parseFloat($("windDir").value) + 180), cx = W - 22, cy = 22;   // arrow points where the wind blows
@@ -2426,6 +2428,7 @@ function showAt(t) {
   shownT = t;
   const st = stateAtT(t), L = race.metres;
   // River: the course from above. Open water: straight lanes.
+  $("zoom-close").hidden = water !== "map";
   if (water === "river") drawRiverRace(st.A.d, st.B.d); else if (water === "map") drawCourseRace(st.A.d, st.B.d); else drawRace(st.A.d, st.B.d, t);
   if (!dragging) $("scrub").value = String(Math.round(Math.min(1, t / Math.max(1e-9, sliderEnd())) * 1000));
   $("scrub-time").textContent = `${clock(t)} · ${fmtNum(Math.max(st.A.d, st.B.d) / 1000, 2)} of ${fmtNum(L / 1000, 2)} km`;
@@ -2639,6 +2642,8 @@ function setZoom(z) { raceZoom = z; if (run) run.userZoomed = true; if (race) sh
 onTap($("zoom-in"), () => setZoom(zoomNow() * 2));
 onTap($("zoom-out"), () => setZoom(zoomNow() / 2));
 onTap($("zoom-fit"), () => { setZoom(1); if (run) run.userZoomed = false; });
+// On a real course: straight to a 1 km view, where each boat's line shows.
+onTap($("zoom-close"), () => setZoom(viewFit / 1000));
 for (const id of ["race-view", "river-map"]) {
   const el = $(id), touches = new Map();
   let pinch = null;
