@@ -234,6 +234,25 @@ console.log("\nStroke simulator physics");
     check(`${tag}: compare-at effort raises speed`, (await cellVal("speed", 2)) > s150 && (await text("#o-effortW")) === "300 W");
     await slide("#c-effortW", 150); await settle();
 
+    // Force curve: A and B through the drive
+    check(`${tag}: force curve has both boats`, (await page.$$("#curve path.ln.a")).length === 1 &&
+          (await page.$$("#curve path.ln.b")).length === 1);
+    check(`${tag}: curve legend: peak, impulse, drive`,
+          /^A: peak \d+ N · impulse [\d.]+ N·s · drive 0\.50 s/.test(await text("#curve-legend")), await text("#curve-legend"));
+    check(`${tag}: curve peak matches the table's peak force`,
+          (await text("#curve-legend")).includes(`peak ${await cellVal("peak", 2)} N`));
+    await page.$eval("#curve-card", (e) => e.scrollIntoView());
+    const cb = await (await page.$("#curve")).boundingBox();
+    await page.mouse.move(cb.x + cb.width * 0.5, cb.y + cb.height / 2);
+    check(`${tag}: hover shows both boats' force`, !(await page.$eval("#curve-tip", (e) => e.hidden)) &&
+          /A \d+ N/.test(await text("#curve-tip")) && (await page.$$("#curve-hover circle")).length === 2, await text("#curve-tip"));
+    await page.mouse.move(cb.x - 20, cb.y - 20);
+    await page.click("#curve-mode >> text=Forward push");
+    check(`${tag}: forward push mode`, JSON.stringify(await pressed("#curve-mode")) === '["forward"]' &&
+          /impulse/.test(await text("#curve-sub")));
+    check(`${tag}: curve table rows`, (await page.$$("#curve-table tr")).length === 12);
+    await page.click("#curve-mode >> text=Blade force");
+
     // Boats and presets
     check(`${tag}: editing A, names shown`, JSON.stringify(await pressed("#boats")) === '["a"]' &&
           (await text("#nm-a")) === "Defaults" && (await text("#nm-b")) === "Wide sweep");
@@ -255,6 +274,9 @@ console.log("\nStroke simulator physics");
     await page.click("#presets >> text=Wide sweep");
     await page.click("#boats [data-boat=a]"); await settle();
     check(`${tag}: drive time readout`, (await text("#o-driveFraction")) === "50% of each stroke");
+    await slide("#c-rateSpm", 30); await settle();
+    check(`${tag}: slower rate, longer drive on the curve`, /^A: .*drive 1\.00 s/.test(await text("#curve-legend")), await text("#curve-legend"));
+    await slide("#c-rateSpm", 60); await settle();
     await page.$eval("#c-bendDeg", (el) => { el.value = -12; el.dispatchEvent(new Event("input")); });
     check(`${tag}: bend readout shows direction`, (await text("#o-bendDeg")) === "12° toward power face");
     await page.click("#presets >> text=Clean vertical"); await settle();

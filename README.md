@@ -201,6 +201,10 @@ between them.
   speed, forward push, strokes per side, turning moment and peak force. Two
   breakdowns show where the power goes (moving the boat, slip, sideways
   drag, surge and bounce) and which way the blade pushes.
+- **Force curve:** A and B through the drive at the comparison effort and
+  each boat's stroke rate, as blade force or forward push (the area under
+  forward push is the stroke's impulse). Hover for values; a table view is
+  included.
 - **Stroke views:** side, end and top, animated, shown split (A beside B),
   overlaid, or one boat only.
 - **Race:** A against B at each paddler's effort.
