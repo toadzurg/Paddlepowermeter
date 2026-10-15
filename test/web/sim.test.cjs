@@ -494,9 +494,9 @@ console.log("\nStroke simulator physics");
     await page.click("#scrub-back"); await page.click("#scrub-back");
     check(`${tag}: step back`, (await page.$eval("#scrub", (e) => +e.value)) === 490);
     // One scale for the whole race: the boats' on-screen gap grows as the real gap does.
-    const pxGap = async (v) => {
+    const pxGap = async (v, sel = "#race-view") => {
       await page.$eval("#scrub", (el, v) => { el.value = v; el.dispatchEvent(new Event("input")); }, v);
-      return page.$$eval("#race-view path.boat-a, #race-view path.boat-b", (ps) =>
+      return page.$$eval(`${sel} path.boat-a, ${sel} path.boat-b`, (ps) =>
         Math.abs(ps.map((p) => parseFloat(/translate\(([-\d.]+)/.exec(p.getAttribute("transform"))[1])).reduce((x, y) => x - y)));
     };
     const [g2, g6, g9] = [await pxGap(200), await pxGap(600), await pxGap(900)];
@@ -510,11 +510,17 @@ console.log("\nStroke simulator physics");
     check(`${tag}: bends shaded`, (await page.$$("#race-speed rect.bendband")).length > 5);
     check(`${tag}: river view replaces the lanes, with both boats on it`, (await page.$eval("#race-view", (e) => e.hasAttribute("hidden"))) &&
           !(await page.$eval("#river-map", (e) => e.hasAttribute("hidden"))) && (await page.$$("#river-map path.boat-a, #river-map path.boat-b")).length === 2);
-    const wheres = new Set();
+    const [r2, r9] = [await pxGap(200, "#river-map"), await pxGap(900, "#river-map")];
+    const rw = await page.$eval("#river-map", (e) => e.viewBox.baseVal.width);
+    check(`${tag}: river gap grows to a clear share of the view`, r2 < r9 && r9 > rw * 0.2, `${r2} → ${r9} of ${rw} px`);
+    // Scrubbing never shifts the page below the replay text.
+    const wheres = new Set(), below = new Set();
     for (let v = 0; v <= 1000; v += 7) {
       await page.$eval("#scrub", (el, v) => { el.value = v; el.dispatchEvent(new Event("input")); }, v);
       wheres.add(await text("#scrub-where"));
+      below.add(await page.$eval("#race-start", (e) => Math.round(e.getBoundingClientRect().top + scrollY)));
     }
+    check(`${tag}: scrubbing doesn't move the page`, below.size === 1, [...below].join(", "));
     const all = [...wheres].join(" | ");
     check(`${tag}: replay passes straights, crossings and bends`, /along the bank/.test(all) && /crossing the river/.test(all) &&
           /inside of a bend/.test(all), all.slice(0, 160));
