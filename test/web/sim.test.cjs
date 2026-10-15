@@ -258,7 +258,7 @@ console.log("\nStroke simulator physics");
     const cellVal = async (row, col) => parseFloat((await page.$eval(`#cmp tr[data-row="${row}"] td:nth-child(${col})`, (e) => e.textContent)).replace("−", "-"));
     const slide = (sel, v) => page.$eval(sel, (el, v) => { el.value = v; el.dispatchEvent(new Event("input")); }, v);
     const secs = (t) => t.split(":").reduce((a, x) => a * 60 + +x, 0);
-    const labels0 = () => page.$$eval("#race-stats tbody tr td:first-child", (ts) => ts.map((t) => t.textContent));
+    const labels0 = () => page.$$eval("#race-stats tbody tr td:first-child", (ts) => ts.map((t) => t.firstChild.textContent));
 
     // Layout: phones put the sliders after the views, wide screens beside them.
     const box = async (sel) => (await page.$(sel)).boundingBox();
