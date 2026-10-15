@@ -351,7 +351,7 @@
       <!-- ----------------------------------------------------- race -->
       <section class="card" id="race-card">
         <h2>Race</h2>
-        <div class="sub">A against B in the same conditions, at steady speed. Starts and turns aren't timed.</div>
+        <div class="sub">A against B in the same conditions. Speed changes along the course; starts and turns aren't timed.</div>
         <div class="race-cols">
           <section>
             <h3>Paddlers</h3>
@@ -477,12 +477,26 @@
 </main>
 
 <div id="tip" role="tooltip" hidden></div>
-<script src="stroke-sim.js"></script>
+<!-- ?v= is a hash of stroke-sim.js (test/web/sim.test.cjs checks it), so a
+     changed engine is never served from a stale cache. -->
+<script src="stroke-sim.js?v=dd75e8da27"></script>
 <script>
 (() => {
 "use strict";
 const $ = (id) => document.getElementById(id);
 const S = window.StrokeSim;
+// An old engine from a stale cache can't run this page: say so plainly.
+const NEEDS_API = 25;
+if (!S || !(S.API_LEVEL >= NEEDS_API)) {
+  const bar = document.createElement("div");
+  bar.className = "card";
+  bar.style.cssText = "margin:12px 16px;border-color:var(--series-2)";
+  bar.innerHTML = "This page was updated, but your browser kept an old copy of part of it. " +
+    '<button class="primary" style="margin-left:8px">Reload</button>';
+  bar.querySelector("button").addEventListener("click", () => location.reload());
+  document.querySelector("main").prepend(bar);
+  throw new Error("stroke-sim.js is out of date (cached); reload the page");
+}
 const fmtNum = (v, d = 0) => v.toFixed(d).replace(/^-/, "−");
 const BOATS = ["a", "b"], NAME = { a: "Boat A", b: "Boat B" };
 

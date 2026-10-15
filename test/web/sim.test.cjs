@@ -14,6 +14,16 @@ function check(name, ok, detail = "") {
 }
 const pct = (x) => `${(x * 100).toFixed(1)}%`;
 
+// The page loads the engine as stroke-sim.js?v=<hash of the file>, so a
+// changed engine is never served stale from a browser cache.
+{
+  const fs = require("fs"), crypto = require("crypto");
+  const hash = crypto.createHash("sha1").update(fs.readFileSync(path.resolve(__dirname, "../../docs/app/stroke-sim.js"))).digest("hex").slice(0, 10);
+  const html = fs.readFileSync(path.resolve(__dirname, "../../docs/app/simulator.html"), "utf8");
+  console.log("\nEngine cache tag");
+  const tagged = html.includes(`stroke-sim.js?v=${hash}`);
+  check(`simulator.html loads stroke-sim.js?v=${hash}`, tagged, tagged ? "" : "update the ?v= in simulator.html");
+}
 console.log("\nStroke simulator physics");
 {
   const base = S.simulate({});
@@ -563,6 +573,17 @@ console.log("\nStroke simulator physics");
       await page.screenshot({ path: path.join(process.argv[2], `sim-${scheme}.png`), fullPage: true });
     }
     check(`${tag}: no page errors`, errors.length === 0, errors.join("; "));
+    // A stale, cached engine: the page asks for a reload instead of breaking.
+    if (scheme === "light") {
+      const old = await ctx.newPage();
+      await old.route("**/stroke-sim.js*", (r) => r.fulfill({ contentType: "text/javascript",
+        body: "window.StrokeSim = { simulate() {}, DEFAULTS: {} };" }));
+      await old.goto("file://" + path.resolve(__dirname, "../../docs/app/simulator.html"));
+      await old.waitForTimeout(300);
+      check(`${tag}: stale engine shows a reload prompt`, /kept an old copy/.test(await old.textContent("main")) &&
+            (await old.$$("main > .card button.primary")).length === 1);
+      await old.close();
+    }
     await ctx.close();
   }
   await browser.close();
