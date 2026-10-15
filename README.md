@@ -80,7 +80,11 @@ accelerometer-difference α measurement and some pivot accuracy.
    with temperature.
 
 Serial commands: `tare`, `cal <N>`, `debug` (10 Hz telemetry), `status`,
-and the `boat ...` commands below.
+`imu` (one reading of both IMUs, for checking axes), and the `boat ...` and
+`log ...` commands below.
+
+Before the first outing, work through the
+[bench test checklist](docs/BENCH_TEST.md).
 
 ## Boat speed (optional impeller)
 
