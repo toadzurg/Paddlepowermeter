@@ -851,7 +851,8 @@
       return { legs: ls, t, v: isFinite(t) ? metres / t : 0, water: (ls.find((l) => l.kind !== "portage") || ls[0]).water, pos, profile };
     };
     const lineOf = (x) => (env.sections ? (env.lines || {})[x] : river && river[`line${x}`]);
-    const A = boat(a, wattsA, lineOf("A")), B = boat(b, wattsB, lineOf("B"));
+    // b can be null to race A alone (B then mirrors A).
+    const A = boat(a, wattsA, lineOf("A")), B = b ? boat(b, wattsB, lineOf("B")) : A;
     const first = Math.min(A.t, B.t);
     return {
       vA: A.v, vB: B.v, waterA: A.water, waterB: B.water, tA: A.t, tB: B.t, metres,
@@ -865,7 +866,7 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 28;
+  const API_LEVEL = 29;
   const PADDLE = paddleOf(DEFAULTS);
   const api = { API_LEVEL, simulate, race, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;

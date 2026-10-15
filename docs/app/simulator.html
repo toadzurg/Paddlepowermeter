@@ -283,6 +283,16 @@
   .cb-editor .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
   .cb-editor .head b { font-size: 15px; }
   .warn { color: var(--cat-side); }
+  #score { border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 4px; }
+  #score .heads { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+  #score .head { border: 1px solid var(--border); border-radius: 12px; padding: 8px 12px; }
+  #score .head .lab { font-size: 13px; font-weight: 600; } #score .head.a .lab { color: var(--series-1); } #score .head.b .lab { color: var(--series-2); }
+  #score .head .big { font-size: 28px; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; }
+  #score .sub2 { font-size: 13px; color: var(--text-secondary); } #score .sub2 b { color: var(--text-primary); }
+  .score-verdict { font-size: 15px; font-weight: 600; margin-top: 8px; }
+  svg.bars { display: block; width: 100%; height: auto; margin-top: 4px; } svg.bars text { font-size: 11.5px; fill: var(--text-secondary); }
+  svg.bars text.strong { fill: var(--text-primary); font-weight: 600; } svg.bars .grid { stroke: var(--grid); }
+  .score-find { margin-top: 8px; font-size: 14px; } .score-find b { font-weight: 600; }
   .ctl .eff { font-size: 13px; margin-top: 3px; padding: 4px 8px; border-radius: 8px; background: var(--water); }
   .ctl .eff b { font-weight: 600; }
   .score { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
@@ -331,7 +341,7 @@
       <!-- ------------------------------------------------ efficiency -->
       <section class="card" id="eff-card">
         <div class="card-head">
-          <h2>Efficiency: A vs B</h2>
+          <h2>Stroke efficiency: A vs B</h2>
           <div class="ctl" style="margin:0;min-width:220px;flex:0 1 280px">
             <label class="top"><span>Compare at<button type="button" class="info" data-tip="The paddler power used for the speed and force numbers, so both strokes are compared at the same effort." aria-label="What is this?">?</button></span><output id="o-effortW"></output></label>
             <input type="range" id="c-effortW" min="50" max="400" step="10" value="150" aria-label="Effort for comparing">
@@ -438,6 +448,16 @@
       <section class="card" id="race-card">
         <h2>Race</h2>
         <div class="sub" id="race-sub">A against B in the same conditions.</div>
+        <section id="score" data-ready="0">
+          <h3>Race score<button type="button" class="info" data-tip="Each boat's stroke, body and boat as time on the race below. Each cost is what that boat would save without it, found by racing it again." aria-label="What is this?">?</button></h3>
+          <div class="sub" id="score-status"></div>
+          <div class="heads" id="score-heads"></div>
+          <div class="score-verdict" id="score-verdict"></div>
+          <h3>Where the time goes</h3>
+          <svg class="bars" id="score-bars" role="img" aria-label="Time each loss costs each boat over the race"></svg>
+          <div class="note">Faded: set by the course (portages) or by physics: a blade has to move water to push, so slip is never zero. A bigger blade or a longer drive cuts it.</div>
+          <div class="score-find" id="score-find"></div>
+        </section>
         <div class="race-cols">
           <section>
             <h3>Paddlers</h3>
@@ -592,14 +612,14 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of stroke-sim.js (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. -->
-<script src="stroke-sim.js?v=2649ae06a4"></script>
+<script src="stroke-sim.js?v=ec267376ce"></script>
 <script>
 (() => {
 "use strict";
 const $ = (id) => document.getElementById(id);
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 28;
+const NEEDS_API = 29;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -1156,8 +1176,18 @@ function updateRace() {
   $("o-bends").textContent = bends === 0 ? "straight" : `${fmtNum(bends / 90, 1)} bends per km (${bends}°/km)`;
   const map = water === "map";
   if (map && !cb) return;   // the course is still loading
+  // The same race for one boat at a time (its line in A's place), for the score.
+  const legsNow = map ? courseLegs() : null;
+  raceSetup = {
+    map, metres: map ? 0 : km * 1000, eff: { a: effA, b: effB },
+    label: `${map ? cb.name : `${fmtNum(km, km < 10 ? 1 : 0)} km ${water === "river" ? "river" : "open water"}${course === "outback" ? ", there and back" : ""}`}, ` +
+      (effA === effB ? `${effA} W` : `A ${effA} W, B ${effB} W`),
+    envFor: (x) => map ? { windSpeed: wind / 3.6, windFrom: dir, sections: legsNow, lines: { A: lines[x], B: lines[x] } } :
+      { windSpeed: wind / 3.6, windAngle: dir, current: current / 3.6, depth: depth >= 5 ? (riverOn ? 5 : Infinity) : depth, course,
+        river: riverOn ? { width, bendsDegPerKm: bends, lineA: lines[x], lineB: lines[x] } : null },
+  };
   race = map ? S.race(results.a, results.b, 0, effA, effB, {
-    windSpeed: wind / 3.6, windFrom: dir, sections: courseLegs(), lines: { A: lines.a, B: lines.b },
+    windSpeed: wind / 3.6, windFrom: dir, sections: legsNow, lines: { A: lines.a, B: lines.b },
   }) : S.race(results.a, results.b, km * 1000, effA, effB, {
     windSpeed: wind / 3.6, windAngle: dir, current: current / 3.6,
     // A river's mid-channel shallows toward the banks, so "deep" there is 5 m.
@@ -1182,6 +1212,7 @@ function updateRace() {
     `Boat ${winner} wins by ${gapText(gap)}, ${fmtNum(dist, dist < 10 ? 1 : 0)} m ahead at the finish ` +
     `(${fmtNum(Math.abs(race.vA - race.vB) / Math.min(race.vA, race.vB) * 100, 1)}% faster).`;
   if (hullCyc.a) drawShallow();   // the race's depth shows on the hull's heat map
+  scheduleScore();
   if (run) run.changed = true;   // settings changed mid-race: they apply from here on
   else { rec = null; showAt(scrubT === null ? winTime() : Math.min(scrubT, replayEnd())); }
 }
@@ -2055,6 +2086,92 @@ function drawShallow() {
   $("hull-shallow").innerHTML = g;
   $("hull-shallow-read").innerHTML = `<span>Colour: extra hull drag, from none to +100% or more. Below the dashed line the boat's wave can't keep up and drag climbs fast.</span>` +
     (depth < 3 ? `<span>Dots: ${water === "map" ? "the shallowest section of your course" : "the race's water depth"}.</span>` : "");
+}
+
+// ------------------------------------------------------------ race score
+// Each boat's stroke, body and boat as time on the race set above: its
+// finish time, and what each loss costs over the race, found by racing the
+// boat again without it. Settings (switch time, swing, drop, heel) are
+// turned off; power losses (slip, surge and bob, crab) are put into the
+// hull instead, which is the same as racing at more power. Worked out in
+// the background, a race at a time, after the settings stop changing.
+let raceSetup = null, scoreGen = 0;
+const simCache = new Map();
+const simOf = (p) => {
+  const k = JSON.stringify(p);
+  if (!simCache.has(k)) { if (simCache.size > 40) simCache.clear(); simCache.set(k, S.simulate(p)); }
+  return simCache.get(k);
+};
+const FIXABLE = { "Body swing": "a quieter body", "Switching": "fewer switches", "Drop": "less drop at the catch", "Crab": "a straighter pull", "Speed swings & bob": "a smoother pull", "Heel": "" };
+const span = (s) => { s = Math.abs(s); return s >= 3600 ? `${Math.floor(s / 3600)}:${String(Math.round((s % 3600) / 60)).padStart(2, "0")} h` : `${Math.floor(s / 60)}:${String(Math.round(s % 60) % 60).padStart(2, "0")}`; };
+function scheduleScore() {
+  const gen = ++scoreGen;
+  $("score").dataset.ready = "0";
+  $("score-status").textContent = "Working it out…";
+  setTimeout(() => runScore(gen), 350);
+}
+async function runScore(gen) {
+  const setup = raceSetup, tick = () => new Promise((res) => setTimeout(res, 0)), out = {};
+  if (!setup || !race) return;
+  for (const x of BOATS) {
+    const r = results[x], p = r.params, W = setup.eff[x], env = setup.envFor(x);
+    const T = (rr, w = W) => S.race(rr, null, setup.metres, w, w, env).tA;
+    const t = race[`t${x.toUpperCase()}`], sh = r.at(W).shares, h = sh.hull;
+    const rows = [];
+    const add = async (name, f) => { rows.push([name, isFinite(t) ? f() : NaN]); await tick(); return gen === scoreGen; };
+    const without = (key, v) => () => t - T(simOf(Object.assign({}, p, { [key]: v })));
+    const loss = (s) => () => t - T(r, (W * (h + s)) / h);
+    if (!(await add("Body swing", p.swingM ? without("swingM", 0) : () => 0))) return;
+    if (!(await add("Switching", without("switchLossStrokes", 0)))) return;
+    if (!(await add("Drop", p.dropM ? without("dropM", 0) : () => 0))) return;
+    if (!(await add("Crab", loss(sh.leeway)))) return;
+    if (!(await add("Speed swings & bob", loss(sh.surge + sh.bounce)))) return;
+    if (!(await add("Heel", p.heelDeg ? without("heelDeg", 0) : () => 0))) return;
+    if (setup.map) rows.push(["Portages", race[`legs${x.toUpperCase()}`].filter((l) => l.kind === "portage").reduce((a, l) => a + l.t, 0)]);
+    if (!(await add("Blade slip", loss(sh.slip)))) return;
+    out[x] = { t, rows };
+  }
+  drawScoreCard(out, setup);
+}
+function drawScoreCard(out, setup) {
+  const val = (x, k) => (out[x].rows.find((q) => q[0] === k) || [0, 0])[1];
+  const fix = (x) => out[x].rows.filter(([k]) => k in FIXABLE).reduce((a, q) => a + (isFinite(q[1]) ? q[1] : 0), 0);
+  $("score-status").textContent = `${setup.label}.`;
+  $("score-heads").innerHTML = BOATS.map((x) => `<div class="head ${x}"><div class="lab">${NAME[x]}</div><div class="big">${clock(out[x].t)}</div>` +
+    `<div class="sub2">${isFinite(out[x].t) ? `technique to find: <b>${span(fix(x))}</b>` : "can't finish"}</div></div>`).join("");
+  const gap = out.a.t - out.b.t, slow = gap > 0 ? "a" : "b";
+  const tech = Object.keys(FIXABLE).filter((k) => out.a.rows.some((q) => q[0] === k));
+  let because = "";
+  if (isFinite(gap) && Math.abs(gap) >= 1) {
+    const k = tech.reduce((best, k2) => ((val(slow, k2) - val(other(slow), k2)) > (val(slow, best) - val(other(slow), best)) ? k2 : best), tech[0]);
+    if (val(slow, k) - val(other(slow), k) > 0.25 * Math.abs(gap)) because = ` Most of it: ${NAME[slow]}'s ${k.toLowerCase()}.`;
+  }
+  $("score-verdict").textContent = !isFinite(out.a.t) || !isFinite(out.b.t) ? "" : Math.abs(gap) < 1 ? "Dead heat." :
+    `${NAME[other(slow)]} is faster by ${span(gap)}.${because}`;
+  // Bars: technique first, biggest first; then what technique can't remove.
+  const sorted = tech.filter((k) => BOATS.some((x) => Math.abs(val(x, k)) >= 0.5))   // what costs neither boat anything stays out
+    .sort((p, q) => Math.max(val("a", q), val("b", q)) - Math.max(val("a", p), val("b", p)));
+  const rows = [...sorted, ...(setup.map ? ["Portages"] : []), "Blade slip"];
+  const W = 360, l = 118, r = 56, rowH = 30, H = rows.length * rowH + 22;
+  const top = Math.max(1, ...sorted.flatMap((k) => BOATS.map((x) => Math.abs(val(x, k)) || 0))), step = niceStep(top, 2), max = Math.ceil(top / step) * step;
+  const X = (s) => l + Math.min(1, Math.abs(s) / max) * (W - l - r);
+  let g = `<text x="${l}" y="12">0</text><text x="${X(max)}" y="12" text-anchor="end">${span(max)}</text><line class="grid" x1="${l}" x2="${l}" y1="16" y2="${H}"/>`;
+  rows.forEach((k, i) => {
+    const y = 22 + i * rowH, fixed = !(k in FIXABLE);
+    if (fixed && rows[i - 1] in FIXABLE) g += `<line class="grid" x1="0" x2="${W}" y1="${y - 3}" y2="${y - 3}"/>`;
+    g += `<text class="${fixed ? "" : "strong"}" x="0" y="${y + 14}">${k}</text>`;
+    BOATS.forEach((x, j) => {
+      const v = val(x, k), w = isFinite(v) ? X(v) - l : 0;
+      g += `<rect x="${l}" y="${y + j * 12}" width="${Math.max(1, w)}" height="10" fill="${COL[x]}" opacity="${fixed ? 0.45 : 1}"/>` +
+        `<text x="${l + Math.max(1, w) + 4}" y="${y + j * 12 + 9}">${!isFinite(v) ? "—" : `${v < -0.5 ? "saves " : ""}${span(v)}${Math.abs(v) > max ? " ▸" : ""}`}</text>`;
+    });
+  });
+  $("score-bars").setAttribute("viewBox", `0 0 ${W} ${H + 6}`);
+  $("score-bars").innerHTML = g;
+  const win = (x) => { const best = sorted.filter((k2) => FIXABLE[k2]).sort((p, q) => val(x, q) - val(x, p))[0];
+    return best && val(x, best) >= 1 ? `<b>${NAME[x]}:</b> ${FIXABLE[best]}, about <b>${span(val(x, best))}</b>.` : `<b>${NAME[x]}:</b> nothing big left to fix.`; };
+  $("score-find").innerHTML = `Biggest win. ${BOATS.map(win).join(" ")}`;
+  $("score").dataset.ready = "1";
 }
 
 // ----------------------------------------------------------- race replay
