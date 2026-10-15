@@ -306,7 +306,7 @@
       ? Math.min(MAX_STROKES_PER_SIDE, Math.max(1, (2 * rad(p.switchHeadingDeg)) / turnPerStroke))
       : MAX_STROKES_PER_SIDE;
     const wander = Math.min(Math.PI / 2, (perSide * turnPerStroke) / 2);
-    return { perSide, duty: perSide / (perSide + p.switchLossStrokes), wander, course: 1 - (wander * wander) / 6 };
+    return { perSide, duty: perSide / (perSide + p.switchLossStrokes), wander, course: 1 - (wander * wander) / 6, turnPerStroke };
   }
 
   function simulate(params) {
@@ -389,6 +389,7 @@
       strokesPerSide: sw.perSide,
       headingWanderDeg: sw.wander * 180 / Math.PI,   // ± about the course
       courseFactor: sw.course,
+      turnPerStroke: sw.turnPerStroke,               // rad of heading per stroke
       switchDuty: sw.duty,
       forceShare: { forward: share(0), sideways: share(1), vertical: share(2) },
       yawMoment: yawMean,  // N·m; > 0 turns the bow away from the paddle side
@@ -429,26 +430,45 @@
     const e = r.at(watts), k = e.hullK, budget = k * Math.pow(e.waterSpeed, 3);
     const loss = r.params.switchLossStrokes, fixed = r.params.switchStrokes > 0;
     const M = Math.abs(r.yawAt(watts));
-    // Strokes per side scale as yaw damping (∝ V) over the turning moment,
-    // anchored to the stroke's own calm figure.
     const tol = rad(r.params.switchHeadingDeg);
-    const raw = Math.abs(r.yawMoment) > 1e-9 ? (2 * tol * yawDamping(r.speed)) / (Math.abs(r.yawMoment) * r.cycle) : Infinity;
     const head = c.windSpeed * Math.cos(rad(c.windAngle)), cross = Math.abs(c.windSpeed * Math.sin(rad(c.windAngle)));
     const qPlan = (V) => 0.5 * RHO * V * V * Math.PI * Math.pow(2 * HULL_DRAFT, 2);
-    const perSide = (V, m) => fixed ? r.strokesPerSide : m > 1e-9 && isFinite(raw)
-      ? Math.min(MAX_STROKES_PER_SIDE, Math.max(1, raw * (M / m) * (V / e.waterSpeed))) : MAX_STROKES_PER_SIDE;
-    const calmN = perSide(e.waterSpeed, M), calmDuty = calmN / (calmN + loss);
+    // Heading turned per stroke under a moment m at speed V: the stroke's own
+    // figure (scale-free) scaled by m/M, and by 1/V for the hull's damping.
+    const turn = (m, V) => r.turnPerStroke * (M > 1e-9 ? m / M : 0) * (e.waterSpeed / Math.max(1e-6, V));
+    const clampN = (n) => Math.min(MAX_STROKES_PER_SIDE, Math.max(1, n));
+    // Switching with the wind's turning moment W (bow into the wind) added to
+    // the stroke's on the lee side and taken from it on the windward side.
+    //  - by heading: each side swings ±tol, so it lasts 2·tol / turn strokes;
+    //  - fixed count N: to hold the course over a windward + lee pair the
+    //    turns must cancel, Nw·(M − W) = Nl·(M + W), with Nw + Nl = 2N. The
+    //    heading then wanders ±Nw·turn(M − W)/2.
+    // Returns strokes each side, the share of time paddling, the wander (rad)
+    // and the progress factor 1 − ψ²/6.
+    const switchIn = (V, W) => {
+      let windward, lee, wander;
+      if (fixed) {
+        const N = r.strokesPerSide;
+        windward = (N * (M + W)) / Math.max(1e-9, M); lee = (N * (M - W)) / Math.max(1e-9, M);
+        wander = (windward * turn(M - W, V)) / 2;
+      } else {
+        const per = (m) => { const t = turn(m, V); return t > 1e-12 ? clampN((2 * tol) / t) : MAX_STROKES_PER_SIDE; };
+        windward = per(M - W); lee = per(M + W);
+        wander = Math.max(windward * turn(M - W, V), lee * turn(M + W, V)) / 2;
+      }
+      wander = Math.min(Math.PI / 2, wander);
+      return { windward, lee, duty: (windward + lee) / (windward + lee + 2 * loss), wander, course: 1 - (wander * wander) / 6 };
+    };
+    const calm = switchIn(e.waterSpeed, 0), calmDuty = calm.duty;
     const state = (V) => {
       const ux = V + c.current + head, uy = cross, u = Math.hypot(ux, uy);
       const airX = 0.5 * RHO_AIR * CDA_AIR * (u * ux - V * V);
       const side = 0.5 * RHO_AIR * CDA_SIDE * u * uy;
       const W = side * WIND_ARM;
-      let duty, windward, lee, steer = 0;
-      if (W < M) {
-        windward = perSide(V, M - W); lee = perSide(V, M + W);
-        duty = (windward + lee) / (windward + lee + 2 * loss);
-      } else {           // can't hold course by switching alone
-        windward = Infinity; lee = 0; duty = 1;
+      let duty, windward, lee, wander, course, steer = 0;
+      if (W < M) ({ windward, lee, duty, wander, course } = switchIn(V, W));
+      else {           // can't hold course by switching alone
+        windward = Infinity; lee = 0; duty = 1; wander = 0; course = 1;
         steer = (W - M) / (HULL_L / 2);
       }
       const q = qPlan(V);
@@ -458,6 +478,7 @@
       const shallow = wave * (shallowFactor(V, c.depth) - 1);
       const leeway = V > 0 ? side / (0.5 * RHO * V * V * HULL_L * HULL_DRAFT * HULL_LIFT_SLOPE) : 0;
       return { R: k * V * V + airX + induced + shallow, duty, windward, lee, steer: steer > 0,
+               wanderDeg: wander * 180 / Math.PI, course,
                leewayDeg: Math.min(45, leeway * 180 / Math.PI), shallow: shallowFactor(V, c.depth), sideForce: side };
     };
     let lo = 0, hi = 3 * e.waterSpeed + 10;
@@ -468,7 +489,8 @@
     const V = (lo + hi) / 2;
     // `water` is progress along the course through the water: the zigzag
     // about the course (switching) takes its share.
-    return Object.assign({ water: V * r.courseFactor, waterRaw: V }, state(V));
+    const st = state(V);
+    return Object.assign({ water: V * st.course, waterRaw: V }, st);
   }
   // Back-compatible: speed through the water with a headwind and current.
   function waterSpeed(r, watts, headwind, current) {
