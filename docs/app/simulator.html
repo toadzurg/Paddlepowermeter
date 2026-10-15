@@ -1013,10 +1013,14 @@ const raceEnd = () => {
 };
 // The gap when the winner finishes. The race views keep one scale for the
 // whole race, sized to this, so the gap visibly grows.
+// During a run the recording is still growing, so use the prediction.
 function finalGap() {
-  let t = winTime();
-  if (rec) { const fins = [rec.finA, rec.finB].filter((f) => f !== null); t = fins.length ? Math.min(...fins) : rec.end; }
-  const st = stateAtT(t), g = Math.abs(st.A.d - st.B.d);
+  let st;
+  if (rec && !run) {
+    const fins = [rec.finA, rec.finB].filter((f) => f !== null);
+    st = stateAtT(fins.length ? Math.min(...fins) : rec.end);
+  } else st = { A: predicted("A", winTime()), B: predicted("B", winTime()) };
+  const g = Math.abs(st.A.d - st.B.d);
   return isFinite(g) ? g : 0;
 }
 // A canoe with its nose at (x, y), pointing along deg.

@@ -527,6 +527,17 @@ console.log("\nStroke simulator physics");
     await slide("#current", 0); await slide("#depth", 5);
     await page.click("#water >> text=Open water");
 
+    // Live race, open water: the gap keeps growing on screen (the view doesn't zoom out with it).
+    await page.evaluate(() => { window.sim.raceWallS = 4; });
+    const liveGap = () => page.$$eval("#race-view path.boat-a, #race-view path.boat-b", (ps) =>
+      Math.abs(ps.map((p) => parseFloat(/translate\(([-\d.]+)/.exec(p.getAttribute("transform"))[1])).reduce((x, y) => x - y)));
+    await page.click("#race-start");
+    await page.waitForFunction(() => window.sim.run && window.sim.run.A.d > 4000, null, { timeout: 8000 });
+    const lg1 = await liveGap();
+    await page.waitForFunction(() => window.sim.run && window.sim.run.A.d > 8000, null, { timeout: 8000 });
+    const lg2 = await liveGap();
+    check(`${tag}: live race: lanes gap keeps growing`, lg2 > lg1 * 1.5, `${lg1} → ${lg2} px`);
+    await page.click("#race-stop");
     // Race controls: pause, resume, slow motion, stop; a change mid-race applies from then on.
     await page.evaluate(() => { window.sim.raceWallS = 1.5; });
     const run = () => page.evaluate(() => window.sim.run && { t: window.sim.run.t, dA: window.sim.run.A.d, paused: window.sim.run.paused });
