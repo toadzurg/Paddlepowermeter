@@ -181,7 +181,10 @@ time (up to three devices).
   - impulse per stroke, drive time and duty, and mean push
   - a stroke view: an animated side view of the paddle with the live pivot,
     lever arm and blade force, drawn from the shaft angle the paddle sends
-  - a live force curve: the latest stroke, with the previous four behind it
+  - a force curve: the latest stroke, with the previous four behind it.
+    **Live** draws the stroke as you paddle, with a dot and a "now" force
+    readout; switch it off to hold the last completed stroke still for
+    reading (the choice is remembered)
   - power, force, shaft rate, pivot, battery and SD-log status right now
 - **Setup tab:** buttons for tare, force calibration (enter the mass in kg),
   boat pairing and calibration, and SD logging, plus a console for any
