@@ -171,6 +171,17 @@ time (up to three devices).
   needed. The demo's pivot wanders between strokes the way the paddle's
   estimate does, and power follows the changing lever arm.
 
+**Stroke simulator** (`docs/app/simulator.html`, linked from the app): sliders
+for the pivot point, reach and exit angles, shaft lean, stroke direction,
+sweep, top-hand position, hand travel, bend and rate, with animated side,
+end and top views. It works out stroke efficiency (the share of your power
+that moves the boat) and splits the rest into slip and the cost of steering
+out the turn an off-centre stroke creates. It also gives boat speed at a
+chosen effort and the turning moment. Save a stroke to compare against it.
+
+It is a simplified drag model, good for comparing techniques rather than
+predicting exact speeds. Its steering assumptions are adjustable on the page.
+
 **Opening it:**
 - iPhone: open the link in the free **Bluefy** browser. Safari, Chrome and
   Edge on iPhone can't use Bluetooth.
@@ -284,6 +295,7 @@ lib/                     vendored sensor libraries
 tools/log2csv.py         log → CSV
 tools/replay/            re-run the power model over a log
 docs/app/index.html      web app (Bluetooth dashboard and setup)
+docs/app/simulator.html  stroke simulator (physics in stroke-sim.js)
 docs/BENCH_TEST.md       hardware bench test checklist
 test/host/               PC simulation tests
 test/web/                browser test of the web app (simulated paddle)

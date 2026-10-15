@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fcfcfb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1a1a19" media="(prefers-color-scheme: dark)">
+<title>Stroke Simulator</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface-0: #f3f2ee;
+    --surface-1: #fcfcfb;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --border: #e1e0d9;
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
+    --series-3: #1baf7a;
+    --water: rgba(42, 120, 214, 0.10);
+    --water-line: #86b6ef;
+    --good: #0ca30c;
+    --button: #0b0b0b;
+    --button-text: #fcfcfb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --surface-0: #111110;
+      --surface-1: #1a1a19;
+      --text-primary: #f0efec;
+      --text-secondary: #c3c2b7;
+      --muted: #898781;
+      --grid: #2c2c2a;
+      --axis: #383835;
+      --border: #2c2c2a;
+      --series-1: #3987e5;
+      --series-2: #d95926;
+      --series-3: #199e70;
+      --water: rgba(57, 135, 229, 0.14);
+      --water-line: #1c5cab;
+      --button: #f0efec;
+      --button-text: #1a1a19;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--surface-0); color: var(--text-primary);
+    font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-text-size-adjust: 100%;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  main { max-width: 1100px; margin: 0 auto; padding: 12px 16px 48px; }
+  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+  header h1 { font-size: 20px; margin: 0; flex: 1; }
+  a { color: var(--series-1); }
+  .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; }
+  .label { font-size: 13px; color: var(--text-secondary); }
+  .sub { font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .value { font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; font-size: 30px; line-height: 1.15; }
+  .value .unit { font-size: 0.5em; font-weight: 500; color: var(--text-secondary); margin-left: 3px; letter-spacing: 0; }
+  .hero .value { font-size: 52px; }
+  .delta { font-size: 13px; font-variant-numeric: tabular-nums; color: var(--text-secondary); min-height: 1.2em; }
+
+  .layout { display: grid; gap: 12px; }
+  @media (min-width: 900px) { .layout { grid-template-columns: 1fr 360px; align-items: start; } }
+  .tiles { display: grid; gap: 10px; grid-template-columns: repeat(2, 1fr); }
+  @media (min-width: 600px) { .tiles { grid-template-columns: repeat(4, 1fr); } }
+  .views { display: grid; gap: 10px; margin-top: 10px; }
+  @media (min-width: 600px) { .views { grid-template-columns: 1fr 1fr; } .views .wide { grid-column: 1 / -1; } }
+  .views h2, .card h2 { font-size: 15px; margin: 0; }
+  svg.view { display: block; width: 100%; height: auto; margin-top: 4px; }
+  svg.view text { fill: var(--text-secondary); font-size: 12px; }
+  svg.view .water { fill: var(--water); }
+  svg.view .water-line { stroke: var(--water-line); stroke-width: 1.5; }
+  svg.view .hull { fill: var(--grid); fill-opacity: 0.55; stroke: var(--axis); stroke-width: 1.5; }
+  svg.view .centre { stroke: var(--axis); stroke-dasharray: 4 4; }
+  svg.view .shaft { stroke: var(--text-primary); stroke-width: 3.5; stroke-linecap: round; }
+  svg.view .blade { stroke: var(--text-primary); stroke-width: 8; stroke-linecap: round; }
+  svg.view .blade.dry { opacity: 0.45; }
+  svg.view .path { fill: none; stroke: var(--series-1); stroke-width: 2; stroke-linejoin: round; }
+  svg.view .pivot { fill: var(--series-1); stroke: var(--surface-1); stroke-width: 2; }
+  svg.view .force { stroke: var(--series-2); stroke-width: 3; stroke-linecap: round; }
+  svg.view .force-head { fill: var(--series-2); }
+  svg.view .push { stroke: var(--series-2); stroke-width: 1.5; opacity: 0.6; }
+
+  .bar { display: flex; height: 22px; border-radius: 6px; overflow: hidden; gap: 2px; margin: 6px 0 4px; }
+  .bar > span { display: block; height: 100%; }
+  .bar .s1 { background: var(--series-1); } .bar .s2 { background: var(--series-2); } .bar .s3 { background: var(--series-3); }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+  .legend .s1 { background: var(--series-1); } .legend .s2 { background: var(--series-2); } .legend .s3 { background: var(--series-3); }
+  .legend b { color: var(--text-primary); font-weight: 600; }
+
+  .controls .group { margin-bottom: 14px; }
+  .controls h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); margin: 0 0 6px; }
+  .ctl { margin: 10px 0; }
+  .ctl .top { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
+  .ctl .top output { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .ctl .help { font-size: 12px; color: var(--text-secondary); }
+  input[type=range] { width: 100%; margin: 6px 0 2px; height: 28px; accent-color: var(--series-1); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    font: inherit; font-weight: 600; cursor: pointer; border-radius: 10px; padding: 8px 12px; min-height: 40px;
+    background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border);
+  }
+  button.primary { background: var(--button); color: var(--button-text); border-color: var(--button); }
+  details { font-size: 14px; color: var(--text-secondary); }
+  details p { margin: 6px 0; }
+  .note { font-size: 13px; color: var(--text-secondary); margin-top: 6px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Stroke simulator</h1>
+    <a href="./">← Paddle Power app</a>
+  </header>
+
+  <div class="layout">
+    <div>
+      <div class="tiles">
+        <div class="card hero" style="grid-column: 1 / -1">
+          <div class="label">Stroke efficiency</div>
+          <div class="value" id="r-eff">—</div>
+          <div class="delta" id="d-eff"></div>
+          <div class="sub">Share of your power that moves the boat. The rest is lost to slip (churning
+            water) and to steering out the turn the stroke creates. Doesn't depend on effort or
+            rate, only on technique and geometry.</div>
+        </div>
+        <div class="card">
+          <div class="label">Boat speed at <span id="effort-label">150</span> W</div>
+          <div class="value" id="r-speed">—</div>
+          <div class="delta" id="d-speed"></div>
+        </div>
+        <div class="card">
+          <div class="label">Force pushing forward</div>
+          <div class="value" id="r-fwd">—</div>
+          <div class="delta" id="d-fwd"></div>
+        </div>
+        <div class="card">
+          <div class="label">Turning moment</div>
+          <div class="value" id="r-yaw">—</div>
+          <div class="delta" id="d-yaw"></div>
+        </div>
+        <div class="card">
+          <div class="label">Peak blade force</div>
+          <div class="value" id="r-peak">—</div>
+          <div class="delta" id="d-peak"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:10px">
+        <h2>Where your power goes</h2>
+        <div class="bar" id="bar-power"></div>
+        <div class="legend" id="leg-power"></div>
+        <h2 style="margin-top:12px">Which way the blade pushes</h2>
+        <div class="bar" id="bar-force"></div>
+        <div class="legend" id="leg-force"></div>
+        <div class="note" id="yaw-note"></div>
+      </div>
+
+      <div class="views">
+        <div class="card wide">
+          <h2>Side view</h2>
+          <div class="sub">From the paddle side, bow to the right. Blue: blade path through the drive.</div>
+          <svg class="view" id="v-side" role="img" aria-label="Side view of the stroke"></svg>
+        </div>
+        <div class="card">
+          <h2>End view</h2>
+          <div class="sub">From behind, paddle on the right. Shows lean and reach.</div>
+          <svg class="view" id="v-end" role="img" aria-label="End view of the stroke"></svg>
+        </div>
+        <div class="card">
+          <h2>Top view</h2>
+          <div class="sub">Bow up. Orange: the push on the boat along the stroke.</div>
+          <svg class="view" id="v-top" role="img" aria-label="Top view of the stroke"></svg>
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="play">Pause</button>
+        <button id="slow">Slow motion</button>
+      </div>
+    </div>
+
+    <div class="card controls">
+      <div class="group">
+        <h3>Compare</h3>
+        <div class="row">
+          <button class="primary" id="save">Save as comparison</button>
+          <button id="clear-cmp" hidden>Clear</button>
+        </div>
+        <div class="note" id="cmp-note">Save a stroke, change sliders, and the results show the difference.</div>
+      </div>
+      <div class="group">
+        <h3>Presets</h3>
+        <div class="row" id="presets"></div>
+      </div>
+      <div class="group" id="ctl-stroke"><h3>Stroke shape</h3></div>
+      <div class="group" id="ctl-paddle"><h3>Paddle</h3></div>
+      <div class="group" id="ctl-paddler"><h3>Paddler</h3></div>
+      <div class="group" id="ctl-steer"><h3>Steering (assumptions)</h3></div>
+      <details>
+        <summary>How this is calculated</summary>
+        <p>The paddle swings about a pivot point on the shaft. Your top hand rises or drops so
+          the blade stays buried to the throat through the drive, as good technique does, so
+          strokes differ by direction and placement rather than by blade depth.</p>
+        <p>Water pushes on the blade face
+          with drag that grows with the square of the blade's speed through the water. The boat
+          settles where the average forward push equals hull drag (a C1 marathon canoe).</p>
+        <p>Pushing off the boat's centreline turns it: paddling on the right turns the bow left.
+          The simulator charges for cancelling that turn as a J-stroke behind you, using the
+          blade as a rudder, which adds drag. Both settings are under Steering, so you can see
+          how much the answer depends on them, or set them to match how you correct.</p>
+        <p>Your power then splits exactly into moving the boat, steering, and slip (churning
+          water). Sideways and vertical pushing aren't charged directly. They make the blade
+          move faster for the same forward push (more slip) and usually turn the boat more
+          (more steering).</p>
+        <p>This is a simplified model for comparing techniques. It doesn't model boat surge,
+          waves, the blade's lift, or your body. Absolute speeds are approximate; differences
+          between strokes are the useful part.</p>
+      </details>
+    </div>
+  </div>
+</main>
+
+<script src="stroke-sim.js"></script>
+<script>
+(() => {
+"use strict";
+const $ = (id) => document.getElementById(id);
+const S = window.StrokeSim;
+
+// ------------------------------------------------------------- controls
+const CONTROLS = [
+  { group: "ctl-stroke", key: "catchDeg", label: "Reach at the catch", min: 0, max: 60, step: 1, unit: "°",
+    help: "Shaft angle forward of vertical when the blade goes in." },
+  { group: "ctl-stroke", key: "exitDeg", label: "Angle at the exit", min: 0, max: 60, step: 1, unit: "°",
+    help: "Shaft angle behind vertical when the blade comes out." },
+  { group: "ctl-stroke", key: "leanDeg", label: "Shaft lean outward", min: 0, max: 45, step: 1, unit: "°",
+    help: "0° is a vertical shaft, blade tight to the hull." },
+  { group: "ctl-stroke", key: "directionDeg", label: "Stroke direction vs keel", min: -30, max: 30, step: 1, unit: "°",
+    help: "0° pulls straight back along the boat; + angles the pull outward." },
+  { group: "ctl-stroke", key: "sweepDeg", label: "Sweep", min: 0, max: 90, step: 1, unit: "°",
+    help: "How much the blade's path curves around you during the drive." },
+  { group: "ctl-paddle", key: "pivotFromGrip", label: "Pivot point, from the grip", min: 0, max: 0.5, step: 0.01, unit: " m",
+    help: "The point on the shaft that stays put relative to the boat." },
+  { group: "ctl-paddle", key: "bendDeg", label: "Bent shaft", min: -14, max: 14, step: 1, unit: "°",
+    fmt: (v) => v === 0 ? "straight" : `${Math.abs(v)}° ${v > 0 ? "toward bow" : "toward power face"}`,
+    help: "Which way and how far the blade is angled off the shaft." },
+  { group: "ctl-paddler", key: "handOutM", label: "Top hand from centreline", min: 0.15, max: 0.9, step: 0.01, unit: " m",
+    help: "The gunwale is about 0.36 m out on a C1." },
+  { group: "ctl-paddler", key: "handTravelM", label: "Hand travel during the drive", min: 0, max: 0.4, step: 0.01, unit: " m",
+    help: "How far the pivot moves aft as you pull." },
+  { group: "ctl-paddler", key: "rateSpm", label: "Stroke rate", min: 30, max: 90, step: 1, unit: " spm",
+    help: "Changes speed and power together; efficiency stays the same." },
+  { group: "ctl-paddler", key: "effortW", label: "Effort for comparing speed", min: 50, max: 400, step: 10, unit: " W",
+    help: "Boat speed is shown at this paddler power, so strokes compare fairly." },
+  { group: "ctl-steer", key: "steerArmM", label: "Correction point behind you", min: 0.3, max: 1.2, step: 0.05, unit: " m",
+    help: "Where the J-stroke acts, aft of the boat's centre. Farther back needs less force." },
+  { group: "ctl-steer", key: "steerLD", label: "Correction efficiency (lift/drag)", min: 2, max: 20, step: 1, unit: "",
+    help: "Sideways force per unit of drag when steering. ~4 for a J-stroke; set high if you switch sides instead." },
+];
+const params = Object.assign({}, S.DEFAULTS, { effortW: 150 });
+for (const c of CONTROLS) {
+  const wrap = document.createElement("div");
+  wrap.className = "ctl";
+  wrap.innerHTML = `<label class="top"><span>${c.label}</span><output id="o-${c.key}"></output></label>
+    <input type="range" id="c-${c.key}" min="${c.min}" max="${c.max}" step="${c.step}" aria-label="${c.label}">
+    <div class="help">${c.help}</div>`;
+  $(c.group).append(wrap);
+  const input = wrap.querySelector("input");
+  input.value = params[c.key];
+  input.addEventListener("input", () => { params[c.key] = parseFloat(input.value); update(); });
+}
+const showValue = (c) => {
+  const v = params[c.key];
+  $(`o-${c.key}`).textContent = c.fmt ? c.fmt(v) : `${+v.toFixed(c.step < 1 ? 2 : 0)}${c.unit}`;
+};
+function setParams(p) {
+  Object.assign(params, S.DEFAULTS, { effortW: params.effortW }, p);
+  for (const c of CONTROLS) $(`c-${c.key}`).value = params[c.key];
+  update();
+}
+
+const PRESETS = {
+  "Clean vertical": { leanDeg: 2, handOutM: 0.38, directionDeg: 0, sweepDeg: 0 },
+  "Shaft leaning out": { leanDeg: 30, handOutM: 0.55 },
+  "Wide sweep": { leanDeg: 40, sweepDeg: 70, handOutM: 0.5, catchDeg: 25, exitDeg: 25 },
+  "Long reach": { catchDeg: 55, exitDeg: 45 },
+  "Defaults": {},
+};
+for (const [name, p] of Object.entries(PRESETS)) {
+  const b = document.createElement("button");
+  b.textContent = name;
+  b.addEventListener("click", () => setParams(p));
+  $("presets").append(b);
+}
+
+// ------------------------------------------------------------- results
+let result = null, baseline = null;
+const fmtNum = (v, d = 0) => v.toFixed(d).replace(/^-/, "−");
+function setValue(id, text, unit) {
+  const el = $(id);
+  el.textContent = text;
+  if (unit) { const u = document.createElement("span"); u.className = "unit"; u.textContent = unit; el.append(u); }
+}
+function delta(id, now, then, unit, digits, betterHigher) {
+  if (then === null || then === undefined) { $(id).textContent = ""; return; }
+  const d = now - then;
+  const better = betterHigher ? d > 0 : d < 0;
+  const tiny = Math.abs(d) < Math.pow(10, -digits) / 2;
+  $(id).textContent = tiny ? "same as saved" :
+    `${d > 0 ? "+" : "−"}${Math.abs(d).toFixed(digits)}${unit} vs saved · ${better ? "better" : "worse"}`;
+}
+
+function summarize(r, effort) {
+  return {
+    eff: r.efficiency * 100,
+    speed: r.speedAt(effort),
+    fwd: r.forceShare.forward * 100,
+    yaw: Math.abs(r.yawAt(effort)),
+    peak: r.peakForce * Math.pow(effort / Math.max(1e-9, r.paddlerPower), 2 / 3),
+  };
+}
+
+let pending = false;
+function update() {
+  for (const c of CONTROLS) showValue(c);
+  if (pending) return;
+  pending = true;
+  requestAnimationFrame(() => {
+    pending = false;
+    result = S.simulate(params);
+    const e = params.effortW;
+    $("effort-label").textContent = e;
+    const s = summarize(result, e), b = baseline ? summarize(baseline, e) : null;
+    setValue("r-eff", fmtNum(s.eff, 1), "%");
+    setValue("r-speed", fmtNum(s.speed, 2), "m/s");
+    setValue("r-fwd", fmtNum(s.fwd, 0), "%");
+    setValue("r-yaw", fmtNum(s.yaw, 0), "N·m");
+    setValue("r-peak", fmtNum(s.peak, 0), "N");
+    delta("d-eff", s.eff, b && b.eff, " pts", 1, true);
+    delta("d-speed", s.speed, b && b.speed, " m/s", 2, true);
+    delta("d-fwd", s.fwd, b && b.fwd, " pts", 0, true);
+    delta("d-yaw", s.yaw, b && b.yaw, " N·m", 0, false);
+    delta("d-peak", s.peak, b && b.peak, " N", 0, false);
+
+    const pw = result.paddlerPower || 1;
+    bar("bar-power", "leg-power", [["moves the boat", 100 * result.hullPower / pw, "s1"],
+                                  ["slip", 100 * result.slipPower / pw, "s2"],
+                                  ["steering", 100 * result.steeringPower / pw, "s3"]]);
+    const f = result.forceShare;
+    bar("bar-force", "leg-force", [["forward", f.forward * 100, "s1"], ["sideways", f.sideways * 100, "s2"],
+                                  ["vertical", f.vertical * 100, "s3"]]);
+    const yaw = result.yawAt(e);
+    $("yaw-note").textContent = Math.abs(yaw) < 1 ? "Practically no turning." :
+      `At ${e} W this turns the bow ${yaw > 0 ? "away from" : "toward"} your paddle side with ${fmtNum(Math.abs(yaw))} N·m on average, ` +
+      `which you correct with a J-stroke or by switching sides. A stroke closer to the hull turns less.`;
+    path = null;  // redraw the blade path
+  });
+}
+function bar(barId, legId, parts) {
+  $(barId).innerHTML = parts.filter((p) => p[1] > 0.5)
+    .map(([, v, cls]) => `<span class="${cls}" style="flex:${v.toFixed(2)}"></span>`).join("");
+  $(legId).innerHTML = parts.map(([name, v, cls]) => `<span><i class="${cls}"></i>${name} <b>${fmtNum(v, 0)}%</b></span>`).join("");
+}
+
+$("save").addEventListener("click", () => {
+  baseline = result;
+  $("clear-cmp").hidden = false;
+  $("cmp-note").textContent = "Saved. Change the sliders to compare against it.";
+  update();
+});
+$("clear-cmp").addEventListener("click", () => {
+  baseline = null;
+  $("clear-cmp").hidden = true;
+  $("cmp-note").textContent = "Save a stroke, change sliders, and the results show the difference.";
+  update();
+});
+
+// ---------------------------------------------------------------- views
+// World: X toward the bow, Y to port, Z up (stroke-sim.js). Each view maps
+// two world axes onto its SVG, sized to its real width so text stays 12px.
+const VIEWS = {
+  side: { id: "v-side", h: (W) => Math.min(320, Math.max(240, W * 0.5)), x: (p) => p[0], y: (p) => p[2],
+          xr: [-1.1, 1.1], yr: [-0.6, 1.0] },
+  end:  { id: "v-end", h: () => 250, x: (p) => -p[1], y: (p) => p[2], xr: [-0.5, 1.4], yr: [-0.6, 1.0] },
+  top:  { id: "v-top", h: () => 280, x: (p) => -p[1], y: (p) => p[0], xr: [-0.5, 1.4], yr: [-1.2, 1.2] },
+};
+function viewport(v) {
+  const svg = $(v.id);
+  const W = Math.max(240, Math.round(svg.getBoundingClientRect().width)) || 320;
+  const H = Math.round(v.h(W));
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const sx = W / (v.xr[1] - v.xr[0]), sy = H / (v.yr[1] - v.yr[0]), s = Math.min(sx, sy);
+  const ox = W / 2 - s * (v.xr[0] + v.xr[1]) / 2, oy = H / 2 + s * (v.yr[0] + v.yr[1]) / 2;
+  return { svg, W, H, P: (p) => [ox + s * v.x(p), oy - s * v.y(p)], s };
+}
+const f2 = (q) => `${q[0].toFixed(1)},${q[1].toFixed(1)}`;
+
+// Canoe outline: 5.6 m, 0.72 m beam, 0.22 m freeboard, 0.12 m draft.
+function hullPath(view, P) {
+  const L = 2.8, B = 0.36, top = 0.22, keel = -0.12;
+  if (view === "side")
+    return `M${f2(P([-L, 0, top + 0.12]))} Q${f2(P([0, 0, top - 0.04]))} ${f2(P([L, 0, top + 0.12]))}` +
+      ` Q${f2(P([L * 0.92, 0, keel]))} ${f2(P([L * 0.6, 0, keel]))} L${f2(P([-L * 0.6, 0, keel]))}` +
+      ` Q${f2(P([-L * 0.92, 0, keel]))} ${f2(P([-L, 0, top + 0.12]))} Z`;
+  if (view === "end")
+    return `M${f2(P([0, B, top]))} Q${f2(P([0, B, keel]))} ${f2(P([0, 0, keel]))}` +
+      ` Q${f2(P([0, -B, keel]))} ${f2(P([0, -B, top]))} Z`;
+  // top: planform, pointed ends
+  return `M${f2(P([L, 0, 0]))} Q${f2(P([0.2, -B * 1.15, 0]))} ${f2(P([-L, 0, 0]))}` +
+    ` Q${f2(P([0.2, B * 1.15, 0]))} ${f2(P([L, 0, 0]))} Z`;
+}
+
+let path = null;  // cached drive path per view
+let playing = true, slow = false, phase = 0, lastT = performance.now();
+$("play").addEventListener("click", () => { playing = !playing; $("play").textContent = playing ? "Pause" : "Play"; });
+$("slow").addEventListener("click", () => { slow = !slow; $("slow").textContent = slow ? "Normal speed" : "Slow motion"; });
+
+// Pose and forces at cycle phase ∈ [0, 1): drive, then a recovery that lifts
+// the blade out and swings it back to the catch.
+function stateAt(ph) {
+  const r = result, df = S.DRIVE_FRACTION;
+  if (ph < df) {
+    const n = r.samples.length;
+    const i = Math.min(n - 1, Math.max(0, Math.round((ph / df) * (n - 1))));
+    const sm = r.samples[i];
+    return { P: sm.P, B: sm.B, thrust: sm.thrust, F: sm.F, inDrive: true };
+  }
+  const u = (ph - df) / (1 - df);             // recovery progress
+  const back = 1 - (1 - Math.cos(Math.PI * u)) / 2;
+  const P = S.pose(r.params, back);           // reverse through the arc
+  const lift = 0.45 * Math.sin(Math.PI * u);
+  const liftAt = (s) => { const q = P.at(s); return [q[0], q[1], q[2] + lift]; };
+  const Pl = Object.assign({}, P, { at: liftAt });
+  const face = [-Math.cos(P.th), 0, Math.sin(P.th)];
+  return { P: Pl, B: S.blade(r.params, Pl, face), thrust: [0, 0, 0], F: 0, inDrive: false };
+}
+
+function drawView(name, st) {
+  const v = VIEWS[name], vp = viewport(v), P = vp.P;
+  const water = P([0, 0, 0])[1];
+  let g = "";
+  if (name !== "top")
+    g += `<path class="hull" d="${hullPath(name, P)}"/>` +
+      `<rect class="water" x="0" y="${water}" width="${vp.W}" height="${vp.H - water}"/>` +
+      `<line class="water-line" x1="0" x2="${vp.W}" y1="${water}" y2="${water}"/>`;
+  else {
+    g += `<rect class="water" x="0" y="0" width="${vp.W}" height="${vp.H}"/>` +
+      `<path class="hull" d="${hullPath(name, P)}"/>`;
+    const c0 = P([1.6, 0, 0]), c1 = P([-1.6, 0, 0]);
+    g += `<line class="centre" x1="${c0[0]}" y1="${c0[1]}" x2="${c1[0]}" y2="${c1[1]}"/>`;
+  }
+  // Blade path through the drive, and in the top view the push on the boat.
+  const sm = result.samples;
+  g += `<path class="path" d="M${sm.filter((q) => q.B.wet > 0.05).map((q) => f2(P(q.B.cop))).join(" L")}"/>`;
+  if (name === "top") {
+    const maxF = Math.max(1, ...sm.map((q) => q.F));
+    for (let i = 8; i < sm.length - 4; i += 16) {
+      const q = sm[i]; if (q.F < maxF * 0.05) continue;
+      const a = P(q.B.cop), k = 0.35 / maxF;
+      const b = P([q.B.cop[0] + q.thrust[0] * k, q.B.cop[1] + q.thrust[1] * k, 0]);
+      g += `<line class="push" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}"/>`;
+    }
+  }
+  // Paddle
+  const grip = P(st.P.at(0)), throat = P(st.B.throat), tip = P(st.B.tip), pv = P(st.P.at(result.params.pivotFromGrip));
+  g += `<line class="shaft" x1="${grip[0]}" y1="${grip[1]}" x2="${throat[0]}" y2="${throat[1]}"/>` +
+    `<line class="blade ${st.inDrive ? "" : "dry"}" x1="${throat[0]}" y1="${throat[1]}" x2="${tip[0]}" y2="${tip[1]}"/>` +
+    `<circle class="pivot" cx="${pv[0]}" cy="${pv[1]}" r="5"/>`;
+  // Water's force on the blade (= push on the boat), at the blade centre.
+  if (st.F > 1) {
+    const maxF = Math.max(1, ...sm.map((q) => q.F));
+    const k = 0.45 / maxF, c = st.B.cop;
+    const a = P(c), b = P([c[0] + st.thrust[0] * k, c[1] + st.thrust[1] * k, c[2] + st.thrust[2] * k]);
+    const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    if (Math.hypot(b[0] - a[0], b[1] - a[1]) > 6) {
+      const h1 = [b[0] - 8 * Math.cos(ang - 0.45), b[1] - 8 * Math.sin(ang - 0.45)];
+      const h2 = [b[0] - 8 * Math.cos(ang + 0.45), b[1] - 8 * Math.sin(ang + 0.45)];
+      g += `<line class="force" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}"/>` +
+        `<path class="force-head" d="M${f2(b)} L${f2(h1)} L${f2(h2)} Z"/>`;
+    }
+  }
+  const label = { side: "bow →", end: "paddle side →", top: "↑ bow" }[name];
+  g += `<text x="${vp.W - 8}" y="16" text-anchor="end">${label}</text>`;
+  vp.svg.innerHTML = g;
+}
+
+function frame(now) {
+  // The first frame's timestamp can precede the clock read at startup, so
+  // clamp: a negative step would put the phase outside the drive samples.
+  const dt = Math.max(0, Math.min(0.1, (now - lastT) / 1000));
+  lastT = now;
+  if (result) {
+    if (playing) phase = (((phase + dt / (result.cycle * (slow ? 4 : 1))) % 1) + 1) % 1;
+    const st = stateAt(phase);
+    for (const name of Object.keys(VIEWS)) drawView(name, st);
+  }
+  requestAnimationFrame(frame);
+}
+
+update();
+requestAnimationFrame(frame);
+window.sim = { params, setParams, get result() { return result; }, get baseline() { return baseline; } };
+})();
+</script>
+</body>
+</html>

@@ -309,6 +309,7 @@ function liveHex(seq, tMs, inDrive, force) {
     check("demo shows stroke power", /^\d+W$/.test(await page.textContent("#v-power")),
           await page.textContent("#v-power"));
     check("demo draws force curves", await page.isVisible("#chart"));
+    check("links to the stroke simulator", (await page.getAttribute("#sim-link", "href")) === "simulator.html");
     check("stroke view drawn", await page.isVisible("#stroke-view") &&
           (await page.$$("#stroke-view line.blade")).length === 1);
     const pivots = [];
