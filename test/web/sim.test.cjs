@@ -90,6 +90,10 @@ console.log("\nStroke simulator physics");
         pct(hingeSim.at(150).shares.swing));
   const tHold = (q) => { const rr = S.simulate(q), w = S.capacity(q); return S.race(rr, null, 10000, w, w, {}).tA; };
   check("hinge: the extra muscle outweighs the swing", tHold({ hinge: 1 }) < tHold({}));
+  const pitch0 = base.at(150), pitch1 = hingeSim.at(150), hingeCyc = hingeSim.cycleAt(150);
+  check("pitch: the body rocks the bow, and it costs a little", pitch1.bowMm > 5 * pitch0.bowMm && pitch1.shares.pitch > pitch0.shares.pitch &&
+        pitch1.shares.pitch < 0.01 && Math.abs(Math.max(...hingeCyc.bodyX) - 0.06) < 1e-3 && hingeCyc.pitch.length === hingeCyc.t.length,
+        `${pitch0.bowMm} ${pitch1.bowMm} ${pct(pitch1.shares.pitch)}`);
   check("clean stroke: about 8 strokes per side", clean.strokesPerSide > 6 && clean.strokesPerSide < 10,
         clean.strokesPerSide.toFixed(1));
   check("sweep forces more frequent switches", sweep.strokesPerSide < clean.strokesPerSide / 3,
@@ -824,6 +828,8 @@ console.log("\nStroke simulator physics");
     await slide("#c-hinge", 0.5); await page.waitForTimeout(400);
     check(`${tag}: hinge: reach, swing and muscle`, /^Reach \+4\.0°, hand travel \+7\.5 cm\. Your body swings ±3\.0 cm, costing [\d.]+%\. Hips and back: \+8 W you can hold$/.test(await text("#e-hinge")) &&
           (await page.$$("#hp-chart path.ln.still")).length >= 1, await text("#e-hinge"));
+    check(`${tag}: pitch readout and the paddler`, /^A Pitches ±[\d.]+°, the bow moving ±[\d.]+ mm, costing [\d.]+%/.test(await text("#hull-pitch-read")) &&
+          (await page.$$("#hp-pitch .fig-head")).length >= 1 && (await page.$$("svg.view .fig-head")).length >= 3, await text("#hull-pitch-read"));
     await slide("#c-hinge", 0);
     await page.click("#effort-mode >> text=What each can hold"); await page.waitForTimeout(300);
     await scoreReady();
