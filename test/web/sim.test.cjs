@@ -235,6 +235,8 @@ console.log("\nStroke simulator physics");
     await slide("#c-effortW", 150); await settle();
 
     // Force curve: A and B through the drive
+    check(`${tag}: different settings: no blend note`, (await page.$$("#curve-same")).length === 0 &&
+          (await page.$$("#curve text.peak")).length === 2);
     check(`${tag}: force curve has both boats`, (await page.$$("#curve path.ln.a")).length === 1 &&
           (await page.$$("#curve path.ln.b")).length === 1);
     check(`${tag}: curve legend: peak, impulse, drive`,
@@ -268,6 +270,9 @@ console.log("\nStroke simulator physics");
     check(`${tag}: swap`, (await text("#nm-a")) === "Custom" && (await text("#nm-b")) === "Defaults");
     await page.click("#copy"); await settle();   // editing B: copy B to A
     check(`${tag}: copy`, (await text("#nm-a")) === "Defaults" && (await cellVal("eff", 2)) === (await cellVal("eff", 3)));
+    check(`${tag}: same settings: curves blend, one label`, (await page.$$("#curve-same")).length === 1 &&
+          (await page.$$eval("#curve text.peak", (ts) => ts.map((t) => t.textContent))).join() === "A = B" &&
+          (await page.$$eval("#curve path.ln", (ps) => ps.map((p) => p.classList[1]))).join() === "a,b");
     await page.click("#boats [data-boat=a]");
     await page.click("#presets >> text=Clean vertical");
     await page.click("#boats [data-boat=b]");
