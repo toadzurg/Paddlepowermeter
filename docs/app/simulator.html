@@ -23,7 +23,6 @@
     --series-4: #8a5cc9;
     --water: rgba(42, 120, 214, 0.10);
     --water-line: #86b6ef;
-    --good: #0ca30c;
     --button: #0b0b0b;
     --button-text: #fcfcfb;
   }
@@ -56,61 +55,45 @@
     -webkit-text-size-adjust: 100%;
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
-  main { max-width: 1100px; margin: 0 auto; padding: 12px 16px 48px; }
+  main { max-width: 1160px; margin: 0 auto; padding: 12px 16px 48px; }
   header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
   header h1 { font-size: 20px; margin: 0; flex: 1; }
   a { color: var(--series-1); }
   .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; }
-  .label { font-size: 13px; color: var(--text-secondary); }
-  .sub { font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
-  .value { font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; font-size: 30px; line-height: 1.15; }
-  .value .unit { font-size: 0.5em; font-weight: 500; color: var(--text-secondary); margin-left: 3px; letter-spacing: 0; }
-  .hero .value { font-size: 52px; }
-  .delta { font-size: 13px; font-variant-numeric: tabular-nums; color: var(--text-secondary); min-height: 1.2em; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
+  h2 { font-size: 17px; margin: 0; }
+  h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); margin: 14px 0 4px; }
+  .sub, .note { font-size: 13px; color: var(--text-secondary); }
+  .note { margin-top: 6px; }
+  .num { font-variant-numeric: tabular-nums; }
+  .a-dot, .b-dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: 0; }
+  .a-dot { background: var(--series-1); } .b-dot { background: var(--series-2); }
 
-  .layout { display: grid; gap: 12px; }
-  @media (min-width: 900px) { .layout { grid-template-columns: 1fr 360px; align-items: start; } }
-  .tiles { display: grid; gap: 10px; grid-template-columns: repeat(2, 1fr); }
-  @media (min-width: 600px) { .tiles { grid-template-columns: repeat(4, 1fr); } }
-  .views { display: grid; gap: 10px; margin-top: 10px; }
-  @media (min-width: 600px) { .views { grid-template-columns: 1fr 1fr; } .views .wide { grid-column: 1 / -1; } }
-  .views h2, .card h2 { font-size: 15px; margin: 0; }
-  svg.view { display: block; width: 100%; height: auto; margin-top: 4px; }
-  svg.view text { fill: var(--text-secondary); font-size: 12px; }
-  svg.view .water { fill: var(--water); }
-  svg.view .water-line { stroke: var(--water-line); stroke-width: 1.5; }
-  svg.view .hull { fill: var(--grid); fill-opacity: 0.55; stroke: var(--axis); stroke-width: 1.5; }
-  svg.view .centre { stroke: var(--axis); stroke-dasharray: 4 4; }
-  svg.view .shaft { stroke: var(--text-primary); stroke-width: 3.5; stroke-linecap: round; }
-  svg.view .blade { stroke: var(--text-primary); stroke-width: 8; stroke-linecap: round; }
-  svg.view .blade.dry { opacity: 0.45; }
-  svg.view .path { fill: none; stroke: var(--series-1); stroke-width: 2; stroke-linejoin: round; }
-  svg.view .pivot { fill: var(--series-1); stroke: var(--surface-1); stroke-width: 2; }
-  svg.view .force { stroke: var(--series-2); stroke-width: 3; stroke-linecap: round; }
-  svg.view .force-head { fill: var(--series-2); }
-  svg.view .push { stroke: var(--series-2); stroke-width: 1.5; opacity: 0.6; }
+  /* Phones: results, views, then the sliders right below them, then the race.
+     Wide screens: sliders in a sticky column beside everything. */
+  .layout { display: grid; gap: 12px; grid-template-areas: "eff" "views" "ctl" "race"; grid-template-columns: minmax(0, 1fr); }
+  #eff-card { grid-area: eff; } #views-card { grid-area: views; } #controls { grid-area: ctl; } #race-card { grid-area: race; }
+  @media (min-width: 960px) {
+    .layout { grid-template-columns: minmax(0, 1fr) 360px; grid-template-areas: "eff ctl" "views ctl" "race ctl";
+              grid-template-rows: auto auto 1fr; align-items: start; }
+    .controls { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow: auto; } }
 
-  .bar { display: flex; height: 22px; border-radius: 6px; overflow: hidden; gap: 2px; margin: 6px 0 4px; }
-  .bar > span { display: block; height: 100%; }
-  .bar .s1 { background: var(--series-1); } .bar .s2 { background: var(--series-2); } .bar .s3 { background: var(--series-3); } .bar .s4 { background: var(--series-4); }
-  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
-  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
-  .legend .s1 { background: var(--series-1); } .legend .s2 { background: var(--series-2); } .legend .s3 { background: var(--series-3); } .legend .s4 { background: var(--series-4); }
-  .legend b { color: var(--text-primary); font-weight: 600; }
+  /* Boat switcher: which boat the sliders edit. */
+  .boats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .boats button { text-align: left; display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; min-height: 52px; }
+  .boats button .nm { font-size: 13px; font-weight: 500; color: var(--text-secondary); }
+  .boats button.a { --chip: var(--series-1); } .boats button.b { --chip: var(--series-2); }
+  .boats button[aria-pressed="true"] { border: 2px solid var(--chip); padding: 7px 9px;
+    background: color-mix(in srgb, var(--chip) 14%, var(--surface-1)); }
+  .boat-actions { margin-top: 8px; }
 
-  .controls .group { margin-bottom: 14px; }
-  .controls h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); margin: 0 0 6px; }
-  .ctl { margin: 10px 0; }
-  .ctl .top { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
-  .ctl .top output { font-variant-numeric: tabular-nums; font-weight: 600; }
-  .ctl .help { font-size: 12px; color: var(--text-secondary); }
-  input[type=range] { width: 100%; margin: 6px 0 2px; height: 28px; accent-color: var(--series-1); }
-  .row { display: flex; gap: 8px; flex-wrap: wrap; }
   button {
     font: inherit; font-weight: 600; cursor: pointer; border-radius: 10px; padding: 8px 12px; min-height: 40px;
     background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border);
   }
   button.primary { background: var(--button); color: var(--button-text); border-color: var(--button); }
+  button.small { min-height: 34px; padding: 5px 10px; font-size: 14px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   /* Choice chips: the selected one gets a coloured outline, tint and tick. */
   .chips { --chip: var(--series-1); }
   .chips.b { --chip: var(--series-2); }
@@ -120,9 +103,91 @@
     background: color-mix(in srgb, var(--chip) 16%, var(--surface-1));
   }
   .chips button[aria-pressed="true"]::before { content: "✓ "; color: var(--chip); }
-  details { font-size: 14px; color: var(--text-secondary); }
+
+  /* Comparison table */
+  table.cmp { width: 100%; border-collapse: collapse; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  table.cmp th, table.cmp td { padding: 7px 4px; text-align: right; border-bottom: 1px solid var(--border); vertical-align: baseline; }
+  table.cmp th:first-child, table.cmp td:first-child { text-align: left; padding-left: 0; }
+  table.cmp thead th { font-size: 13px; font-weight: 600; color: var(--text-secondary); border-bottom-color: var(--axis); }
+  table.cmp td:first-child { font-size: 14px; color: var(--text-secondary); }
+  table.cmp td.v { font-weight: 650; font-size: 17px; }
+  table.cmp td.v small { font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-left: 2px; }
+  table.cmp td.d { font-size: 13px; color: var(--text-secondary); white-space: nowrap; }
+  table.cmp tr.hero td.v { font-size: 26px; }
+  @media (max-width: 480px) { table.cmp tr.hero td.v { font-size: 21px; } table.cmp td.v { font-size: 15px; }
+    table.cmp th:last-child, table.cmp td.d { display: none; } table.cmp th, table.cmp td { padding: 6px 4px; } }
+  table.cmp td.v.win { border-radius: 6px; }
+  table.cmp td.v.win.a { background: color-mix(in srgb, var(--series-1) 14%, transparent); }
+  table.cmp td.v.win.b { background: color-mix(in srgb, var(--series-2) 14%, transparent); }
+  table.cmp tr:last-child td { border-bottom: 0; }
+
+  .bars { display: grid; grid-template-columns: auto 1fr; gap: 6px 8px; align-items: center; margin-top: 6px; }
+  .bars .who { font-size: 13px; font-weight: 600; }
+  .bar { display: flex; height: 18px; border-radius: 5px; overflow: hidden; gap: 2px; }
+  .bar > span { display: block; height: 100%; }
+  .s1 { background: var(--series-1); } .s2 { background: var(--series-2); } .s3 { background: var(--series-3); } .s4 { background: var(--series-4); }
+  table.legend { border-collapse: collapse; margin-top: 6px; font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  table.legend td { padding: 1px 12px 1px 0; }
+  table.legend td.n { text-align: right; color: var(--text-primary); font-weight: 600; }
+  table.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+  .split2 { display: grid; gap: 4px 16px; }
+  @media (min-width: 640px) { .split2 { grid-template-columns: 1fr 1fr; } }
+
+  details { font-size: 14px; color: var(--text-secondary); margin-top: 10px; }
+  details summary { cursor: pointer; font-weight: 600; color: var(--text-primary); }
   details p { margin: 6px 0; }
-  .note { font-size: 13px; color: var(--text-secondary); margin-top: 6px; }
+
+  /* Views */
+  .views { display: grid; gap: 14px; margin-top: 10px; }
+  @media (min-width: 700px) { .views { grid-template-columns: 1fr 1fr; } .views .wide { grid-column: 1 / -1; } }
+  .view-block h4 { font-size: 14px; margin: 0; }
+  .pair { display: grid; gap: 8px; margin-top: 4px; }
+  .pair.two { grid-template-columns: 1fr 1fr; }
+  svg.view { display: block; width: 100%; height: auto; border-radius: 8px; }
+  svg.view text { fill: var(--text-secondary); font-size: 12px; }
+  svg.view text.tag { font-weight: 700; font-size: 13px; }
+  svg.view text.tag.a { fill: var(--series-1); } svg.view text.tag.b { fill: var(--series-2); }
+  svg.view .water { fill: var(--water); }
+  svg.view .water-line { stroke: var(--water-line); stroke-width: 1.5; }
+  svg.view .hull { fill: var(--grid); fill-opacity: 0.55; stroke: var(--axis); stroke-width: 1.5; }
+  svg.view .centre { stroke: var(--axis); stroke-dasharray: 4 4; }
+  svg.view .paddle { stroke-linecap: round; }
+  svg.view .paddle.a { stroke: var(--series-1); } svg.view .paddle.b { stroke: var(--series-2); }
+  svg.view .shaft { stroke-width: 3.5; }
+  svg.view .blade { stroke-width: 8; }
+  svg.view .blade.dry { opacity: 0.45; }
+  svg.view .path { fill: none; stroke-width: 2; stroke-linejoin: round; opacity: 0.55; }
+  svg.view .path.a { stroke: var(--series-1); } svg.view .path.b { stroke: var(--series-2); stroke-dasharray: 5 3; }
+  svg.view .pivot { stroke: var(--surface-1); stroke-width: 2; }
+  svg.view .pivot.a { fill: var(--series-1); } svg.view .pivot.b { fill: var(--series-2); }
+  svg.view .force { stroke: var(--text-primary); stroke-width: 2.5; stroke-linecap: round; }
+  svg.view .force-head { fill: var(--text-primary); }
+  svg.view .push { stroke-width: 1.5; opacity: 0.45; }
+  svg.view .push.a { stroke: var(--series-1); } svg.view .push.b { stroke: var(--series-2); }
+  svg.view .overlay-b { opacity: 0.8; }
+
+  /* Controls */
+  .ctl { margin: 10px 0; }
+  .ctl .top { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
+  .ctl .top output { font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; }
+  .ctl .help { font-size: 12px; color: var(--text-secondary); }
+  input[type=range] { width: 100%; margin: 6px 0 2px; height: 28px; accent-color: var(--series-1); }
+  /* A slightly deeper orange for B's sliders: Chromium draws a dark track
+     behind light accent colours. */
+  .editing-b input[type=range], #effB { accent-color: #c4501c; }
+  .controls details.group { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; color: var(--text-primary); }
+  .controls details.group > summary { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); }
+
+  /* Race */
+  .race-cols { display: grid; gap: 0 20px; }
+  @media (min-width: 760px) { .race-cols { grid-template-columns: repeat(3, 1fr); } }
+  .race-cols section h3 { margin-top: 12px; }
+  #effA { accent-color: var(--series-1); }
+  .result { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 12px; }
+  .times { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; }
+  .times .time { font-size: 26px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .times .cond { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+  .verdict { font-size: 16px; font-weight: 600; margin-top: 10px; }
   svg.race { display: block; width: 100%; height: auto; margin-top: 6px; }
   svg.race text { fill: var(--text-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
   svg.race text.strong { fill: var(--text-primary); font-weight: 600; }
@@ -132,20 +197,6 @@
   svg.race .boat-a { fill: var(--series-1); } svg.race .boat-b { fill: var(--series-2); }
   svg.race .progress-track { fill: var(--grid); }
   svg.race .progress-a { fill: var(--series-1); } svg.race .progress-b { fill: var(--series-2); }
-  .race-grid { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; margin-top: 8px; }
-  .boat-cfg { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 10px; }
-  .boat-cfg .who { font-weight: 600; display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
-  .boat-cfg .who i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
-  .boat-cfg.a .who i { background: var(--series-1); } .boat-cfg.b .who i { background: var(--series-2); }
-  .boat-cfg .save-row { margin-top: 8px; align-items: center; }
-  .boat-cfg .save-row .note { margin: 0; }
-  .race-cfg { display: grid; gap: 0 16px; grid-template-columns: 1fr; }
-  @media (min-width: 700px) { .race-cfg { grid-template-columns: 1fr 1fr; } }
-  .race-grid .who { font-weight: 600; display: flex; align-items: center; gap: 6px; }
-  .race-grid .who i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
-  .race-grid .a i { background: var(--series-1); } .race-grid .b i { background: var(--series-2); }
-  .race-grid .time { font-size: 24px; font-weight: 650; font-variant-numeric: tabular-nums; }
-  .verdict { font-size: 16px; font-weight: 600; margin-top: 10px; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -157,171 +208,153 @@
   </header>
 
   <div class="layout">
-    <div>
-      <div class="tiles">
-        <div class="card hero" style="grid-column: 1 / -1">
-          <div class="label">Stroke efficiency</div>
-          <div class="value" id="r-eff">—</div>
-          <div class="delta" id="d-eff"></div>
-          <div class="sub">Share of your power that moves the boat. The rest is lost to slip (churning
-            water), sideways drag, speed surging and bounce, and switching sides more often costs
-            time. Mostly technique and geometry; the up and down push matters a little more at
-            higher effort.</div>
-        </div>
-        <div class="card">
-          <div class="label">Boat speed at <span id="effort-label">150</span> W</div>
-          <div class="value" id="r-speed">—</div>
-          <div class="delta" id="d-speed"></div>
-        </div>
-        <div class="card">
-          <div class="label">Force pushing forward</div>
-          <div class="value" id="r-fwd">—</div>
-          <div class="delta" id="d-fwd"></div>
-        </div>
-        <div class="card">
-          <div class="label">Switch sides every</div>
-          <div class="value" id="r-side">—</div>
-          <div class="delta" id="d-side"></div>
-          <div class="sub" id="r-yaw-sub"></div>
-        </div>
-        <div class="card">
-          <div class="label">Peak blade force</div>
-          <div class="value" id="r-peak">—</div>
-          <div class="delta" id="d-peak"></div>
-        </div>
-      </div>
-
-      <div class="card" style="margin-top:10px">
-        <h2>Where your power goes</h2>
-        <div class="bar" id="bar-power"></div>
-        <div class="legend" id="leg-power"></div>
-        <h2 style="margin-top:12px">Which way the blade pushes</h2>
-        <div class="bar" id="bar-force"></div>
-        <div class="legend" id="leg-force"></div>
-        <div class="note" id="yaw-note"></div>
-        <div class="note" id="vert-note"></div>
-      </div>
-
-      <div class="views">
-        <div class="card wide">
-          <h2>Side view</h2>
-          <div class="sub">From the paddle side, bow to the right. Blue: blade path through the drive.</div>
-          <svg class="view" id="v-side" role="img" aria-label="Side view of the stroke"></svg>
-        </div>
-        <div class="card">
-          <h2>End view</h2>
-          <div class="sub">From behind, paddle on the right. Shows lean and reach.</div>
-          <svg class="view" id="v-end" role="img" aria-label="End view of the stroke"></svg>
-        </div>
-        <div class="card">
-          <h2>Top view</h2>
-          <div class="sub">Bow up. Orange: the push on the boat along the stroke.</div>
-          <svg class="view" id="v-top" role="img" aria-label="Top view of the stroke"></svg>
-        </div>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <button id="play">Pause</button>
-        <button id="slow">Slow motion</button>
-      </div>
-
-      <div class="card" style="margin-top:10px" id="race-card">
-        <h2>Race: two boats, same canoe</h2>
-        <div class="sub">Pick a stroke for each boat: a preset, the sliders as they are now, or sliders
-          you saved for that boat. Set each paddler's effort and the conditions, and race at steady
-          speed (starts and turns aren't modelled).</div>
-        <div class="race-cfg">
-          <div class="boat-cfg a">
-            <div class="who"><i></i>Boat A</div>
-            <div class="row chips a" id="chips-a" role="group" aria-label="Boat A stroke"></div>
-            <div class="row save-row"><button id="save-a">Save sliders as A</button><span class="note" id="saved-a"></span></div>
-            <div class="ctl"><label class="top"><span>Effort</span><output id="o-effA"></output></label>
-              <input type="range" id="c-effA" min="50" max="400" step="10" value="150" aria-label="Boat A effort"></div>
-          </div>
-          <div class="boat-cfg b">
-            <div class="who"><i></i>Boat B</div>
-            <div class="row chips b" id="chips-b" role="group" aria-label="Boat B stroke"></div>
-            <div class="row save-row"><button id="save-b">Save sliders as B</button><span class="note" id="saved-b"></span></div>
-            <div class="ctl"><label class="top"><span>Effort</span><output id="o-effB"></output></label>
-              <input type="range" id="c-effB" min="50" max="400" step="10" value="150" aria-label="Boat B effort"></div>
+      <!-- ------------------------------------------------ efficiency -->
+      <section class="card" id="eff-card">
+        <div class="card-head">
+          <h2>Efficiency: A vs B</h2>
+          <div class="ctl" style="margin:0;min-width:220px;flex:0 1 280px">
+            <label class="top"><span>Compare at</span><output id="o-effortW"></output></label>
+            <input type="range" id="c-effortW" min="50" max="400" step="10" value="150" aria-label="Effort for comparing">
           </div>
         </div>
-        <div class="boat-cfg race-cfg">
-          <div class="ctl"><div class="top"><span>Course</span></div>
-            <div class="row chips" id="chips-course" role="group" aria-label="Course" style="margin-top:6px"></div>
-            <div class="help" id="course-help"></div></div>
-          <div class="ctl"><label class="top"><span>Race distance</span><output id="o-dist"></output></label>
-            <input type="range" id="c-dist" min="0.2" max="40" step="0.1" value="10" aria-label="Race distance"></div>
-          <div class="ctl"><label class="top"><span>Wind</span><output id="o-wind"></output></label>
-            <input type="range" id="c-wind" min="-30" max="30" step="1" value="0" aria-label="Wind">
-            <div class="help">Along the course. Air drag on you and the boat.</div></div>
-          <div class="ctl"><label class="top"><span>Current</span><output id="o-current"></output></label>
-            <input type="range" id="c-current" min="-10" max="10" step="0.5" value="0" aria-label="Current">
-            <div class="help">Adds to or takes from your speed over the ground.</div></div>
+        <table class="cmp" id="cmp">
+          <thead><tr><th></th><th><span class="a-dot"></span>A</th><th><span class="b-dot"></span>B</th><th>Better</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="split2">
+          <div>
+            <h3>Where the power goes</h3>
+            <div class="bars" id="bars-power"></div>
+            <table class="legend" id="leg-power"></table>
+          </div>
+          <div>
+            <h3>Which way the blade pushes</h3>
+            <div class="bars" id="bars-force"></div>
+            <table class="legend" id="leg-force"></table>
+          </div>
         </div>
-        <div class="race-grid">
-          <div class="a"><div class="label">Boat A finishes in</div><div class="time" id="t-a">—</div><div class="sub" id="s-a"></div></div>
-          <div class="b"><div class="label">Boat B finishes in</div><div class="time" id="t-b">—</div><div class="sub" id="s-b"></div></div>
-        </div>
-        <div class="verdict" id="verdict"></div>
-        <svg class="race" id="race-view" role="img" aria-label="Race between boat A and boat B"></svg>
-        <div class="row" style="margin-top:8px"><button class="primary" id="race-start">Start race</button></div>
-      </div>
-    </div>
+        <details id="why">
+          <summary>Turning, switching and up-and-down push</summary>
+          <p id="why-a"></p>
+          <p id="why-b"></p>
+        </details>
+      </section>
 
-    <div class="card controls">
-      <div class="group">
-        <h3>Compare</h3>
-        <div class="row">
-          <button class="primary" id="save">Save as comparison</button>
-          <button id="clear-cmp" hidden>Clear</button>
+      <!-- ---------------------------------------------------- views -->
+      <section class="card" id="views-card">
+        <div class="card-head">
+          <h2>Stroke views</h2>
+          <div class="row chips" id="view-mode" role="group" aria-label="View mode"></div>
         </div>
-        <div class="note" id="cmp-note">Save a stroke, change sliders, and the results show the difference.</div>
+        <div class="views">
+          <div class="view-block wide"><h4>Side view</h4>
+            <div class="sub">From the paddle side, bow to the right.</div>
+            <div class="pair" data-view="side"></div></div>
+          <div class="view-block"><h4>End view</h4>
+            <div class="sub">From behind, paddle on the right: lean and reach.</div>
+            <div class="pair" data-view="end"></div></div>
+          <div class="view-block"><h4>Top view</h4>
+            <div class="sub">Bow up. Faint lines: the push on the boat along the stroke.</div>
+            <div class="pair" data-view="top"></div></div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button class="small" id="play">Pause</button>
+          <button class="small" id="slow">Slow motion</button>
+          <span class="sub">Lines: blade path through the drive · arrow: the push on the boat</span>
+        </div>
+      </section>
+
+      <!-- ----------------------------------------------------- race -->
+      <section class="card" id="race-card">
+        <h2>Race</h2>
+        <div class="sub">Boat A against Boat B in the same conditions, each holding a steady speed at its
+          paddler's effort (starts and turns aren't timed).</div>
+        <div class="race-cols">
+          <section>
+            <h3>Paddlers</h3>
+            <div class="ctl"><label class="top"><span><span class="a-dot"></span>Boat A effort</span><output id="o-effA"></output></label>
+              <input type="range" id="effA" min="50" max="400" step="10" value="150" aria-label="Boat A effort"></div>
+            <div class="ctl"><label class="top"><span><span class="b-dot"></span>Boat B effort</span><output id="o-effB"></output></label>
+              <input type="range" id="effB" min="50" max="400" step="10" value="150" aria-label="Boat B effort"></div>
+          </section>
+          <section>
+            <h3>Course</h3>
+            <div class="row chips" id="course" role="group" aria-label="Course"></div>
+            <div class="ctl"><label class="top"><span>Distance</span><output id="o-dist"></output></label>
+              <input type="range" id="dist" min="0.2" max="40" step="0.1" value="10" aria-label="Race distance"></div>
+            <div class="ctl"><label class="top"><span>Water depth</span><output id="o-depth"></output></label>
+              <input type="range" id="depth" min="0.3" max="5" step="0.1" value="5" aria-label="Water depth">
+              <div class="help">Below about half the hull's length the boat's wave slows and drags it back;
+                under 2 ft it gets much harder.</div></div>
+          </section>
+          <section>
+            <h3>Wind and current</h3>
+            <div class="ctl"><label class="top"><span>Wind</span><output id="o-wind"></output></label>
+              <input type="range" id="wind" min="0" max="40" step="1" value="0" aria-label="Wind speed"></div>
+            <div class="ctl"><label class="top"><span>Wind from</span><output id="o-windDir"></output></label>
+              <input type="range" id="windDir" min="0" max="180" step="15" value="0" aria-label="Wind direction">
+              <div class="help">A crosswind makes the boat crab and turn into the wind, so you take more
+                strokes on the windward side.</div></div>
+            <div class="ctl"><label class="top"><span>Current</span><output id="o-current"></output></label>
+              <input type="range" id="current" min="-10" max="10" step="0.5" value="0" aria-label="Current"></div>
+          </section>
+        </div>
+        <div class="result">
+          <div class="times">
+            <div><div class="sub"><span class="a-dot"></span>Boat A finishes in</div><div class="time" id="t-a">—</div>
+              <div class="sub" id="s-a"></div><div class="cond" id="c-a"></div></div>
+            <div><div class="sub"><span class="b-dot"></span>Boat B finishes in</div><div class="time" id="t-b">—</div>
+              <div class="sub" id="s-b"></div><div class="cond" id="c-b"></div></div>
+          </div>
+          <div class="verdict" id="verdict"></div>
+          <svg class="race" id="race-view" role="img" aria-label="Race between boat A and boat B"></svg>
+          <div class="row" style="margin-top:8px"><button class="primary" id="race-start">Start race</button></div>
+        </div>
+      </section>
+
+    <!-- -------------------------------------------------- controls -->
+    <aside class="card controls" id="controls">
+      <div class="boats" role="group" aria-label="Boat to edit" id="boats">
+        <button class="a" data-boat="a"><span><span class="a-dot"></span>Boat A</span><span class="nm" id="nm-a"></span></button>
+        <button class="b" data-boat="b"><span><span class="b-dot"></span>Boat B</span><span class="nm" id="nm-b"></span></button>
       </div>
-      <div class="group">
-        <h3>Presets</h3>
-        <div class="row chips" id="presets" role="group" aria-label="Presets"></div>
+      <div class="row boat-actions">
+        <button class="small" id="copy">Copy to B</button>
+        <button class="small" id="swap">Swap A and B</button>
       </div>
-      <div class="group" id="ctl-stroke"><h3>Stroke shape</h3></div>
-      <div class="group" id="ctl-paddle"><h3>Paddle</h3></div>
-      <div class="group" id="ctl-paddler"><h3>Paddler</h3></div>
-      <div class="group" id="ctl-switch"><h3>Switching sides</h3></div>
+      <h3>Presets for <span id="editing-name">Boat A</span></h3>
+      <div class="row chips" id="presets" role="group" aria-label="Presets"></div>
+      <details class="group" open><summary>Stroke shape</summary><div id="ctl-stroke"></div></details>
+      <details class="group" open><summary>Paddle</summary><div id="ctl-paddle"></div></details>
+      <details class="group"><summary>Paddler</summary><div id="ctl-paddler"></div></details>
+      <details class="group"><summary>Switching sides</summary><div id="ctl-switch"></div></details>
       <details>
         <summary>How this is calculated</summary>
         <p>The paddle swings about a pivot point on the shaft. Your top hand rises or drops so
           the blade stays buried to the throat through the drive, as good technique does, so
           strokes differ by direction and placement rather than by blade depth.</p>
-        <p>Water pushes on the blade face
-          with drag that grows with the square of the blade's speed through the water. The boat
-          settles where the average forward push equals hull drag. The hull is a C1 marathon
-          canoe, calibrated from Shawn Burke's coast-down measurement of a USCA C-1 (The Science
-          of Paddling, Part 14) plus wave drag at race pace.</p>
+        <p>Water pushes on the blade face with drag that grows with the square of the blade's speed
+          through the water. The boat settles where the average forward push equals hull drag. The
+          hull is a C1 marathon canoe, calibrated from Shawn Burke's coast-down measurement of a
+          USCA C-1 (The Science of Paddling, Part 14) plus wave drag at race pace.</p>
         <p>Pushing off the boat's centreline turns it: paddling on the right turns the bow left.
-          You correct by switching sides. The hull resists turning in proportion to its speed,
-          so the boat drifts off course at a steady rate, and you switch when it's off by the
-          set heading. Each switch loses part of a stroke. A stroke that turns the boat more
-          means more switches, so more lost time. The hull's turning resistance is set so a clean
-          vertical stroke allows about 8 strokes per side.</p>
-        <p>Sideways push slows you too. The boat sways under it, and the hull resists by crabbing
-          slightly through the water, like a keel, which creates drag. Brief pushes mostly just
-          sway the boat; steady ones cost the most.</p>
-        <p>The push comes in pulses, so the boat speeds up in the drive and slows in the
-          recovery. Drag grows with the square of speed, so an uneven speed costs more than a
-          steady one at the same average. At the same effort a slower rate means bigger pulses
-          further apart, so more surge.</p>
-        <p>Up and down push: a blade angled forward at the catch pushes water down and lifts the
-          boat; angled back at the exit it lifts water and pulls the boat down. The bent shaft
-          shifts that balance toward the exit. The average changes how deep the boat sits, and
-          hull drag follows wetted area (about weight to the 2/3). The swing bounces the boat on
-          the water, and the waves it makes cost power. Both are small next to slip.</p>
-        <p>Your power splits exactly into moving the boat, slip (churning water), sideways drag,
-          surge, and bounce and sinking (or a small saving if the stroke lifts the boat).</p>
-        <p>Wind and current (race): air drag on you and the boat changes with the air speed past
-          you, and current adds to your speed over the ground. Crosswinds and waves aren't modelled.</p>
+          You correct by switching sides when the boat is off by the set heading; each switch loses
+          part of a stroke. A stroke that turns the boat more means more switches.</p>
+        <p>Sideways push slows you too: the hull resists it by crabbing slightly, like a keel,
+          which creates drag. The push comes in pulses, so the boat surges; drag grows with the
+          square of speed, so uneven speed costs more, and more at slower rates.</p>
+        <p>Up and down push: a blade angled forward at the catch lifts the boat; angled back at
+          the exit it pulls the boat down. The bent shaft shifts that balance toward the exit. The
+          average changes how deep the boat sits, and the swing bounces it, making waves.</p>
+        <p>Race conditions: air drag changes with the air speed past you; a crosswind's side push
+          makes the hull crab and turns the bow into the wind, so switching becomes lopsided;
+          current adds to your speed over the ground; shallow water slows the boat's own wave so it
+          drags harder (Burke, Part 4).</p>
         <p>This is a simplified model for comparing techniques. It doesn't model waves, the
           blade's lift, or your body moving in the boat. Absolute speeds are approximate;
           differences between strokes are the useful part.</p>
       </details>
-    </div>
+    </aside>
   </div>
 </main>
 
@@ -331,6 +364,32 @@
 "use strict";
 const $ = (id) => document.getElementById(id);
 const S = window.StrokeSim;
+const fmtNum = (v, d = 0) => v.toFixed(d).replace(/^-/, "−");
+const BOATS = ["a", "b"], NAME = { a: "Boat A", b: "Boat B" };
+
+// ------------------------------------------------------------- presets
+const PRESETS = {
+  "Clean vertical": { leanDeg: 2, handOutM: 0.38, directionDeg: 0, sweepDeg: 0 },
+  "Shaft leaning out": { leanDeg: 30, handOutM: 0.55 },
+  "Wide sweep": { leanDeg: 40, sweepDeg: 70, handOutM: 0.5, catchDeg: 25, exitDeg: 25 },
+  "Long reach": { catchDeg: 55, exitDeg: 45 },
+  "Short reach, pull behind": { catchDeg: 12, exitDeg: 45 },
+  "Defaults": {},
+};
+// Presets set the technique; the paddler's weight stays.
+const KEEP = ["effortW", "massKg"];
+const boats = {
+  a: Object.assign({}, S.DEFAULTS),
+  b: Object.assign({}, S.DEFAULTS, PRESETS["Wide sweep"]),
+};
+let editing = "a", effortW = 150;
+function presetName(p) {
+  for (const [name, pre] of Object.entries(PRESETS)) {
+    const want = Object.assign({}, S.DEFAULTS, pre);
+    if (Object.keys(S.DEFAULTS).every((k) => KEEP.includes(k) || Math.abs(p[k] - want[k]) < 1e-9)) return name;
+  }
+  return null;
+}
 
 // ------------------------------------------------------------- controls
 const CONTROLS = [
@@ -359,15 +418,12 @@ const CONTROLS = [
     fmt: (v) => `${Math.round(v * 100)}% of each stroke`,
     help: "A longer drive moves more water more gently: lower peak force, less slip." },
   { group: "ctl-paddler", key: "massKg", label: "Paddler + boat weight", min: 50, max: 150, step: 1, unit: " kg",
-    help: "Heavier sits deeper, so more drag. Also sets how much the stroke's up and down push matters." },
-  { group: "ctl-paddler", key: "effortW", label: "Effort for comparing speed", min: 50, max: 400, step: 10, unit: " W",
-    help: "Boat speed is shown at this paddler power, so strokes compare fairly." },
+    help: "Heavier sits deeper, so more drag." },
   { group: "ctl-switch", key: "switchHeadingDeg", label: "Switch when off course by", min: 1, max: 10, step: 0.5, unit: "°",
     fmt: (v) => `±${v}°`, help: "How far you let the boat turn before switching sides." },
   { group: "ctl-switch", key: "switchLossStrokes", label: "Time lost per switch", min: 0, max: 1, step: 0.05, unit: "",
     fmt: (v) => `${v.toFixed(2)} of a stroke`, help: "No propulsion while the paddle changes sides." },
 ];
-const params = Object.assign({}, S.DEFAULTS, { effortW: 150 });
 for (const c of CONTROLS) {
   const wrap = document.createElement("div");
   wrap.className = "ctl";
@@ -375,189 +431,143 @@ for (const c of CONTROLS) {
     <input type="range" id="c-${c.key}" min="${c.min}" max="${c.max}" step="${c.step}" aria-label="${c.label}">
     <div class="help">${c.help}</div>`;
   $(c.group).append(wrap);
-  const input = wrap.querySelector("input");
-  input.value = params[c.key];
-  input.addEventListener("input", () => { params[c.key] = parseFloat(input.value); update(); });
+  wrap.querySelector("input").addEventListener("input", (ev) => {
+    boats[editing][c.key] = parseFloat(ev.target.value);
+    changed(editing);
+  });
 }
 const showValue = (c) => {
-  const v = params[c.key];
+  const v = boats[editing][c.key];
   $(`o-${c.key}`).textContent = c.fmt ? c.fmt(v) : `${+v.toFixed(c.step < 1 ? 2 : 0)}${c.unit}`;
 };
-function setParams(p) {
-  // Presets set the technique; your weight and effort stay.
-  Object.assign(params, S.DEFAULTS, { effortW: params.effortW, massKg: params.massKg }, p);
-  for (const c of CONTROLS) $(`c-${c.key}`).value = params[c.key];
-  update();
+function syncControls() {
+  for (const c of CONTROLS) { $(`c-${c.key}`).value = boats[editing][c.key]; showValue(c); }
+  $("controls").classList.toggle("editing-b", editing === "b");
+  $("editing-name").textContent = NAME[editing];
+  $("presets").classList.toggle("b", editing === "b");
+  $("copy").textContent = `Copy to ${NAME[other(editing)]}`;
+  for (const b of $("boats").children) b.setAttribute("aria-pressed", String(b.dataset.boat === editing));
+  const on = presetName(boats[editing]);
+  for (const b of $("presets").children) b.setAttribute("aria-pressed", String(b.dataset.value === on));
+  for (const x of BOATS) $(`nm-${x}`).textContent = presetName(boats[x]) || "Custom";
 }
-
-const PRESETS = {
-  "Clean vertical": { leanDeg: 2, handOutM: 0.38, directionDeg: 0, sweepDeg: 0 },
-  "Shaft leaning out": { leanDeg: 30, handOutM: 0.55 },
-  "Wide sweep": { leanDeg: 40, sweepDeg: 70, handOutM: 0.5, catchDeg: 25, exitDeg: 25 },
-  "Long reach": { catchDeg: 55, exitDeg: 45 },
-  "Short reach, pull behind": { catchDeg: 12, exitDeg: 45 },
-  "Defaults": {},
-};
-// The preset the sliders match (technique only), if any.
-const KEEP = ["effortW", "massKg"];
-function matchingPreset() {
-  for (const [name, pre] of Object.entries(PRESETS)) {
-    const want = Object.assign({}, S.DEFAULTS, pre);
-    if (Object.keys(S.DEFAULTS).every((k) => KEEP.includes(k) || Math.abs(params[k] - want[k]) < 1e-9)) return name;
-  }
-  return null;
-}
+const other = (x) => (x === "a" ? "b" : "a");
 for (const [name, p] of Object.entries(PRESETS)) {
   const b = document.createElement("button");
   b.type = "button";
   b.textContent = name;
   b.dataset.value = name;
-  b.addEventListener("click", () => setParams(p));
+  b.addEventListener("click", () => {
+    boats[editing] = Object.assign({}, S.DEFAULTS, { massKg: boats[editing].massKg }, p);
+    changed(editing);
+  });
   $("presets").append(b);
 }
+for (const b of $("boats").children)
+  b.addEventListener("click", () => { editing = b.dataset.boat; syncControls(); });
+$("copy").addEventListener("click", () => { boats[other(editing)] = Object.assign({}, boats[editing]); changed(other(editing)); });
+$("swap").addEventListener("click", () => {
+  [boats.a, boats.b] = [boats.b, boats.a];
+  [results.a, results.b] = [results.b, results.a];
+  changed();
+});
+$("c-effortW").addEventListener("input", (ev) => { effortW = parseFloat(ev.target.value); changed(); });
 
-// ------------------------------------------------------------- results
-let result = null, baseline = null;
-const fmtNum = (v, d = 0) => v.toFixed(d).replace(/^-/, "−");
-function setValue(id, text, unit) {
-  const el = $(id);
-  el.textContent = text;
-  if (unit) { const u = document.createElement("span"); u.className = "unit"; u.textContent = unit; el.append(u); }
-}
-function delta(id, now, then, unit, digits, betterHigher) {
-  if (then === null || then === undefined) { $(id).textContent = ""; return; }
-  const d = now - then;
-  const better = betterHigher ? d > 0 : d < 0;
-  const tiny = Math.abs(d) < Math.pow(10, -digits) / 2;
-  $(id).textContent = tiny ? "same as saved" :
-    `${d > 0 ? "+" : "−"}${Math.abs(d).toFixed(digits)}${unit} vs saved · ${better ? "better" : "worse"}`;
-}
-
-function summarize(r, effort) {
-  return {
-    eff: r.efficiency * 100,
-    speed: r.speedAt(effort),
-    fwd: r.forceShare.forward * 100,
-    yaw: Math.abs(r.yawAt(effort)),
-    perSide: r.strokesPerSide,
-    peak: r.peakForce * Math.pow(effort / Math.max(1e-9, r.paddlerPower), 2 / 3),
-  };
-}
-
+// -------------------------------------------------------------- results
+const results = { a: null, b: null };
+const dirty = new Set(BOATS);
 let pending = false;
-function update() {
-  for (const c of CONTROLS) showValue(c);
-  const on = matchingPreset();
-  for (const b of $("presets").children) b.setAttribute("aria-pressed", String(b.dataset.value === on));
+function changed(x) {
+  if (x) dirty.add(x);
+  syncControls();
   if (pending) return;
   pending = true;
   requestAnimationFrame(() => {
     pending = false;
-    result = S.simulate(params);
-    const e = params.effortW;
-    $("effort-label").textContent = e;
-    const s = summarize(result, e), b = baseline ? summarize(baseline, e) : null;
-    setValue("r-eff", fmtNum(s.eff, 1), "%");
-    setValue("r-speed", fmtNum(s.speed, 2), "m/s");
-    setValue("r-fwd", fmtNum(s.fwd, 0), "%");
-    setValue("r-side", s.perSide >= S.MAX_STROKES_PER_SIDE - 0.05 ? `${S.MAX_STROKES_PER_SIDE}+` : fmtNum(s.perSide, 1), "strokes");
-    $("r-yaw-sub").textContent = `turning moment ${fmtNum(s.yaw, 0)} N·m`;
-    setValue("r-peak", fmtNum(s.peak, 0), "N");
-    delta("d-eff", s.eff, b && b.eff, " pts", 1, true);
-    delta("d-speed", s.speed, b && b.speed, " m/s", 2, true);
-    delta("d-fwd", s.fwd, b && b.fwd, " pts", 0, true);
-    delta("d-side", s.perSide, b && b.perSide, " strokes", 1, true);
-    delta("d-peak", s.peak, b && b.peak, " N", 0, false);
-
-    const at = result.at(e), sh = at.shares;
-    // A stroke that lifts the boat saves drag (sink < 0): shown in the note.
-    bar("bar-power", "leg-power", [["moves the boat", 100 * sh.hull, "s1"],
-                                  ["slip", 100 * sh.slip, "s2"],
-                                  ["sideways drag", 100 * sh.leeway, "s3"],
-                                  ["surge & bounce", 100 * (sh.surge + sh.bounce + Math.max(0, sh.sink)), "s4"]], 1);
-    const lift = at.meanLift;
-    $("vert-note").textContent = Math.abs(lift) < 0.5 ? "Up and down push about cancels: the boat rides at its normal depth." :
-      `On average this stroke ${lift > 0 ? "lifts the boat" : "pulls the boat down"} by ${fmtNum(Math.abs(lift), 0)} N at ${e} W ` +
-      `(${fmtNum(Math.abs(at.sinkMm), 1)} mm ${lift > 0 ? "higher" : "deeper"}), ` +
-      `${lift > 0 ? "saving" : "costing"} ${fmtNum(Math.abs(sh.sink) * 100, 2)}% of your power in hull drag. ` +
-      `It bounces the boat ±${fmtNum(at.bounceMm, 1)} mm, and the waves that makes cost ${fmtNum(sh.bounce * 100, 2)}%. ` +
-      `Speed surging through each stroke costs ${fmtNum(sh.surge * 100, 2)}%.`;
-    const f = result.forceShare;
-    bar("bar-force", "leg-force", [["forward", f.forward * 100, "s1"], ["sideways", f.sideways * 100, "s2"],
-                                  ["vertical", f.vertical * 100, "s3"]]);
-    const yaw = result.yawAt(e);
-    const lostPct = (1 - result.switchDuty) * 100;
-    $("yaw-note").textContent = Math.abs(yaw) < 1 ? "Practically no turning, so no need to switch sides to steer." :
-      `This stroke turns the bow ${yaw > 0 ? "away from" : "toward"} your paddle side (${fmtNum(Math.abs(yaw))} N·m at ${e} W), ` +
-      `so you switch about every ${fmtNum(result.strokesPerSide, 1)} strokes, losing ${fmtNum(lostPct, 1)}% of your paddling time ` +
-      `to switches. A stroke closer to the hull turns less.`;
-    path = null;  // redraw the blade path
+    for (const b of dirty) results[b] = S.simulate(Object.assign({}, boats[b], { effortW }));
+    dirty.clear();
+    showEfficiency();
+    paths = {};
     updateRace();
   });
 }
-function bar(barId, legId, parts, digits = 0) {
-  // Tiny parts still get a sliver, so every legend entry has a mark.
-  $(barId).innerHTML = parts.filter((p) => p[1] > 0.05)
-    .map(([, v, cls]) => `<span class="${cls}" style="flex:${Math.max(0.6, v).toFixed(2)}"></span>`).join("");
-  $(legId).innerHTML = parts.map(([name, v, cls]) =>
-    `<span><i class="${cls}"></i>${name} <b>${fmtNum(v, v < 10 ? digits : 0)}%</b></span>`).join("");
-}
 
-$("save").addEventListener("click", () => {
-  baseline = result;
-  $("clear-cmp").hidden = false;
-  $("cmp-note").textContent = "Saved. Change the sliders to compare against it.";
-  update();
-});
-$("clear-cmp").addEventListener("click", () => {
-  baseline = null;
-  $("clear-cmp").hidden = true;
-  $("cmp-note").textContent = "Save a stroke, change sliders, and the results show the difference.";
-  update();
-});
+function summary(r) {
+  const at = r.at(effortW);
+  return {
+    eff: r.efficiency * 100, speed: at.speed, fwd: r.forceShare.forward * 100,
+    side: r.strokesPerSide, yaw: Math.abs(r.yawAt(effortW)),
+    peak: r.peakForce * Math.pow(effortW / Math.max(1e-9, r.paddlerPower), 2 / 3), at,
+  };
+}
+// label, key, unit, digits, higher is better
+const ROWS = [
+  ["Efficiency", "eff", "%", 1, true, "hero"],
+  ["Speed", "speed", "m/s", 2, true],
+  ["Forward push", "fwd", "%", 0, true],
+  ["Switch every", "side", "strokes", 1, true],
+  ["Turning", "yaw", "N·m", 0, false],
+  ["Peak force", "peak", "N", 0, false],
+];
+function showEfficiency() {
+  const A = summary(results.a), B = summary(results.b);
+  $("o-effortW").textContent = `${effortW} W`;
+  const cell = (s, k, unit, d, cls) => {
+    const v = s[k];
+    const t = k === "side" && v >= S.MAX_STROKES_PER_SIDE - 0.05 ? `${S.MAX_STROKES_PER_SIDE}+` : fmtNum(v, d);
+    return `<td class="v ${cls}">${t}<small>${unit}</small></td>`;
+  };
+  $("cmp").tBodies[0].innerHTML = ROWS.map(([label, k, unit, d, hi, cls]) => {
+    const diff = A[k] - B[k], tiny = Math.abs(diff) < Math.pow(10, -d) / 2;
+    const win = tiny ? "even" : (diff > 0) === hi ? "A" : "B";
+    const u = unit === "%" ? " pts" : ` ${unit}`;
+    const better = tiny ? "even" : `<span class="${win.toLowerCase()}-dot"></span>${win} by ${fmtNum(Math.abs(diff), d)}${u}`;
+    return `<tr class="${cls || ""}" data-row="${k}"><td>${label}</td>` +
+      `${cell(A, k, unit, d, win === "A" ? "win a" : "")}${cell(B, k, unit, d, win === "B" ? "win b" : "")}<td class="d">${better}</td></tr>`;
+  }).join("");
+
+  const power = (s) => { const sh = s.at.shares;
+    return [sh.hull, sh.slip, sh.leeway, sh.surge + sh.bounce + Math.max(0, sh.sink)].map((v) => v * 100); };
+  const force = (r) => [r.forceShare.forward, r.forceShare.sideways, r.forceShare.vertical].map((v) => v * 100);
+  breakdown("power", ["moves the boat", "slip", "sideways drag", "surge & bounce"], power(A), power(B), 1);
+  breakdown("force", ["forward", "sideways", "vertical"], force(results.a), force(results.b), 0);
+  $("why-a").innerHTML = `<b><span class="a-dot"></span>A:</b> ${why(results.a, A.at)}`;
+  $("why-b").innerHTML = `<b><span class="b-dot"></span>B:</b> ${why(results.b, B.at)}`;
+}
+function breakdown(id, names, a, b, digits) {
+  const bar = (vals) => `<div class="bar">${vals.map((v, i) => v > 0.05
+    ? `<span class="s${i + 1}" style="flex:${Math.max(0.6, v).toFixed(2)}"></span>` : "").join("")}</div>`;
+  $(`bars-${id}`).innerHTML = `<span class="who">A</span>${bar(a)}<span class="who">B</span>${bar(b)}`;
+  const f = (v) => `${fmtNum(v, v < 10 ? digits : 0)}%`;
+  $(`leg-${id}`).innerHTML = `<tr><td></td><td class="n">A</td><td class="n">B</td></tr>` +
+    names.map((n, i) => `<tr><td><i class="s${i + 1}"></i>${n}</td><td class="n">${f(a[i])}</td><td class="n">${f(b[i])}</td></tr>`).join("");
+}
+function why(r, at) {
+  const yaw = r.yawAt(effortW), sh = at.shares, lift = at.meanLift;
+  const turn = Math.abs(yaw) < 1 ? "Practically no turning, so no need to switch sides to steer." :
+    `Turns the bow ${yaw > 0 ? "away from" : "toward"} the paddle side (${fmtNum(Math.abs(yaw))} N·m), so you switch about ` +
+    `every ${fmtNum(r.strokesPerSide, 1)} strokes and lose ${fmtNum((1 - r.switchDuty) * 100, 1)}% of your paddling time to switches.`;
+  const vert = Math.abs(lift) < 0.5 ? "Up and down push about cancels." :
+    `${lift > 0 ? "Lifts the boat" : "Pulls the boat down"} by ${fmtNum(Math.abs(lift), 0)} N on average ` +
+    `(${fmtNum(Math.abs(at.sinkMm), 1)} mm), ${lift > 0 ? "saving" : "costing"} ${fmtNum(Math.abs(sh.sink) * 100, 2)}% in hull drag.`;
+  return `${turn} ${vert} Bounce ±${fmtNum(at.bounceMm, 1)} mm (${fmtNum(sh.bounce * 100, 2)}%); ` +
+    `speed swings ${fmtNum(at.surgeSwing * 100, 0)}% through each stroke (${fmtNum(sh.surge * 100, 2)}%).`;
+}
 
 // ----------------------------------------------------------------- race
-// Each boat: a preset, the live sliders, or sliders saved for that boat.
-// Same canoe (the sliders' weight), steady speeds at each paddler's effort.
-const raceSel = { a: "live", b: "Wide sweep" };
-const raceSaved = { a: null, b: null };
-const presetCache = new Map();
-function presetResult(name) {
-  const key = `${name}|${params.massKg}|${params.effortW}`;
-  if (!presetCache.has(key))
-    presetCache.set(key, S.simulate(Object.assign({}, S.DEFAULTS, PRESETS[name],
-      { massKg: params.massKg, effortW: params.effortW })));
-  return presetCache.get(key);
-}
-function boat(x) {
-  const v = raceSel[x];
-  if (v === "live") return result;
-  if (v === "saved") return raceSaved[x] ? raceSaved[x].result : result;
-  return presetResult(v);
-}
-function renderChips(x) {
-  const opts = [["live", "Current sliders"]];
-  if (raceSaved[x]) opts.push(["saved", `Saved ${x.toUpperCase()}`]);
-  for (const n of Object.keys(PRESETS)) opts.push([n, n]);
-  const el = $(`chips-${x}`);
-  el.innerHTML = "";
-  for (const [v, label] of opts) {
+let race = null, raceAnim = null, course = "point";
+const COURSES = { point: "Point to point", outback: "There and back" };
+function renderCourse() {
+  $("course").innerHTML = "";
+  for (const [v, label] of Object.entries(COURSES)) {
     const b = document.createElement("button");
     b.type = "button";
     b.textContent = label;
     b.dataset.value = v;
-    b.setAttribute("aria-pressed", String(raceSel[x] === v));
-    b.addEventListener("click", () => { raceSel[x] = v; renderChips(x); updateRace(); });
-    el.append(b);
+    b.setAttribute("aria-pressed", String(course === v));
+    b.addEventListener("click", () => { course = v; renderCourse(); updateRace(); });
+    $("course").append(b);
   }
-}
-function saveBoat(x) {
-  raceSaved[x] = { params: Object.assign({}, params), result };
-  raceSel[x] = "saved";
-  const name = matchingPreset();
-  $(`saved-${x}`).textContent = name ? `Saved (${name}).` : "Saved.";
-  renderChips(x);
-  updateRace();
 }
 const clock = (sec) => {
   if (!isFinite(sec)) return "never";
@@ -565,44 +575,43 @@ const clock = (sec) => {
   return h ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
 };
 const gapText = (sec) => sec < 60 ? `${fmtNum(sec, 1)} s` : clock(sec);
-const windText = (k) => k === 0 ? "calm" : `${Math.abs(k)} km/h ${k > 0 ? "headwind" : "tailwind"}`;
-const currentText = (k) => k === 0 ? "none" : `${fmtNum(Math.abs(k), 1)} km/h ${k > 0 ? "with you" : "against you"}`;
-let race = null, raceAnim = null, raceCourse = "point";
-const COURSES = { point: ["Point to point", "One way, the wind and current the same all the way."],
-                  outback: ["There and back", "Out to a turn at half distance and back: wind and current reverse on the way home (the turn isn't timed)."] };
-function renderCourse() {
-  const el = $("chips-course");
-  el.innerHTML = "";
-  for (const [v, [label]] of Object.entries(COURSES)) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.textContent = label;
-    b.dataset.value = v;
-    b.setAttribute("aria-pressed", String(raceCourse === v));
-    b.addEventListener("click", () => { raceCourse = v; renderCourse(); updateRace(); });
-    el.append(b);
-  }
-  $("course-help").textContent = COURSES[raceCourse][1];
+const dirText = (deg) => deg === 0 ? "dead ahead" : deg === 90 ? "the side" : deg === 180 ? "behind" :
+  deg < 90 ? `${deg}° off the bow` : `${180 - deg}° off the stern`;
+const depthText = (d) => d >= 5 ? "deep" : `${fmtNum(d, 1)} m (${fmtNum(d / 0.3048, 1)} ft)`;
+function legNote(l) {
+  const bits = [];
+  if (l.steer) bits.push("the wind out-turns the stroke: you'd stay on the windward side and steer");
+  else if (Math.abs(l.windward - l.lee) > 0.15)
+    bits.push(`${fmtNum(l.leewayDeg, 1)}° crab; switching ${fmtNum(l.windward, 1)} strokes windward, ${fmtNum(l.lee, 1)} lee`);
+  if (l.shallow > 1.005) bits.push(`wave drag ×${fmtNum(l.shallow, 1)} in the shallows`);
+  return bits.join("; ");
 }
 function updateRace() {
-  if (!result) return;
-  const effA = parseFloat($("c-effA").value), effB = parseFloat($("c-effB").value);
-  const km = parseFloat($("c-dist").value);
-  const wind = parseFloat($("c-wind").value), current = parseFloat($("c-current").value);
+  if (!results.a || !results.b) return;
+  const effA = parseFloat($("effA").value), effB = parseFloat($("effB").value);
+  const km = parseFloat($("dist").value), depth = parseFloat($("depth").value);
+  const wind = parseFloat($("wind").value), dir = parseFloat($("windDir").value), current = parseFloat($("current").value);
+  const out = course === "outback" ? " going out" : "";
   $("o-effA").textContent = `${effA} W`;
   $("o-effB").textContent = `${effB} W`;
   $("o-dist").textContent = km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`;
-  const out = raceCourse === "outback" ? " going out" : "";
-  $("o-wind").textContent = windText(wind) + (wind ? out : "");
-  $("o-current").textContent = currentText(current) + (current ? out : "");
-  race = S.race(boat("a"), boat("b"), km * 1000, effA, effB,
-                { headwind: wind / 3.6, current: current / 3.6, course: raceCourse });
+  $("o-depth").textContent = depthText(depth);
+  $("o-wind").textContent = wind === 0 ? "calm" : `${wind} km/h`;
+  $("o-windDir").textContent = wind === 0 ? "—" : dirText(dir) + out;
+  $("o-current").textContent = current === 0 ? "none" :
+    `${fmtNum(Math.abs(current), 1)} km/h ${current > 0 ? "with you" : "against you"}${out}`;
+  race = S.race(results.a, results.b, km * 1000, effA, effB, {
+    windSpeed: wind / 3.6, windAngle: dir, current: current / 3.6,
+    depth: depth >= 5 ? Infinity : depth, course,
+  });
   $("t-a").textContent = clock(race.tA);
   $("t-b").textContent = clock(race.tB);
-  const avg = raceCourse === "outback" ? " average" : "";
+  const avg = course === "outback" ? " average" : "";
   const spd = (v) => v > 1e-3 ? `${fmtNum(v, 2)} m/s · ${fmtNum(v * 3.6, 1)} km/h${avg}` : "can't make headway";
   $("s-a").textContent = spd(race.vA);
   $("s-b").textContent = spd(race.vB);
+  $("c-a").textContent = legNote(race.legsA[0]);
+  $("c-b").textContent = legNote(race.legsB[0]);
   const gap = Math.abs(race.timeGap), dist = Math.abs(race.distanceGap);
   const winner = race.timeGap > 0 ? "A" : "B";
   $("verdict").textContent =
@@ -622,7 +631,6 @@ const raceEnd = () => {
   const done = [race.tA, race.tB].filter(isFinite);
   return done.length ? Math.max(...done) : 3600;
 };
-
 // Follow the leader with a window wide enough to show the finishing gap.
 function drawRace(dA, dB, elapsed) {
   const svg = $("race-view");
@@ -635,7 +643,6 @@ function drawRace(dA, dB, elapsed) {
   let g = "";
   const laneY = [30, 72];
   for (const y of laneY) g += `<rect class="lane" x="${left}" y="${y - 16}" width="${right - left}" height="32" rx="6"/>`;
-  // Course markers inside the window
   const raw = span / 4, mag = Math.pow(10, Math.floor(Math.log10(raw)));
   const step = [1, 2, 5, 10].map((m) => m * mag).find((v) => v >= raw);
   for (let d = Math.ceil((lead - span * 0.8) / step) * step; d <= lead + span * 0.2; d += step) {
@@ -651,7 +658,6 @@ function drawRace(dA, dB, elapsed) {
   };
   g += canoe(dA, laneY[0], "boat-a") + canoe(dB, laneY[1], "boat-b") +
     `<text class="strong" x="8" y="${laneY[0] + 4}">A</text><text class="strong" x="8" y="${laneY[1] + 4}">B</text>`;
-  // Whole-course progress
   const py = 124, pw = right - left;
   g += `<rect class="progress-track" x="${left}" y="${py}" width="${pw}" height="4" rx="2"/>` +
     `<rect class="progress-a" x="${left}" y="${py}" width="${pw * dA / L}" height="2" rx="1"/>` +
@@ -674,30 +680,48 @@ $("race-start").addEventListener("click", () => {
   if (raceAnim) cancelAnimationFrame(raceAnim);
   raceAnim = requestAnimationFrame(step);
 });
-for (const id of ["c-effA", "c-effB", "c-dist", "c-wind", "c-current"]) $(id).addEventListener("input", updateRace);
+for (const id of ["effA", "effB", "dist", "depth", "wind", "windDir", "current"]) $(id).addEventListener("input", updateRace);
 renderCourse();
-$("save-a").addEventListener("click", () => saveBoat("a"));
-$("save-b").addEventListener("click", () => saveBoat("b"));
-renderChips("a");
-renderChips("b");
 
 // ---------------------------------------------------------------- views
 // World: X toward the bow, Y to port, Z up (stroke-sim.js). Each view maps
 // two world axes onto its SVG, sized to its real width so text stays 12px.
 const VIEWS = {
-  side: { id: "v-side", h: (W) => Math.min(320, Math.max(240, W * 0.5)), x: (p) => p[0], y: (p) => p[2],
-          xr: [-1.1, 1.1], yr: [-0.6, 1.0] },
-  end:  { id: "v-end", h: () => 250, x: (p) => -p[1], y: (p) => p[2], xr: [-0.5, 1.4], yr: [-0.6, 1.0] },
-  top:  { id: "v-top", h: () => 280, x: (p) => -p[1], y: (p) => p[0], xr: [-0.5, 1.4], yr: [-1.2, 1.2] },
+  side: { h: (W) => Math.min(320, Math.max(140, W * 0.6)), x: (p) => p[0], y: (p) => p[2], xr: [-1.1, 1.1], yr: [-0.6, 1.0] },
+  end:  { h: (W) => Math.min(300, Math.max(150, W * 0.85)), x: (p) => -p[1], y: (p) => p[2], xr: [-0.5, 1.4], yr: [-0.6, 1.0] },
+  top:  { h: (W) => Math.min(320, Math.max(170, W * 1.1)), x: (p) => -p[1], y: (p) => p[0], xr: [-0.5, 1.4], yr: [-1.2, 1.2] },
 };
-function viewport(v) {
-  const svg = $(v.id);
-  const W = Math.max(240, Math.round(svg.getBoundingClientRect().width)) || 320;
+const MODES = { split: "Split", overlay: "Overlay", a: "A only", b: "B only" };
+let mode = "split";
+function renderModes() {
+  $("view-mode").innerHTML = "";
+  for (const [v, label] of Object.entries(MODES)) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    b.dataset.value = v;
+    b.setAttribute("aria-pressed", String(mode === v));
+    b.addEventListener("click", () => { mode = v; renderModes(); layoutViews(); });
+    $("view-mode").append(b);
+  }
+}
+// Which boats each svg shows, per mode.
+const panes = () => mode === "split" ? [["a"], ["b"]] : mode === "overlay" ? [["b", "a"]] : [[mode]];
+function layoutViews() {
+  for (const el of document.querySelectorAll(".pair")) {
+    const ps = panes();
+    el.classList.toggle("two", ps.length === 2);
+    el.innerHTML = ps.map((bs) => `<svg class="view" data-boats="${bs.join("")}" role="img" ` +
+      `aria-label="${el.dataset.view} view, ${bs.map((b) => NAME[b]).join(" over ")}"></svg>`).join("");
+  }
+}
+function viewport(svg, v) {
+  const W = Math.max(150, Math.round(svg.getBoundingClientRect().width)) || 320;
   const H = Math.round(v.h(W));
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   const sx = W / (v.xr[1] - v.xr[0]), sy = H / (v.yr[1] - v.yr[0]), s = Math.min(sx, sy);
   const ox = W / 2 - s * (v.xr[0] + v.xr[1]) / 2, oy = H / 2 + s * (v.yr[0] + v.yr[1]) / 2;
-  return { svg, W, H, P: (p) => [ox + s * v.x(p), oy - s * v.y(p)], s };
+  return { W, H, P: (p) => [ox + s * v.x(p), oy - s * v.y(p)], s };
 }
 const f2 = (q) => `${q[0].toFixed(1)},${q[1].toFixed(1)}`;
 
@@ -711,20 +735,19 @@ function hullPath(view, P) {
   if (view === "end")
     return `M${f2(P([0, B, top]))} Q${f2(P([0, B, keel]))} ${f2(P([0, 0, keel]))}` +
       ` Q${f2(P([0, -B, keel]))} ${f2(P([0, -B, top]))} Z`;
-  // top: planform, pointed ends
   return `M${f2(P([L, 0, 0]))} Q${f2(P([0.2, -B * 1.15, 0]))} ${f2(P([-L, 0, 0]))}` +
     ` Q${f2(P([0.2, B * 1.15, 0]))} ${f2(P([L, 0, 0]))} Z`;
 }
 
-let path = null;  // cached drive path per view
+let paths = {};  // cached blade path per boat and view
 let playing = true, slow = false, phase = 0, lastT = performance.now();
 $("play").addEventListener("click", () => { playing = !playing; $("play").textContent = playing ? "Pause" : "Play"; });
 $("slow").addEventListener("click", () => { slow = !slow; $("slow").textContent = slow ? "Normal speed" : "Slow motion"; });
 
 // Pose and forces at cycle phase ∈ [0, 1): drive, then a recovery that lifts
 // the blade out and swings it back to the catch.
-function stateAt(ph) {
-  const r = result, df = r.params.driveFraction;
+function stateAt(r, ph) {
+  const df = r.params.driveFraction;
   if (ph < df) {
     const n = r.samples.length;
     const i = Math.min(n - 1, Math.max(0, Math.round((ph / df) * (n - 1))));
@@ -741,8 +764,43 @@ function stateAt(ph) {
   return { P: Pl, B: S.blade(r.params, Pl, face), thrust: [0, 0, 0], F: 0, inDrive: false };
 }
 
-function drawView(name, st) {
-  const v = VIEWS[name], vp = viewport(v), P = vp.P;
+// One boat's paddle, blade path and push, in its colour.
+function drawBoat(name, P, x, ph, maxF) {
+  const r = results[x], st = stateAt(r, ph), sm = r.samples;
+  const key = `${x}-${name}`;
+  let g = "";
+  if (!paths[key]) paths[key] = sm.filter((q) => q.B.wet > 0.05).map((q) => q.B.cop);
+  g += `<path class="path ${x}" d="M${paths[key].map((c) => f2(P(c))).join(" L")}"/>`;
+  if (name === "top")
+    for (let i = 8; i < sm.length - 4; i += 16) {
+      const q = sm[i]; if (q.F < maxF * 0.05) continue;
+      const a = P(q.B.cop), k = 0.35 / maxF;
+      const b = P([q.B.cop[0] + q.thrust[0] * k, q.B.cop[1] + q.thrust[1] * k, 0]);
+      g += `<line class="push ${x}" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}"/>`;
+    }
+  const grip = P(st.P.at(0)), throat = P(st.B.throat), tip = P(st.B.tip), pv = P(st.P.at(r.params.pivotFromGrip));
+  g += `<line class="paddle shaft ${x}" x1="${grip[0]}" y1="${grip[1]}" x2="${throat[0]}" y2="${throat[1]}"/>` +
+    `<line class="paddle blade ${x} ${st.inDrive ? "" : "dry"}" x1="${throat[0]}" y1="${throat[1]}" x2="${tip[0]}" y2="${tip[1]}"/>` +
+    `<circle class="pivot ${x}" cx="${pv[0]}" cy="${pv[1]}" r="5"/>`;
+  // Water's force on the blade (= push on the boat), at the blade centre.
+  if (st.F > 1) {
+    const k = 0.45 / maxF, c = st.B.cop;
+    const a = P(c), b = P([c[0] + st.thrust[0] * k, c[1] + st.thrust[1] * k, c[2] + st.thrust[2] * k]);
+    const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    if (Math.hypot(b[0] - a[0], b[1] - a[1]) > 6) {
+      const h1 = [b[0] - 8 * Math.cos(ang - 0.45), b[1] - 8 * Math.sin(ang - 0.45)];
+      const h2 = [b[0] - 8 * Math.cos(ang + 0.45), b[1] - 8 * Math.sin(ang + 0.45)];
+      g += `<line class="force" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}"/>` +
+        `<path class="force-head" d="M${f2(b)} L${f2(h1)} L${f2(h2)} Z"/>`;
+    }
+  }
+  return g;
+}
+function drawView(svg, name, ph) {
+  const v = VIEWS[name], vp = viewport(svg, v), P = vp.P;
+  const bs = svg.dataset.boats.split("");
+  // Arrows on one scale across both boats, so their forces compare.
+  const maxF = Math.max(1, ...BOATS.flatMap((x) => results[x].samples.map((q) => q.F)));
   const water = P([0, 0, 0])[1];
   let g = "";
   if (name !== "top")
@@ -755,39 +813,11 @@ function drawView(name, st) {
     const c0 = P([1.6, 0, 0]), c1 = P([-1.6, 0, 0]);
     g += `<line class="centre" x1="${c0[0]}" y1="${c0[1]}" x2="${c1[0]}" y2="${c1[1]}"/>`;
   }
-  // Blade path through the drive, and in the top view the push on the boat.
-  const sm = result.samples;
-  g += `<path class="path" d="M${sm.filter((q) => q.B.wet > 0.05).map((q) => f2(P(q.B.cop))).join(" L")}"/>`;
-  if (name === "top") {
-    const maxF = Math.max(1, ...sm.map((q) => q.F));
-    for (let i = 8; i < sm.length - 4; i += 16) {
-      const q = sm[i]; if (q.F < maxF * 0.05) continue;
-      const a = P(q.B.cop), k = 0.35 / maxF;
-      const b = P([q.B.cop[0] + q.thrust[0] * k, q.B.cop[1] + q.thrust[1] * k, 0]);
-      g += `<line class="push" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}"/>`;
-    }
-  }
-  // Paddle
-  const grip = P(st.P.at(0)), throat = P(st.B.throat), tip = P(st.B.tip), pv = P(st.P.at(result.params.pivotFromGrip));
-  g += `<line class="shaft" x1="${grip[0]}" y1="${grip[1]}" x2="${throat[0]}" y2="${throat[1]}"/>` +
-    `<line class="blade ${st.inDrive ? "" : "dry"}" x1="${throat[0]}" y1="${throat[1]}" x2="${tip[0]}" y2="${tip[1]}"/>` +
-    `<circle class="pivot" cx="${pv[0]}" cy="${pv[1]}" r="5"/>`;
-  // Water's force on the blade (= push on the boat), at the blade centre.
-  if (st.F > 1) {
-    const maxF = Math.max(1, ...sm.map((q) => q.F));
-    const k = 0.45 / maxF, c = st.B.cop;
-    const a = P(c), b = P([c[0] + st.thrust[0] * k, c[1] + st.thrust[1] * k, c[2] + st.thrust[2] * k]);
-    const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
-    if (Math.hypot(b[0] - a[0], b[1] - a[1]) > 6) {
-      const h1 = [b[0] - 8 * Math.cos(ang - 0.45), b[1] - 8 * Math.sin(ang - 0.45)];
-      const h2 = [b[0] - 8 * Math.cos(ang + 0.45), b[1] - 8 * Math.sin(ang + 0.45)];
-      g += `<line class="force" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}"/>` +
-        `<path class="force-head" d="M${f2(b)} L${f2(h1)} L${f2(h2)} Z"/>`;
-    }
-  }
+  for (const x of bs) g += `<g class="${bs.length > 1 && x === "b" ? "overlay-b" : ""}">${drawBoat(name, P, x, ph, maxF)}</g>`;
   const label = { side: "bow →", end: "paddle side →", top: "↑ bow" }[name];
   g += `<text x="${vp.W - 8}" y="16" text-anchor="end">${label}</text>`;
-  vp.svg.innerHTML = g;
+  g += bs.slice().sort().map((x, i) => `<text class="tag ${x}" x="${8 + i * 18}" y="17">${x.toUpperCase()}</text>`).join("");
+  svg.innerHTML = g;
 }
 
 function frame(now) {
@@ -795,17 +825,22 @@ function frame(now) {
   // clamp: a negative step would put the phase outside the drive samples.
   const dt = Math.max(0, Math.min(0.1, (now - lastT) / 1000));
   lastT = now;
-  if (result) {
-    if (playing) phase = (((phase + dt / (result.cycle * (slow ? 4 : 1))) % 1) + 1) % 1;
-    const st = stateAt(phase);
-    for (const name of Object.keys(VIEWS)) drawView(name, st);
+  if (results.a && results.b) {
+    // Both boats share one phase (each over its own drive and recovery), timed by the boat being edited.
+    if (playing) phase = (((phase + dt / (results[editing].cycle * (slow ? 4 : 1))) % 1) + 1) % 1;
+    for (const svg of document.querySelectorAll("svg.view")) drawView(svg, svg.closest(".pair").dataset.view, phase);
   }
   requestAnimationFrame(frame);
 }
 
-update();
+renderModes();
+layoutViews();
+changed();
 requestAnimationFrame(frame);
-window.sim = { params, setParams, get result() { return result; }, get baseline() { return baseline; }, get race() { return race; } };
+window.sim = {
+  boats, results, PRESETS,
+  get editing() { return editing; }, get race() { return race; }, get mode() { return mode; },
+};
 })();
 </script>
 </body>

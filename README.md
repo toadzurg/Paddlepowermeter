@@ -171,35 +171,38 @@ time (up to three devices).
   needed. The demo's pivot wanders between strokes the way the paddle's
   estimate does, and power follows the changing lever arm.
 
-**Stroke simulator** (`docs/app/simulator.html`, linked from the app): sliders
-for the pivot point, reach and exit angles, shaft lean, stroke direction,
-sweep, top-hand position, hand travel, bend and rate, with animated side,
-end and top views. It works out stroke efficiency (the share of your power
-that moves the boat) and splits the rest into slip and sideways (leeway)
-drag. Paddling hit-and-switch, an off-centre stroke turns the boat, so you
-switch sides more often and lose drive time on each switch; the page shows
-how many strokes per side the stroke allows. It also gives boat speed at a
-chosen effort and the turning moment. Save a stroke to compare against it.
+**Stroke simulator** (`docs/app/simulator.html`, linked from the app)
+compares two strokes, Boat A and Boat B. Pick which boat the sliders edit,
+start from a preset (the one in use is highlighted), and copy or swap
+between them.
+- **Sliders:** pivot point, reach and exit angles, shaft lean, stroke
+  direction, sweep, top-hand position, hand travel, bend, rate, time in the
+  drive, weight and switching.
+- **Efficiency:** an A-vs-B table at a chosen effort, covering efficiency,
+  speed, forward push, strokes per side, turning moment and peak force. Two
+  breakdowns show where the power goes (moving the boat, slip, sideways
+  drag, surge and bounce) and which way the blade pushes.
+- **Stroke views:** side, end and top, animated, shown split (A beside B),
+  overlaid, or one boat only.
+- **Race:** A against B at each paddler's effort.
+  - Course: point to point or there and back, over a chosen distance.
+  - Conditions: water depth, wind speed and direction, and current.
+  - Shallow water raises the hull's wave drag. A crosswind makes the boat
+    crab and turn into the wind, so you take more strokes on the windward
+    side (a strong one can out-turn the stroke).
 
-It also models the boat surging through each stroke (drag grows with V²,
-so uneven speed costs more) and the blade's up and down push: a forward
-blade at the catch lifts the boat, a blade behind you at the exit pulls it
-down. The average changes how deep the boat sits (hull drag follows wetted
-area), and the swing bounces it, making waves. Paddler + boat weight is a
-slider.
-
-The race card puts two boats in the same canoe. Each boat picks a preset,
-the live sliders, or sliders saved for that boat (the selected one is
-highlighted), at its own effort over a chosen distance, point to point or
-there and back, with headwind or tailwind and current. It shows finishing times, speeds and the gap at the
-finish, and animates the race.
+The physics: blade drag square to its motion, hull drag, hit-and-switch
+yaw, leeway drag from the sideways push, surge through each stroke, and the
+up and down push changing how deep the boat sits and bouncing it.
 
 Several pieces are checked against Shawn Burke's
 [The Science of Paddling](https://thescienceofpaddling.net/index):
 - the hull drag is calibrated from his coast-down of a USCA C-1 (Part 14);
 - the best bend for Caplan's measured stroke comes out at 12°, as he found (Part 11);
 - surge grows at slower rates for the same power (Parts 25 and 33);
-- there-and-back times with current match his formula (Part 7).
+- there-and-back times with current match his formula (Part 7);
+- shallow water follows his wave-speed picture (Part 4), applied as
+  Schlichting's intermediate speed.
 
 It is a simplified drag model, good for comparing techniques rather than
 predicting exact speeds. The switching assumptions (how far off course

@@ -86,6 +86,14 @@
   const WATERPLANE = 2.3, HEAVE_ADDED = 1.0, HEAVE_ZETA = 0.3;
   // Air drag of paddler and boat (CdA, m²), used for wind in race().
   const RHO_AIR = 1.2, CDA_AIR = 0.45;
+  // Side-on air drag area (paddler + freeboard, m²), and how far the wind's
+  // push sits aft of the hull's pivot underway. The pivot moves forward when
+  // a hull is moving (Burke, The Science of Paddling, Part 37), so the stern
+  // blows downwind and the bow turns into the wind.
+  const CDA_SIDE = 1.1, WIND_ARM = 0.3;
+  // Wave-making share of hull drag at race pace (2.5 m/s), rising as V⁶
+  // toward hull speed; only it changes in shallow water.
+  const WAVE_SHARE = 0.23, WAVE_VREF = 2.5, SHALLOW_MAX = 5;
 
   // Bent-shaft marathon paddle, distances from the grip (m).
   const PADDLE = { throat: 0.82, bladeLen: 0.50, copFromThroat: 0.25 };
@@ -380,20 +388,77 @@
     };
   }
 
-  // Speed through the water at `watts` with wind and current. Air drag
-  // ½ρ·CdA·u² on paddler and boat, at the air speed past them u = ground
-  // speed + headwind; still-air drag is already part of HULL_K, so only the
-  // change counts. The paddle drives the same share of power into overcoming
-  // resistance as in still conditions.
-  function waterSpeed(r, watts, headwind, current) {
+  // Shallow water (Burke, Part 4): the boat's own wave, wavelength
+  // λ = 2πV²/g, runs slower when the depth D is under about λ/2, as
+  // c = √(gλ/2π · tanh(2πD/λ)). The hull then makes the wave it would make
+  // in deep water at V / √tanh(gD/V²) (Schlichting's intermediate speed), so
+  // the wave drag (∝ V⁶ near hull speed) grows by tanh(gD/V²)^-3, capped at
+  // SHALLOW_MAX. Under 2 ft at race pace drag "skyrockets".
+  function shallowFactor(V, depth) {
+    if (!(depth > 0) || !isFinite(depth) || V <= 0) return 1;
+    return Math.min(SHALLOW_MAX, Math.pow(Math.tanh((G * depth) / (V * V)), -3));
+  }
+
+  // Speed through the water at `watts` in the conditions of one leg:
+  //  - air drag ½ρ·CdA·|u|·u on paddler and boat, u = air velocity past the
+  //    boat (ground speed + headwind ahead, crosswind across); still-air
+  //    drag is already part of HULL_K, so only the change counts;
+  //  - the crosswind's side push Y is carried by the hull crabbing (leeway),
+  //    costing induced drag Y²/(½ρV²π(2d)²) as for the stroke's own push;
+  //  - its turning moment Y·WIND_ARM adds to the stroke's on one side and
+  //    takes from it on the other, so you take more strokes on the windward
+  //    side and fewer on the lee side. If the wind out-turns your stroke,
+  //    you stay on the windward side and steer out the rest, which the
+  //    hull pays for as more side force at the stern;
+  //  - shallow water raises the wave drag (shallowFactor).
+  // The paddle drives the same share of power into overcoming resistance as
+  // in still conditions; time lost switching changes with the wind.
+  function legSpeed(r, watts, c) {
     const e = r.at(watts), k = e.hullK, budget = k * Math.pow(e.speed, 3);
-    const air = (V) => { const u = V + current + headwind; return 0.5 * RHO_AIR * CDA_AIR * (u * Math.abs(u) - V * V); };
+    const loss = r.params.switchLossStrokes;
+    const M = Math.abs(r.yawAt(watts));
+    // Strokes per side scale as yaw damping (∝ V) over the turning moment,
+    // anchored to the stroke's own calm figure.
+    const tol = rad(r.params.switchHeadingDeg);
+    const raw = Math.abs(r.yawMoment) > 1e-9 ? (2 * tol * yawDamping(r.speed)) / (Math.abs(r.yawMoment) * r.cycle) : Infinity;
+    const head = c.windSpeed * Math.cos(rad(c.windAngle)), cross = Math.abs(c.windSpeed * Math.sin(rad(c.windAngle)));
+    const qPlan = (V) => 0.5 * RHO * V * V * Math.PI * Math.pow(2 * HULL_DRAFT, 2);
+    const perSide = (V, m) => m > 1e-9 && isFinite(raw)
+      ? Math.min(MAX_STROKES_PER_SIDE, Math.max(1, raw * (M / m) * (V / e.speed))) : MAX_STROKES_PER_SIDE;
+    const calmN = perSide(e.speed, M), calmDuty = calmN / (calmN + loss);
+    const state = (V) => {
+      const ux = V + c.current + head, uy = cross, u = Math.hypot(ux, uy);
+      const airX = 0.5 * RHO_AIR * CDA_AIR * (u * ux - V * V);
+      const side = 0.5 * RHO_AIR * CDA_SIDE * u * uy;
+      const W = side * WIND_ARM;
+      let duty, windward, lee, steer = 0;
+      if (W < M) {
+        windward = perSide(V, M - W); lee = perSide(V, M + W);
+        duty = (windward + lee) / (windward + lee + 2 * loss);
+      } else {           // can't hold course by switching alone
+        windward = Infinity; lee = 0; duty = 1;
+        steer = (W - M) / (HULL_L / 2);
+      }
+      const q = qPlan(V);
+      // Induced drag can't sensibly exceed the side force itself (a 45° crab).
+      const induced = q > 0 ? Math.min(side + steer, (side * side + steer * steer) / q) : side + steer;
+      const wave = WAVE_SHARE * k * WAVE_VREF * WAVE_VREF * Math.pow(V / WAVE_VREF, 6);
+      const shallow = wave * (shallowFactor(V, c.depth) - 1);
+      const leeway = V > 0 ? side / (0.5 * RHO * V * V * HULL_L * HULL_DRAFT * HULL_LIFT_SLOPE) : 0;
+      return { R: k * V * V + airX + induced + shallow, duty, windward, lee, steer: steer > 0,
+               leewayDeg: Math.min(45, leeway * 180 / Math.PI), shallow: shallowFactor(V, c.depth), sideForce: side };
+    };
     let lo = 0, hi = 3 * e.speed + 10;
     for (let i = 0; i < 60; i++) {
-      const V = (lo + hi) / 2;
-      if (k * V * V * V + air(V) * V < budget) lo = V; else hi = V;
+      const V = (lo + hi) / 2, st = state(V);
+      if (st.R * V < budget * st.duty / calmDuty) lo = V; else hi = V;
     }
-    return (lo + hi) / 2;
+    const V = (lo + hi) / 2;
+    return Object.assign({ water: V }, state(V));
+  }
+  // Back-compatible: speed through the water with a headwind and current.
+  function waterSpeed(r, watts, headwind, current) {
+    return legSpeed(r, watts, { windSpeed: Math.abs(headwind), windAngle: headwind < 0 ? 180 : 0, current, depth: Infinity }).water;
   }
 
   // Steady race between two strokes: each boat holds its average speed at
@@ -405,14 +470,17 @@
   // Returns times (Infinity if a boat can't make headway), average ground
   // speeds, the finishing gap and each boat's distance at time t.
   function race(a, b, metres, wattsA, wattsB, env = {}) {
-    const hw = env.headwind || 0, cur = env.current || 0;
-    const legs = env.course === "outback"
-      ? [{ len: metres / 2, hw, cur }, { len: metres / 2, hw: -hw, cur: -cur }]
-      : [{ len: metres, hw, cur }];
+    // Wind: windSpeed (m/s) from windAngle (deg: 0 = dead ahead, 90 = from
+    // the side, 180 = from behind), or a signed headwind (m/s).
+    let ws = env.windSpeed || 0, wa = env.windAngle || 0;
+    if (env.headwind) { ws = Math.abs(env.headwind); wa = env.headwind > 0 ? 0 : 180; }
+    const cur = env.current || 0, depth = env.depth === undefined ? Infinity : env.depth;
+    const leg = (len, back) => ({ len, windSpeed: ws, windAngle: back ? 180 - wa : wa, current: back ? -cur : cur, depth });
+    const legs = env.course === "outback" ? [leg(metres / 2, false), leg(metres / 2, true)] : [leg(metres, false)];
     const boat = (r, watts) => {
       const ls = legs.map((l) => {
-        const water = waterSpeed(r, watts, l.hw, l.cur), v = water + l.cur;
-        return { len: l.len, water, v, t: v > 1e-3 ? l.len / v : Infinity };
+        const st = legSpeed(r, watts, l), v = st.water + l.current;
+        return Object.assign(st, { len: l.len, v, t: v > 1e-3 ? l.len / v : Infinity });
       });
       const t = ls.reduce((s, l) => s + l.t, 0);
       const pos = (time) => {        // distance covered by `time`
@@ -438,7 +506,7 @@
     };
   }
 
-  const api = { simulate, race, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
+  const api = { simulate, race, shallowFactor, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.StrokeSim = api;
 })(typeof window !== "undefined" ? window : globalThis);
