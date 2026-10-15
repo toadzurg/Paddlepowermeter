@@ -55,10 +55,17 @@ console.log("\nStroke simulator physics");
   check("plausible C1 speed at 150 W", base.speedAt(150) > 2.0 && base.speedAt(150) < 3.2, `${base.speedAt(150).toFixed(2)} m/s`);
   check("blade stays buried during the drive", base.samples.every((s) => s.B.wet > 0.99));
 
-  const fast = S.simulate({ rateSpm: 85 });
-  check("efficiency nearly independent of stroke rate", Math.abs(fast.efficiency - base.efficiency) < 2e-3,
-        `${pct(base.efficiency)} vs ${pct(fast.efficiency)}`);
-  check("speed at equal effort independent of rate", Math.abs(fast.speedAt(150) - base.speedAt(150)) < 0.01);
+  // The stroke itself doesn't care about rate; switching does: a switch takes
+  // about the same time at any rate, so a higher rate loses more to it.
+  const fast = S.simulate({ rateSpm: 85, switchLossS: 0 }), base0 = S.simulate({ switchLossS: 0 });
+  check("efficiency nearly independent of stroke rate (switching aside)", Math.abs(fast.efficiency - base0.efficiency) < 2e-3,
+        `${pct(base0.efficiency)} vs ${pct(fast.efficiency)}`);
+  check("speed at equal effort independent of rate (switching aside)", Math.abs(fast.speedAt(150) - base0.speedAt(150)) < 0.01);
+  const rate50 = S.simulate({ rateSpm: 50 }), rate80 = S.simulate({ rateSpm: 80 });
+  check("a switch takes the same time at any rate, so a higher rate loses more to it",
+        1 - rate80.switchDuty > 1 - rate50.switchDuty &&
+        Math.abs(base.switchDuty - base.strokesPerSide / (base.strokesPerSide + 0.3)) < 1e-9,   // 0.3 s at 60 spm = 0.3 of a stroke
+        `${pct(1 - rate50.switchDuty)} at 50 spm vs ${pct(1 - rate80.switchDuty)} at 80`);
 
   // Drag only (the stricter blade model) for the technique comparisons;
   // lift is tested on its own below.
@@ -104,7 +111,7 @@ console.log("\nStroke simulator physics");
   check("sideways push causes leeway drag", sweep.leewayPower > 10 * clean.leewayPower && sweep.leewayPower > 0,
         `${sweep.leewayPower.toFixed(2)} W vs ${clean.leewayPower.toFixed(3)} W`);
   check("leeway drag is a small share", sweep.leewayPower / sweep.paddlerPower < 0.02);
-  const slowSwitch = S.simulate({ switchLossStrokes: 1 });
+  const slowSwitch = S.simulate({ switchLossS: 1 });
   check("slower switches cost speed", slowSwitch.speedAt(150) < base.speedAt(150));
   const tight = S.simulate({ switchHeadingDeg: 1 });
   check("tighter heading tolerance means more switches", tight.strokesPerSide < base.strokesPerSide);

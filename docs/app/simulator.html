@@ -623,7 +623,7 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of stroke-sim.js (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. -->
-<script src="stroke-sim.js?v=8776ff41b1"></script>
+<script src="stroke-sim.js?v=8e61568233"></script>
 <script>
 (() => {
 "use strict";
@@ -665,7 +665,7 @@ function shown(el) {
 }
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 32;
+const NEEDS_API = 33;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -763,8 +763,8 @@ const CONTROLS = [
     help: "Fewer: more time lost switching. More: a wider zigzag. In a crosswind it's the average; you take more on the windward side. 0 switches by heading." },
   { group: "ctl-switch", key: "switchHeadingDeg", label: "Switch when off course by", min: 1, max: 10, step: 0.5, unit: "°",
     fmt: (v) => `±${v}°`, help: "How far you let the boat turn before switching sides (auto)." },
-  { group: "ctl-switch", key: "switchLossStrokes", label: "Time lost per switch", min: 0, max: 1, step: 0.05, unit: "",
-    fmt: (v) => `${v.toFixed(2)} of a stroke`, help: "No propulsion while the paddle changes sides." },
+  { group: "ctl-switch", key: "switchLossS", label: "Time lost per switch", min: 0, max: 1.5, step: 0.05, unit: " s",
+    fmt: (v) => `${v.toFixed(2)} s`, help: "No push while the paddle changes sides. About the same time at any rate, so it costs more at a higher rate." },
 ];
 for (const c of CONTROLS) {
   const wrap = document.createElement("div");
@@ -2257,7 +2257,7 @@ async function runScore(gen) {
     if (p.swingM && !(await step("Body swing", set("swingM", 0)))) return;
     if (p.dropM && !(await step("Drop", set("dropM", 0)))) return;
     if (p.heelDeg && !(await step("Heel", set("heelDeg", 0)))) return;
-    if (!(await step("Switching", set("switchLossStrokes", 0)))) return;
+    if (!(await step("Switching", set("switchLossS", 0)))) return;
     if (!(await step("Crab", intoHull("leeway")))) return;
     if (!(await step("Surge, bob & pitch", intoHull(["surge", "bounce", "swing", "drop", "pitch"])))) return;
     if (setup.map) rows.push(["Portages", race[`legs${x.toUpperCase()}`].filter((l) => l.kind === "portage").reduce((a, l) => a + l.t, 0)]);
