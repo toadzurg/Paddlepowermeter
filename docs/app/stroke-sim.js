@@ -461,6 +461,87 @@
     return legSpeed(r, watts, { windSpeed: Math.abs(headwind), windAngle: headwind < 0 ? 180 : 0, current, depth: Infinity }).water;
   }
 
+  // ---------------------------------------------------------------- river
+  // A river (Burke, The Science of Paddling, Parts 18 and 20): current and
+  // depth are greatest mid-channel and fall to the banks,
+  //   straight: shape(y) = 1 − (1 − 2y/W)², y from the nearer bank;
+  //   bend: deep and fast on the outside, a shallow slack bar on the inside,
+  //     shape(y) = (y/W)(2 − y/W) / 0.75, y from the inside bank
+  //     (the same as a straight in mid-channel).
+  // Current = mid-channel current × shape; depth = mid-channel depth × shape.
+  // Bends turn BEND_ANGLE each, with centreline radius BEND_RADIUS × width;
+  // a line closer to the inside is shorter (radius − offset). A line `u`
+  // runs from mid-channel (0) to RIVER_EDGE m off the bank (1): along the
+  // nearer bank on straights and the inside of each bend. Bends alternate,
+  // so a line off the middle crosses the river between bends (at 45°,
+  // through the conditions halfway to mid-channel).
+  const RIVER_EDGE = 3, MIN_DEPTH = 0.25, BEND_ANGLE = 90, BEND_RADIUS = 1.5;
+  const shapeStraight = (y, W) => 1 - Math.pow(1 - (2 * y) / W, 2);
+  const shapeBend = (y, W) => ((y / W) * (2 - y / W)) / 0.75;
+  // Distance from the bank for line u.
+  const lineY = (u, W) => W / 2 - u * (W / 2 - RIVER_EDGE);
+  // Segments (along-course length, path length, current, depth) for one km
+  // of river on line u, given mid-channel current and depth.
+  function riverSegments(river, u, current, depth) {
+    const W = river.width, y = lineY(u, W), per = 1000;
+    const turn = rad(Math.max(0, river.bendsDegPerKm || 0));
+    const Rc = BEND_RADIUS * W, bendLen = Math.min(0.9 * per, turn * Rc);
+    const bends = bendLen > 0 ? (turn * 180 / Math.PI) / BEND_ANGLE : 0;
+    const d = (shape) => Math.max(MIN_DEPTH, depth * shape);
+    const segs = [];
+    const straightLen = per - bendLen;
+    // Crossing between bends: across W − 2y of river, at 45°.
+    const across = bends > 0 ? Math.max(0, W - 2 * y) : 0;
+    const perStraight = bends > 0 ? straightLen / bends : straightLen;
+    const along = Math.min(perStraight, across);
+    if (across > 0 && along > 0) {
+      const sh = shapeStraight((y + W / 2) / 2, W);
+      segs.push({ kind: "crossing", len: along * bends, path: Math.hypot(along, across) * bends, current: current * sh, depth: d(sh) });
+    }
+    const rest = straightLen - along * bends;
+    if (rest > 0) {
+      const sh = shapeStraight(y, W);
+      segs.push({ kind: "straight", len: rest, path: rest, current: current * sh, depth: d(sh) });
+    }
+    if (bendLen > 0) {
+      const sh = shapeBend(y, W);
+      segs.push({ kind: "bend", len: bendLen, path: bendLen * (Rc - (W / 2 - y)) / Rc, current: current * sh, depth: d(sh) });
+    }
+    return segs;
+  }
+  // Time for `len` m of a leg (c: wind and mid-channel current/depth) on
+  // line u, and what the boat met there.
+  function riverLeg(r, watts, c, river, u) {
+    const segs = riverSegments(river, u, c.current, c.depth);
+    let t = 0, path = 0;
+    const parts = segs.map((sg) => {
+      const st = legSpeed(r, watts, Object.assign({}, c, { current: sg.current, depth: sg.depth }));
+      // Current runs along the river; the boat's path may be shorter (inside
+      // of a bend) or longer (crossing), and moves along at path/len of it.
+      const ground = st.water + sg.current * (sg.len / sg.path);
+      const tt = ground > 1e-3 ? sg.path / ground : Infinity;
+      t += tt; path += sg.path;
+      return Object.assign({}, sg, { t: tt, water: st.water });
+    });
+    const k = c.len / 1000;
+    return { t: t * k, path: path * k, parts, line: u };
+  }
+  // The fastest line for a leg, by a coarse scan then refinement.
+  function bestLine(r, watts, c, river) {
+    let best = 0, bt = Infinity;
+    for (let i = 0; i <= 20; i++) {
+      const u = i / 20, t = riverLeg(r, watts, c, river, u).t;
+      if (t < bt) { bt = t; best = u; }
+    }
+    let lo = Math.max(0, best - 0.05), hi = Math.min(1, best + 0.05);
+    for (let i = 0; i < 20; i++) {
+      const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3;
+      if (riverLeg(r, watts, c, river, m1).t < riverLeg(r, watts, c, river, m2).t) hi = m2; else lo = m1;
+    }
+    const u = (lo + hi) / 2;
+    return riverLeg(r, watts, c, river, u).t <= bt ? u : best;
+  }
+
   // Steady race between two strokes: each boat holds its average speed at
   // its own effort. env: headwind (m/s, + against you, − tailwind), current
   // (m/s, + with you) and course: "point" (one way) or "outback" (out to a
@@ -477,10 +558,20 @@
     const cur = env.current || 0, depth = env.depth === undefined ? Infinity : env.depth;
     const leg = (len, back) => ({ len, windSpeed: ws, windAngle: back ? 180 - wa : wa, current: back ? -cur : cur, depth });
     const legs = env.course === "outback" ? [leg(metres / 2, false), leg(metres / 2, true)] : [leg(metres, false)];
-    const boat = (r, watts) => {
+    // env.river: { width (m), bendsDegPerKm, lineA, lineB } with current and
+    // depth taken as mid-channel; each line is 0 (middle) … 1 (edges) or
+    // "best" (fastest for each leg).
+    const river = env.river && env.river.width > 2 * RIVER_EDGE ? env.river : null;
+    const boat = (r, watts, line) => {
       const ls = legs.map((l) => {
-        const st = legSpeed(r, watts, l), v = st.water + l.current;
-        return Object.assign(st, { len: l.len, v, t: v > 1e-3 ? l.len / v : Infinity });
+        const st = legSpeed(r, watts, l);
+        if (!river) {
+          const v = st.water + l.current;
+          return Object.assign(st, { len: l.len, v, t: v > 1e-3 ? l.len / v : Infinity });
+        }
+        const u = line === "best" ? bestLine(r, watts, l, river) : Math.min(1, Math.max(0, +line || 0));
+        const rl = riverLeg(r, watts, l, river, u);
+        return Object.assign(st, { len: l.len, v: isFinite(rl.t) ? l.len / rl.t : 0, t: rl.t, river: rl });
       });
       const t = ls.reduce((s, l) => s + l.t, 0);
       const pos = (time) => {        // distance covered by `time`
@@ -494,7 +585,7 @@
       };
       return { legs: ls, t, v: isFinite(t) ? metres / t : 0, water: ls[0].water, pos };
     };
-    const A = boat(a, wattsA), B = boat(b, wattsB);
+    const A = boat(a, wattsA, river && river.lineA), B = boat(b, wattsB, river && river.lineB);
     const first = Math.min(A.t, B.t);
     return {
       vA: A.v, vB: B.v, waterA: A.water, waterB: B.water, tA: A.t, tB: B.t, metres,
@@ -506,7 +597,7 @@
     };
   }
 
-  const api = { simulate, race, shallowFactor, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
+  const api = { simulate, race, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.StrokeSim = api;
 })(typeof window !== "undefined" ? window : globalThis);

@@ -165,6 +165,30 @@ console.log("\nStroke simulator physics");
   const obW = at({ course: "outback", windSpeed: 5, windAngle: 60 });
   check("there and back: wind angle mirrors on the way home", obW.legsA[0].leewayDeg > 0.5 && obW.legsA[1].leewayDeg > 0.5 &&
         obW.legsA[1].water > obW.legsA[0].water);
+
+  // River (Burke, Parts 18 and 20): current and depth across the river; corners.
+  const riv = (line, current, depth = 3, bends = 180, extra = {}) => at(Object.assign({ current: current / 3.6, depth,
+    river: { width: 60, bendsDegPerKm: bends, lineA: line, lineB: line } }, extra));
+  check("river, middle line, still water = open water", Math.abs(riv(0, 0, 5).tA - at({ depth: 5 }).tA) < 1e-6);
+  const upMid = riv(0, -4), upEdge = riv(1, -4), upBest = riv("best", -4);
+  check("upstream: the edges beat the middle", upEdge.tA < upMid.tA * 0.9, `${(upEdge.tA / 60).toFixed(1)} vs ${(upMid.tA / 60).toFixed(1)} min`);
+  const dnMid = riv(0, 4), dnEdge = riv(1, 4), dnBest = riv("best", 4);
+  check("downstream: the middle beats the edges", dnMid.tA < dnEdge.tA);
+  check("best line is at least as fast as any fixed line", upBest.tA <= Math.min(upMid.tA, upEdge.tA, riv(0.5, -4).tA) + 1e-6 &&
+        dnBest.tA <= Math.min(dnMid.tA, dnEdge.tA) + 1e-6);
+  check("best line: edges upstream, middle downstream", upBest.legsA[0].river.line > 0.7 && dnBest.legsA[0].river.line < 0.3,
+        `${upBest.legsA[0].river.line.toFixed(2)} / ${dnBest.legsA[0].river.line.toFixed(2)}`);
+  const obR = riv("best", 4, 3, 180, { course: "outback" });
+  check("there and back: middle down, edges back", obR.legsA[0].river.line < 0.3 && obR.legsA[1].river.line > 0.7);
+  const cut = riv("best", 0, 5, 360), noCut = riv(0, 0, 5, 360);
+  check("still water: cutting corners pays", cut.tA < noCut.tA && cut.legsA[0].river.line > 0.3 &&
+        cut.legsA[0].river.path < 10000, `line ${cut.legsA[0].river.line.toFixed(2)}, path ${cut.legsA[0].river.path.toFixed(0)} m`);
+  const cutShallow = riv("best", 0, 1, 360);
+  check("shallower river: cut corners less", cutShallow.legsA[0].river.line < cut.legsA[0].river.line,
+        `${cutShallow.legsA[0].river.line.toFixed(2)} vs ${cut.legsA[0].river.line.toFixed(2)}`);
+  const segs = S.riverSegments({ width: 60, bendsDegPerKm: 180 }, 1, -1, 3);
+  check("river segments add up to a km", Math.abs(segs.reduce((a, g) => a + g.len, 0) - 1000) < 1e-6 &&
+        segs.some((g) => g.kind === "crossing") && segs.find((g) => g.kind === "bend").path < segs.find((g) => g.kind === "bend").len);
 }
 
 (async () => {
@@ -278,6 +302,33 @@ console.log("\nStroke simulator physics");
     await slide("#current", 0);
     for (const id of ["#effA", "#effB"]) await slide(id, 150);
     await page.click("#course >> text=Point to point");
+
+    // River: lines per boat, map, notes
+    const riverShown = () => page.$eval("#river-map", (e) => !e.hasAttribute("hidden"));
+    check(`${tag}: open water hides river settings`, !(await riverShown()) && !(await page.isVisible("#width")));
+    await page.click("#water >> text=River");
+    check(`${tag}: river settings and map`, (await riverShown()) && (await page.isVisible("#width")) &&
+          (await text("#l-current")) === "Current mid-channel");
+    check(`${tag}: line choices in order, A best, B middle`,
+          JSON.stringify(await page.$$eval("#line-a button", (bs) => bs.map((b) => b.textContent))) === '["Middle","Between","Edges","Best line"]' &&
+          JSON.stringify([await pressed("#line-a"), await pressed("#line-b")]) === '[["best"],["0"]]');
+    await slide("#current", -4); await slide("#depth", 3);
+    check(`${tag}: upstream, best line beats the middle`, /^Boat A wins/.test(await verdict()) &&
+          /^edges: current [\d.]+ km\/h against you/.test(await text("#c-a")) && /^middle:/.test(await text("#c-b")),
+          `${await text("#c-a")} | ${await text("#c-b")}`);
+    check(`${tag}: river map draws both lines`, (await page.$$("#river-map .line-a, #river-map .line-b")).length === 2);
+    await page.click("#line-b >> text=Edges");
+    await slide("#current", 4);
+    check(`${tag}: downstream, edges lose`, /^Boat A wins/.test(await verdict()) && /^middle:/.test(await text("#c-a")), await text("#c-a"));
+    await page.click("#course >> text=There and back");
+    check(`${tag}: there and back notes per leg`, /^out: middle: .*; back: edges: /.test(await text("#c-a")), await text("#c-a"));
+    await slide("#bends", 0);
+    check(`${tag}: straight river readout`, (await text("#o-bends")) === "straight");
+    await slide("#bends", 180); await slide("#current", 0); await slide("#depth", 5);
+    await page.click("#course >> text=Point to point");
+    await page.click("#water >> text=Open water");
+    check(`${tag}: back to open water`, !(await riverShown()) && (await text("#l-current")) === "Current");
+
     await page.click("#race-start");
     await page.waitForTimeout(600);
     check(`${tag}: race animates two boats`, (await page.$$("#race-view .boat-a, #race-view .boat-b")).length === 2);

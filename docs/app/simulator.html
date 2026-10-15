@@ -170,7 +170,7 @@
   .ctl { margin: 10px 0; }
   .ctl .top { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
   .ctl .top output { font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; }
-  .ctl .help { font-size: 12px; color: var(--text-secondary); }
+  .help { font-size: 12px; color: var(--text-secondary); }
   input[type=range] { width: 100%; margin: 6px 0 2px; height: 28px; accent-color: var(--series-1); }
   /* A slightly deeper orange for B's sliders: Chromium draws a dark track
      behind light accent colours. */
@@ -195,6 +195,11 @@
   svg.race .tick { stroke: var(--axis); }
   svg.race .finish { stroke: var(--text-primary); stroke-width: 2; stroke-dasharray: 4 3; }
   svg.race .boat-a { fill: var(--series-1); } svg.race .boat-b { fill: var(--series-2); }
+  svg.race .river { fill: var(--water); stroke: var(--water-line); stroke-width: 1.5; }
+  svg.race .bank { fill: color-mix(in srgb, var(--series-3) 12%, var(--surface-1)); }
+  svg.race .line-a, svg.race .line-b { fill: none; stroke-width: 2.5; stroke-linecap: round; }
+  svg.race .line-a { stroke: var(--series-1); } svg.race .line-b { stroke: var(--series-2); stroke-dasharray: 6 4; }
+  svg.race .flow { stroke: var(--water-line); stroke-width: 1.5; fill: none; }
   svg.race .progress-track { fill: var(--grid); }
   svg.race .progress-a { fill: var(--series-1); } svg.race .progress-b { fill: var(--series-2); }
   [hidden] { display: none !important; }
@@ -276,13 +281,31 @@
               <input type="range" id="effA" min="50" max="400" step="10" value="150" aria-label="Boat A effort"></div>
             <div class="ctl"><label class="top"><span><span class="b-dot"></span>Boat B effort</span><output id="o-effB"></output></label>
               <input type="range" id="effB" min="50" max="400" step="10" value="150" aria-label="Boat B effort"></div>
+            <div class="river-only" hidden>
+              <div class="ctl"><div class="top"><span><span class="a-dot"></span>Boat A line</span></div>
+                <div class="row chips" id="line-a" role="group" aria-label="Boat A line" style="margin-top:6px"></div></div>
+              <div class="ctl"><div class="top"><span><span class="b-dot"></span>Boat B line</span></div>
+                <div class="row chips b" id="line-b" role="group" aria-label="Boat B line" style="margin-top:6px"></div></div>
+              <div class="help">Middle: deep, fast water. Edges: along the banks and the inside of bends,
+                where the current is slack and the path shorter, but the water is shallow. Best: the fastest
+                line for each leg.</div>
+            </div>
           </section>
           <section>
             <h3>Course</h3>
-            <div class="row chips" id="course" role="group" aria-label="Course"></div>
+            <div class="row chips" id="water" role="group" aria-label="Water"></div>
+            <div class="row chips" id="course" role="group" aria-label="Course" style="margin-top:6px"></div>
             <div class="ctl"><label class="top"><span>Distance</span><output id="o-dist"></output></label>
               <input type="range" id="dist" min="0.2" max="40" step="0.1" value="10" aria-label="Race distance"></div>
-            <div class="ctl"><label class="top"><span>Water depth</span><output id="o-depth"></output></label>
+            <div class="river-only" hidden>
+              <div class="ctl"><label class="top"><span>River width</span><output id="o-width"></output></label>
+                <input type="range" id="width" min="20" max="200" step="5" value="60" aria-label="River width"></div>
+              <div class="ctl"><label class="top"><span>Bends</span><output id="o-bends"></output></label>
+                <input type="range" id="bends" min="0" max="720" step="45" value="180" aria-label="Bends per km">
+                <div class="help">How much the river turns. The inside of a bend is shorter but shallow and slack;
+                  the outside is deep and fast.</div></div>
+            </div>
+            <div class="ctl"><label class="top"><span id="l-depth">Water depth</span><output id="o-depth"></output></label>
               <input type="range" id="depth" min="0.3" max="5" step="0.1" value="5" aria-label="Water depth">
               <div class="help">Below about half the hull's length the boat's wave slows and drags it back;
                 under 2 ft it gets much harder.</div></div>
@@ -295,7 +318,7 @@
               <input type="range" id="windDir" min="0" max="180" step="15" value="0" aria-label="Wind direction">
               <div class="help">A crosswind makes the boat crab and turn into the wind, so you take more
                 strokes on the windward side.</div></div>
-            <div class="ctl"><label class="top"><span>Current</span><output id="o-current"></output></label>
+            <div class="ctl"><label class="top"><span id="l-current">Current</span><output id="o-current"></output></label>
               <input type="range" id="current" min="-10" max="10" step="0.5" value="0" aria-label="Current"></div>
           </section>
         </div>
@@ -307,6 +330,7 @@
               <div class="sub" id="s-b"></div><div class="cond" id="c-b"></div></div>
           </div>
           <div class="verdict" id="verdict"></div>
+          <svg class="race river-only" id="river-map" role="img" aria-label="River map with each boat's line" hidden></svg>
           <svg class="race" id="race-view" role="img" aria-label="Race between boat A and boat B"></svg>
           <div class="row" style="margin-top:8px"><button class="primary" id="race-start">Start race</button></div>
         </div>
@@ -346,6 +370,11 @@
         <p>Up and down push: a blade angled forward at the catch lifts the boat; angled back at
           the exit it pulls the boat down. The bent shaft shifts that balance toward the exit. The
           average changes how deep the boat sits, and the swing bounces it, making waves.</p>
+        <p>River (Burke, Parts 18 and 20): current and depth are greatest mid-channel and fall to
+          the banks; in a bend the outside is deep and fast and the inside a shallow, slack bar. A
+          line along the edges meets less current and cuts the inside of bends, but in shallower
+          water, and crosses the river between bends. Upstream that usually wins; downstream the
+          middle does.</p>
         <p>Race conditions: air drag changes with the air speed past you; a crosswind's side push
           makes the hull crab and turns the bow into the wind, so switching becomes lopsided;
           current adds to your speed over the ground; shallow water slows the boat's own wave so it
@@ -555,19 +584,33 @@ function why(r, at) {
 }
 
 // ----------------------------------------------------------------- race
-let race = null, raceAnim = null, course = "point";
-const COURSES = { point: "Point to point", outback: "There and back" };
-function renderCourse() {
-  $("course").innerHTML = "";
-  for (const [v, label] of Object.entries(COURSES)) {
+let race = null, raceAnim = null, course = "point", water = "open";
+const lines = { a: "best", b: 0 };
+// [value, label] pairs, in display order.
+const COURSES = [["point", "Point to point"], ["outback", "There and back"]];
+const WATERS = [["open", "Open water"], ["river", "River"]];
+const LINES = [["0", "Middle"], ["0.5", "Between"], ["1", "Edges"], ["best", "Best line"]];
+// A row of choice chips; `get`/`set` read and write the chosen value.
+function chips(id, options, get, set) {
+  $(id).innerHTML = "";
+  for (const [v, label] of options) {
     const b = document.createElement("button");
     b.type = "button";
     b.textContent = label;
     b.dataset.value = v;
-    b.setAttribute("aria-pressed", String(course === v));
-    b.addEventListener("click", () => { course = v; renderCourse(); updateRace(); });
-    $("course").append(b);
+    b.setAttribute("aria-pressed", String(String(get()) === v));
+    b.addEventListener("click", () => { set(v); renderCourse(); updateRace(); });
+    $(id).append(b);
   }
+}
+function renderCourse() {
+  chips("water", WATERS, () => water, (v) => { water = v; });
+  chips("course", COURSES, () => course, (v) => { course = v; });
+  for (const x of BOATS) chips(`line-${x}`, LINES, () => lines[x], (v) => { lines[x] = v === "best" ? "best" : +v; });
+  // toggleAttribute, not .hidden: SVG elements have no hidden property.
+  for (const el of document.querySelectorAll(".river-only")) el.toggleAttribute("hidden", water !== "river");
+  $("l-depth").textContent = water === "river" ? "Depth mid-channel" : "Water depth";
+  $("l-current").textContent = water === "river" ? "Current mid-channel" : "Current";
 }
 const clock = (sec) => {
   if (!isFinite(sec)) return "never";
@@ -578,12 +621,25 @@ const gapText = (sec) => sec < 60 ? `${fmtNum(sec, 1)} s` : clock(sec);
 const dirText = (deg) => deg === 0 ? "dead ahead" : deg === 90 ? "the side" : deg === 180 ? "behind" :
   deg < 90 ? `${deg}° off the bow` : `${180 - deg}° off the stern`;
 const depthText = (d) => d >= 5 ? "deep" : `${fmtNum(d, 1)} m (${fmtNum(d / 0.3048, 1)} ft)`;
-function legNote(l) {
+const lineName = (u) => u < 0.12 ? "middle" : u > 0.88 ? "edges" : `${Math.round(u * 100)}% toward the edges`;
+function riverNote(l) {
+  const rl = l.river, tt = rl.parts.reduce((a, p) => a + (isFinite(p.t) ? p.t : 0), 0) || 1;
+  const cur = rl.parts.reduce((a, p) => a + p.current * (isFinite(p.t) ? p.t : 0), 0) / tt * 3.6;
+  const shallowest = Math.min(...rl.parts.map((p) => p.depth));
+  const longer = rl.path / l.len - 1;
+  return `${lineName(rl.line)}: current ${Math.abs(cur) < 0.05 ? "slack" : `${fmtNum(Math.abs(cur), 1)} km/h ${cur > 0 ? "with you" : "against you"}`}, ` +
+    `${Math.abs(longer) < 0.002 ? "centreline distance" : `${fmtNum(Math.abs(longer) * 100, 1)}% ${longer < 0 ? "shorter" : "longer"} path`}, ` +
+    `as shallow as ${fmtNum(shallowest, 1)} m`;
+}
+function legNote(l, both) {
   const bits = [];
   if (l.steer) bits.push("the wind out-turns the stroke: you'd stay on the windward side and steer");
   else if (Math.abs(l.windward - l.lee) > 0.15)
     bits.push(`${fmtNum(l.leewayDeg, 1)}° crab; switching ${fmtNum(l.windward, 1)} strokes windward, ${fmtNum(l.lee, 1)} lee`);
-  if (l.shallow > 1.005) bits.push(`wave drag ×${fmtNum(l.shallow, 1)} in the shallows`);
+  if (l.river) {
+    const legs = both ? [["out", both[0]], ["back", both[1]]] : [["", l]];
+    for (const [w, x] of legs) bits.push((w ? `${w}: ` : "") + riverNote(x));
+  } else if (l.shallow > 1.005) bits.push(`wave drag ×${fmtNum(l.shallow, 1)} in the shallows`);
   return bits.join("; ");
 }
 function updateRace() {
@@ -600,9 +656,15 @@ function updateRace() {
   $("o-windDir").textContent = wind === 0 ? "—" : dirText(dir) + out;
   $("o-current").textContent = current === 0 ? "none" :
     `${fmtNum(Math.abs(current), 1)} km/h ${current > 0 ? "with you" : "against you"}${out}`;
+  const riverOn = water === "river";
+  const width = parseFloat($("width").value), bends = parseFloat($("bends").value);
+  $("o-width").textContent = `${width} m`;
+  $("o-bends").textContent = bends === 0 ? "straight" : `${fmtNum(bends / 90, 1)} bends per km (${bends}°/km)`;
   race = S.race(results.a, results.b, km * 1000, effA, effB, {
     windSpeed: wind / 3.6, windAngle: dir, current: current / 3.6,
-    depth: depth >= 5 ? Infinity : depth, course,
+    // A river's mid-channel shallows toward the banks, so "deep" there is 5 m.
+    depth: depth >= 5 ? (riverOn ? 5 : Infinity) : depth, course,
+    river: riverOn ? { width, bendsDegPerKm: bends, lineA: lines.a, lineB: lines.b } : null,
   });
   $("t-a").textContent = clock(race.tA);
   $("t-b").textContent = clock(race.tB);
@@ -610,8 +672,10 @@ function updateRace() {
   const spd = (v) => v > 1e-3 ? `${fmtNum(v, 2)} m/s · ${fmtNum(v * 3.6, 1)} km/h${avg}` : "can't make headway";
   $("s-a").textContent = spd(race.vA);
   $("s-b").textContent = spd(race.vB);
-  $("c-a").textContent = legNote(race.legsA[0]);
-  $("c-b").textContent = legNote(race.legsB[0]);
+  const outback = course === "outback";
+  $("c-a").textContent = legNote(race.legsA[0], outback && race.legsA[0].river ? race.legsA : null);
+  $("c-b").textContent = legNote(race.legsB[0], outback && race.legsB[0].river ? race.legsB : null);
+  if (riverOn) drawRiver(width, bends, current);
   const gap = Math.abs(race.timeGap), dist = Math.abs(race.distanceGap);
   const winner = race.timeGap > 0 ? "A" : "B";
   $("verdict").textContent =
@@ -631,6 +695,41 @@ const raceEnd = () => {
   const done = [race.tA, race.tB].filter(isFinite);
   return done.length ? Math.max(...done) : 3600;
 };
+// Top-down river map: a stretch of the river (two S-bends when it bends),
+// flowing per the current, with each boat's line on the first leg.
+function drawRiver(width, bends, current) {
+  const svg = $("river-map");
+  const W = Math.max(280, Math.round(svg.getBoundingClientRect().width)) || 320, H = 130;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const half = 22, amp = bends > 0 ? Math.min(28, 6 + bends / 30) : 0, k = (2 * Math.PI * 2) / W;
+  const cy = (x) => H / 2 - 6 + amp * Math.sin(k * x), slope = (x) => amp * k * Math.cos(k * x);
+  const normal = (x) => { const s = slope(x), n = Math.hypot(1, s); return [-s / n, 1 / n]; };
+  const along = (off) => {           // off(x): px from the centreline along the normal
+    const pts = [];
+    for (let x = 0; x <= W; x += 4) { const n = normal(x), o = off(x); pts.push([x + n[0] * o, cy(x) + n[1] * o]); }
+    return pts;
+  };
+  const d = (pts) => pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
+  const top = along(() => -half), bottom = along(() => half);
+  let g = `<rect class="bank" x="0" y="0" width="${W}" height="${H - 18}"/>` +
+    `<path class="river" d="${d(top)} ${d(bottom.slice().reverse()).replace(/^M/, "L")} Z"/>`;
+  // The inside of each bend is toward its centre of curvature: offset ∝ −sin.
+  const edge = Math.max(0, half - 4);
+  const lineOf = (leg) => {
+    const u = leg.river ? leg.river.line : 0;
+    return bends > 0 ? (x) => -u * edge * Math.sin(k * x) : () => -u * edge;
+  };
+  g += `<path class="line-b" d="${d(along(lineOf(race.legsB[0])))}"/>`;
+  g += `<path class="line-a" d="${d(along(lineOf(race.legsA[0])))}"/>`;
+  // Flow arrow: the boats go left to right.
+  const fx = W - 40, fy = H - 6, dir = current >= 0 ? 1 : -1;
+  g += current === 0 ? `<text x="${W - 8}" y="${fy}" text-anchor="end">no current</text>` :
+    `<path class="flow" d="M${fx - 14 * dir},${fy - 4} L${fx + 14 * dir},${fy - 4} M${fx + 8 * dir},${fy - 8} L${fx + 14 * dir},${fy - 4} L${fx + 8 * dir},${fy}"/>` +
+    `<text x="${fx - 22}" y="${fy}" text-anchor="end">current</text>`;
+  g += `<text x="8" y="${fy}">racing →</text>` +
+    `<text class="strong" x="8" y="16"><tspan fill="var(--series-1)">A</tspan> solid · <tspan fill="var(--series-2)">B</tspan> dashed</text>`;
+  svg.innerHTML = g;
+}
 // Follow the leader with a window wide enough to show the finishing gap.
 function drawRace(dA, dB, elapsed) {
   const svg = $("race-view");
@@ -680,7 +779,7 @@ $("race-start").addEventListener("click", () => {
   if (raceAnim) cancelAnimationFrame(raceAnim);
   raceAnim = requestAnimationFrame(step);
 });
-for (const id of ["effA", "effB", "dist", "depth", "wind", "windDir", "current"]) $(id).addEventListener("input", updateRace);
+for (const id of ["effA", "effB", "dist", "depth", "wind", "windDir", "current", "width", "bends"]) $(id).addEventListener("input", updateRace);
 renderCourse();
 
 // ---------------------------------------------------------------- views
