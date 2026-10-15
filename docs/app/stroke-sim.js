@@ -690,7 +690,10 @@
     };
   }
 
-  const api = { simulate, race, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
+  // Bumped when the page needs something new from the engine, so a page
+  // that meets an old, cached engine can say so instead of breaking.
+  const API_LEVEL = 25;
+  const api = { API_LEVEL, simulate, race, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.StrokeSim = api;
 })(typeof window !== "undefined" ? window : globalThis);
