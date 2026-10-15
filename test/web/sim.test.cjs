@@ -17,15 +17,21 @@ const pct = (x) => `${(x * 100).toFixed(1)}%`;
 console.log("\nStroke simulator physics");
 {
   const base = S.simulate({});
-  const balance = base.hullPower + base.leewayPower + base.slipPower - base.paddlerPower;
-  check("power balance: hull + leeway + slip = paddler", Math.abs(balance) < 1e-3 * base.paddlerPower,
+  const balance = base.hullPower + base.leewayPower + base.surgePower + base.slipPower - base.paddlerPower;
+  check("power balance: hull + leeway + surge + slip = paddler", Math.abs(balance) < 1e-3 * base.paddlerPower,
         `residual ${balance.toExponential(1)} W`);
-  check("thrust·speed = hull + leeway", Math.abs(base.usefulPower - base.hullPower - base.leewayPower) < 1e-3 * base.paddlerPower);
+  check("thrust·speed = hull + leeway + surge",
+        Math.abs(base.usefulPower - base.hullPower - base.leewayPower - base.surgePower) < 1e-3 * base.paddlerPower);
+  const sh = base.at(150).shares;
+  const total = sh.hull + sh.slip + sh.leeway + sh.surge + sh.sink + sh.bounce;
+  check("shares at 150 W add to 1", Math.abs(total - 1) < 1e-4, total.toFixed(6));
+  check("efficiency is the hull share at the comparison effort", Math.abs(base.efficiency - sh.hull) < 1e-12);
+  check("surge costs a little", sh.surge > 0.0005 && sh.surge < 0.02, pct(sh.surge));
   check("plausible C1 speed at 150 W", base.speedAt(150) > 2.0 && base.speedAt(150) < 3.2, `${base.speedAt(150).toFixed(2)} m/s`);
   check("blade stays buried during the drive", base.samples.every((s) => s.B.wet > 0.99));
 
   const fast = S.simulate({ rateSpm: 85 });
-  check("efficiency independent of stroke rate", Math.abs(fast.efficiency - base.efficiency) < 1e-3,
+  check("efficiency nearly independent of stroke rate", Math.abs(fast.efficiency - base.efficiency) < 2e-3,
         `${pct(base.efficiency)} vs ${pct(fast.efficiency)}`);
   check("speed at equal effort independent of rate", Math.abs(fast.speedAt(150) - base.speedAt(150)) < 0.01);
 
@@ -60,6 +66,23 @@ console.log("\nStroke simulator physics");
   check("short reach, pull behind beats a long reach (bent toward the bow)", short.efficiency > reach.efficiency,
         `${pct(short.efficiency)} vs ${pct(reach.efficiency)}`);
 
+  // Vertical push: catch lifts, exit pulls down; the 12° bend shifts the
+  // balance toward the exit.
+  const shortFlat = S.simulate({ catchDeg: 12, exitDeg: 45, bendDeg: 0 });
+  check("flat blade, pull behind: pulls the boat down", shortFlat.at(150).meanLift < -3 && shortFlat.at(150).shares.sink > 0,
+        `${shortFlat.at(150).meanLift.toFixed(1)} N`);
+  check("bent blade, pull behind: up and down about cancel", Math.abs(short.at(150).meanLift) < 4,
+        `${short.at(150).meanLift.toFixed(1)} N`);
+  check("long reach lifts the boat (a drag saving)", reach.at(150).meanLift > 10 && reach.at(150).shares.sink < 0,
+        `${reach.at(150).meanLift.toFixed(1)} N`);
+  check("but the lift doesn't make up for the reach's slip", short.efficiency > reach.efficiency);
+  check("vertical effects grow with effort", Math.abs(reach.at(300).shares.sink) > Math.abs(reach.at(100).shares.sink));
+  check("bounce is a few mm at most", reach.at(150).bounceMm > 0.1 && reach.at(150).bounceMm < 10,
+        `±${reach.at(150).bounceMm.toFixed(1)} mm`);
+  const heavy = S.simulate({ massKg: 110 });
+  check("heavier boat is slower", heavy.speedAt(150) < base.speedAt(150) - 0.05,
+        `${heavy.speedAt(150).toFixed(2)} vs ${base.speedAt(150).toFixed(2)} m/s`);
+
   const r = S.race(clean, sweep, 10000, 150, 150);
   check("race: clean beats sweep over 10 km", r.timeGap > 10 && r.distanceGap > 20,
         `${r.timeGap.toFixed(1)} s, ${r.distanceGap.toFixed(0)} m`);
@@ -67,6 +90,20 @@ console.log("\nStroke simulator physics");
   check("race: same stroke, same effort is a dead heat", S.race(clean, clean, 5000, 150, 150).timeGap === 0);
   check("race: more effort wins", S.race(sweep, clean, 10000, 200, 150).timeGap > 0);
   check("race: swapping boats flips the gap", Math.abs(S.race(sweep, clean, 10000, 150, 150).timeGap + r.timeGap) < 1e-9);
+  const still = S.race(clean, clean, 10000, 150, 150);
+  const head = S.race(clean, clean, 10000, 150, 150, { headwind: 5 });
+  const tail = S.race(clean, clean, 10000, 150, 150, { headwind: -5 });
+  check("race: headwind slows, tailwind helps", head.vA < still.vA - 0.1 && tail.vA > still.vA + 0.05,
+        `${head.vA.toFixed(2)} / ${still.vA.toFixed(2)} / ${tail.vA.toFixed(2)} m/s`);
+  check("race: calm is the same as no conditions", Math.abs(still.vA - clean.speedAt(150)) < 1e-6);
+  const withC = S.race(clean, clean, 10000, 150, 150, { current: 1 });
+  check("race: current adds to ground speed", Math.abs(withC.vA - withC.waterA - 1) < 1e-12 &&
+        withC.vA > still.vA + 0.95 && withC.waterA < still.waterA, `${withC.vA.toFixed(2)} m/s`);
+  const flood = S.race(clean, sweep, 10000, 150, 150, { current: -3 });
+  check("race: too much current means nobody finishes", !isFinite(flood.tA) && !isFinite(flood.tB) &&
+        flood.timeGap === 0 && flood.distanceGap === 0);
+  const strong = S.race(clean, clean, 10000, 300, 100, { current: -2.6 });
+  check("race: only the stronger paddler makes headway", isFinite(strong.tA) && !isFinite(strong.tB) && strong.timeGap === Infinity);
 
   const out = S.simulate({ directionDeg: 25 });
   check("pulling outward loses forward force", out.forceShare.forward < base.forceShare.forward - 0.05);
@@ -106,34 +143,77 @@ console.log("\nStroke simulator physics");
     check(`${scheme}: sweep scores lower than clean vertical`, (await num("#r-eff")) < cleanEff);
     check(`${scheme}: comparison shows the difference`, (await page.textContent("#d-eff")).includes("worse"),
           await page.textContent("#d-eff"));
-    check(`${scheme}: power split has three parts`, (await page.$$("#bar-power span")).length === 3);
+    check(`${scheme}: power split has four parts`, (await page.$$("#bar-power span")).length === 4);
     check(`${scheme}: switch-sides tile`, /\d/.test(await page.textContent("#r-side")), await page.textContent("#r-side"));
     check(`${scheme}: no J-stroke wording`, !/J-stroke|steering/i.test(await page.textContent("body")));
 
-    // Race: Boat A (clean, sliders) against Boat B (wide sweep by default).
+    check(`${scheme}: vertical note`, /lifts|pulls down|cancels/.test(await page.textContent("#vert-note")),
+          await page.textContent("#vert-note"));
+
+    // Presets highlight while the sliders match them.
+    const pressed = (sel) => page.$$eval(`${sel} button[aria-pressed="true"]`, (bs) => bs.map((b) => b.dataset.value));
+    check(`${scheme}: selected preset highlighted`, JSON.stringify(await pressed("#presets")) === '["Wide sweep"]');
+    await page.$eval("#c-catchDeg", (el) => { el.value = 26; el.dispatchEvent(new Event("input")); });
+    check(`${scheme}: no preset highlighted after a slider change`, (await pressed("#presets")).length === 0);
+
+    // Race: each boat picks a preset, the live sliders or its own save.
     await page.click("#presets >> text=Clean vertical");
     await page.waitForTimeout(150);
-    check(`${scheme}: saving makes the saved stroke Boat B`, (await page.$eval("#race-b", (e) => e.value)) === "saved");
-    await page.selectOption("#race-b", "Wide sweep");
-    check(`${scheme}: race verdict A wins`, /^Boat A wins by [\d.]+ s, \d+ m ahead/.test(await page.textContent("#verdict")),
-          await page.textContent("#verdict"));
+    check(`${scheme}: race defaults (A sliders, B wide sweep)`,
+          JSON.stringify([await pressed("#chips-a"), await pressed("#chips-b")]) === '[["live"],["Wide sweep"]]');
+    const verdict = () => page.textContent("#verdict");
+    check(`${scheme}: race verdict A wins`, /^Boat A wins by (\d+(\.\d)? s|\d+:\d\d), \d+ m ahead/.test(await verdict()), await verdict());
     check(`${scheme}: finishing times shown`, /\d+:\d\d/.test(await page.textContent("#t-a")) && /\d+:\d\d/.test(await page.textContent("#t-b")),
           `${await page.textContent("#t-a")} / ${await page.textContent("#t-b")}`);
+    await page.click("#chips-b >> text=Clean vertical");
+    await page.waitForTimeout(50);
+    check(`${scheme}: B preset chip selects and highlights`, JSON.stringify(await pressed("#chips-b")) === '["Clean vertical"]');
+    check(`${scheme}: same stroke is a dead heat`, (await verdict()) === "Dead heat.");
+    await page.click("#chips-a >> text=Wide sweep");
+    await page.waitForTimeout(50);
+    check(`${scheme}: A preset chip`, /^Boat B wins/.test(await verdict()), await verdict());
+
+    // Save sliders for each boat, then move the sliders: saves stay put.
+    await page.click("#save-a");
+    check(`${scheme}: save A selects it`, JSON.stringify(await pressed("#chips-a")) === '["saved"]' &&
+          (await page.textContent("#saved-a")).includes("Clean vertical"), await page.textContent("#saved-a"));
+    await page.click("#presets >> text=Long reach");
+    await page.waitForTimeout(150);
+    await page.click("#save-b");
+    check(`${scheme}: save B selects it`, JSON.stringify(await pressed("#chips-b")) === '["saved"]');
+    await page.click("#presets >> text=Wide sweep");
+    await page.waitForTimeout(150);
+    check(`${scheme}: saved clean beats saved long reach`, /^Boat A wins/.test(await verdict()), await verdict());
+
     await page.$eval("#c-effB", (el) => { el.value = 250; el.dispatchEvent(new Event("input")); });
-    await page.waitForTimeout(100);
-    check(`${scheme}: more effort for B flips the race`, /^Boat B wins/.test(await page.textContent("#verdict")),
-          await page.textContent("#verdict"));
+    check(`${scheme}: more effort for B flips the race`, /^Boat B wins/.test(await verdict()), await verdict());
     await page.$eval("#c-effB", (el) => { el.value = 150; el.dispatchEvent(new Event("input")); });
-    await page.selectOption("#race-b", "Clean vertical");
-    await page.waitForTimeout(100);
-    check(`${scheme}: same stroke is a dead heat`, (await page.textContent("#verdict")) === "Dead heat.");
-    await page.selectOption("#race-b", "Wide sweep");
+
+    // Conditions
+    const timeA = () => page.textContent("#t-a");
+    const calm = await timeA();
+    await page.$eval("#c-wind", (el) => { el.value = 20; el.dispatchEvent(new Event("input")); });
+    check(`${scheme}: wind readout`, (await page.textContent("#o-wind")) === "20 km/h headwind");
+    check(`${scheme}: headwind slows the race`, (await timeA()) > calm, `${calm} → ${await timeA()}`);
+    await page.$eval("#c-wind", (el) => { el.value = 0; el.dispatchEvent(new Event("input")); });
+    await page.$eval("#c-current", (el) => { el.value = -10; el.dispatchEvent(new Event("input")); });
+    check(`${scheme}: current readout`, (await page.textContent("#o-current")) === "10.0 km/h against you");
+    for (const id of ["#c-effA", "#c-effB"]) await page.$eval(id, (el) => { el.value = 50; el.dispatchEvent(new Event("input")); });
+    check(`${scheme}: current too strong`, (await verdict()).startsWith("Neither boat") && (await timeA()) === "never",
+          await verdict());
+    await page.$eval("#c-current", (el) => { el.value = 0; el.dispatchEvent(new Event("input")); });
+    for (const id of ["#c-effA", "#c-effB"]) await page.$eval(id, (el) => { el.value = 150; el.dispatchEvent(new Event("input")); });
+    await page.click("#chips-a >> text=Current sliders");
+    await page.click("#chips-b >> text=Wide sweep");
+
     await page.click("#race-start");
     await page.waitForTimeout(600);
     check(`${scheme}: race animates two boats`, (await page.$$("#race-view .boat-a, #race-view .boat-b")).length >= 2);
     await page.click("#presets >> text=Short reach, pull behind");
     await page.waitForTimeout(150);
     check(`${scheme}: short-reach preset`, (await page.$eval("#c-catchDeg", (e) => e.value)) === "12");
+    await page.$eval("#c-massKg", (el) => { el.value = 120; el.dispatchEvent(new Event("input")); });
+    check(`${scheme}: weight slider keeps the preset highlighted`, JSON.stringify(await pressed("#presets")) === '["Short reach, pull behind"]');
 
     // Slider moves the model: more lean, more turning.
     await page.click("#presets >> text=Defaults");
