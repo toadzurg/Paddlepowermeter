@@ -1351,7 +1351,8 @@ function autoSections(c) {
     out.push(k); d = k.d1;
   }
   if (L - d > 50) river(d, L, "the finish"); else if (out.length) out[out.length - 1].d1 = L;
-  return out.map((s) => Object.assign({}, KIND_DEFAULTS[s.kind], s));
+  // A course can say what its river's current is in a typical year.
+  return out.map((s) => Object.assign({}, KIND_DEFAULTS[s.kind], s.kind === "river" && c.riverCurrent ? { current: c.riverCurrent } : {}, s));
 }
 let cb = null, cbSel = 0;   // the course, and the section being edited
 function loadCourse(c, info) {
@@ -1486,7 +1487,8 @@ function drawEditor() {
   $("o-cb-current").textContent = s.current === 0 ? "none" : `${fmtNum(s.current, 1)} km/h`;
   const g = s.gauge && cb.gauges.find((x) => x.id === s.gauge);
   $("cb-sec-gauge").textContent = s.kind !== "river" ? "" : g ? `Current from ${g.name}: ${flowText(g.q)}` +
-      (s.current >= 8 ? ". That much flow needs a wider or deeper river: check width and depth." : "") :
+      (gaugeRef(g.id) ? `, ${flowLabel(g).toLowerCase()} for race week (${fmtNum(s.base, 1)} km/h in a typical year)` :
+        s.current >= 8 ? ". That much flow needs a wider or deeper river: check width and depth." : "") :
     s.gauge === null && cb.gauges ? "Current set by hand" : "";
   $("o-cb-depth").textContent = depthText(s.depth);
   $("o-cb-depth").classList.toggle("warn", s.depth < 1);
@@ -1551,9 +1553,29 @@ $("cb-merge").addEventListener("click", () => {
 // current, so discharge Q = (8/15)·width·depth·u_mid, i.e. the mid-channel
 // current is u = 15Q / (8·W·D). A section uses the nearest gauge along the
 // course; moving its current slider by hand takes it off the gauge.
+// When the course knows a gauge's typical flow (the AuSable: its race-week
+// median), the river also widens and deepens with more water, so current
+// grows slower than flow: the section's typical current × (Q/median)^0.55.
+// That exponent is what 37 years of AuSable winning times against race-week
+// flow call for (about 10 min faster per 100 ft³/s at Mio); a fixed channel
+// (exponent 1) would be about 70% too sensitive.
 const USGS = "https://waterservices.usgs.gov/nwis";
 const CFS = 0.0283168;   // m³/s per ft³/s
-const gaugeCurrent = (q, s) => Math.min(8, Math.round(((15 * q) / (8 * s.width * Math.min(5, s.depth))) * 3.6 * 10) / 10);
+const FLOW_EXP = 0.55;
+const gaugeRef = (id) => (cb.gaugeRef && cb.gaugeRef.sites[id]) || null;
+const round1 = (v) => Math.min(8, Math.round(v * 10) / 10);
+function gaugeCurrent(g, s) {
+  const ref = gaugeRef(g.id);
+  if (ref) return round1(s.base * Math.pow(g.q / (ref.median * CFS), FLOW_EXP));
+  return round1(((15 * g.q) / (8 * s.width * Math.min(5, s.depth))) * 3.6);
+}
+// "Average", "Very high"… for race week, where the course knows the levels.
+function flowLabel(g) {
+  const ref = gaugeRef(g.id);
+  if (!ref || g.q === null) return "";
+  const cfs = g.q / CFS, i = ref.low.reduce((k, lo, j) => (cfs >= lo ? j : k), 0);
+  return cb.gaugeRef.labels[i];
+}
 // Every series in a USGS WaterML-JSON reply: site, place and its latest value.
 function usgsSeries(j) {
   return ((j.value && j.value.timeSeries) || []).filter((t) => !/:000(0[1-2]|0[4-9])$/.test(t.name || "")).map((t) => {
@@ -1594,7 +1616,8 @@ function applyGauges() {
     if (s.kind !== "river" || s.gauge === null) continue;
     if (!use.length) { delete s.gauge; continue; }
     const mid = (s.d0 + s.d1) / 2, g = use.reduce((a, b) => (Math.abs(b.d - mid) < Math.abs(a.d - mid) ? b : a));
-    s.gauge = g.id; s.current = gaugeCurrent(g.q, s);
+    if (s.base === undefined) s.base = s.current;   // its current in a typical year
+    s.gauge = g.id; s.current = gaugeCurrent(g, s);
   }
 }
 const flowText = (q) => `${fmtNum(q / CFS, 0)} ft³/s (${fmtNum(q, q < 10 ? 1 : 0)} m³/s)`;
@@ -1602,7 +1625,7 @@ function drawGauges() {
   const gs = cb.gauges;
   $("cb-gauge-list").tBodies[0].innerHTML = (gs || []).map((g, i) =>
     `<tr><td><input type="checkbox" data-g="${i}" ${g.use ? "checked" : ""} ${g.q === null ? "disabled" : ""} aria-label="Use ${g.name}"></td>` +
-    `<td>${kmText(g.d)}</td><td>${g.name}</td><td>${g.q === null ? "no reading" : flowText(g.q)}</td></tr>`).join("");
+    `<td>${kmText(g.d)}</td><td>${g.name}</td><td>${g.q === null ? "no reading" : flowText(g.q)}${flowLabel(g) ? `<br><small>${flowLabel(g)} for race week</small>` : ""}</td></tr>`).join("");
   $("cb-gauge-list").toggleAttribute("hidden", !gs || !gs.length);
 }
 $("cb-gauges").addEventListener("click", async () => {

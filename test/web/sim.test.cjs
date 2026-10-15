@@ -696,6 +696,20 @@ console.log("\nStroke simulator physics");
     await page.waitForFunction(() => /Couldn't reach USGS/.test(document.getElementById("cb-gauge-info").textContent));
     check(`${tag}: gauges: no connection says so`, true);
     await page.unroute("https://waterservices.usgs.gov/**");
+    // An AuSable gauge the course knows: current scales from its race-week median as (Q/median)^0.55.
+    for (const [cfs, want, label] of [[788, "2.7", "Average"], [1576, "4.0", "Whoa"]]) {
+      await page.route("https://waterservices.usgs.gov/**", (route) => route.fulfill({ status: 200, contentType: "application/json",
+        headers: { "access-control-allow-origin": "*" }, body: JSON.stringify({ value: { timeSeries: [series("04136500", "AU SABLE RIVER AT MIO, MI", pts[0], cfs)] } }) }));
+      await page.fill("#cb-gauge-date", "");
+      await page.click("#cb-gauges");
+      await page.waitForFunction(() => /1 gauge on the course/.test(document.getElementById("cb-gauge-info").textContent));
+      await page.click("#cb-secs tbody tr:nth-child(1)");
+      check(`${tag}: gauges: Mio at ${cfs} ft³/s is ${label.toLowerCase()} for race week, current ${want} km/h`, (await row1()) === want &&
+            new RegExp(`${label} for race week`).test(await text("#cb-gauge-list")) &&
+            new RegExp(`${label.toLowerCase()} for race week \\(2\\.7 km/h in a typical year\\)`).test(await text("#cb-sec-gauge")),
+            `${await row1()} | ${await text("#cb-sec-gauge")}`);
+      await page.unroute("https://waterservices.usgs.gov/**");
+    }
     // Your own GPX: a 3 km straight with a dam halfway.
     const trk = Array.from({ length: 61 }, (_, i) => `<trkpt lat="44.0" lon="${(-84 + (i / 60) * 0.03745).toFixed(6)}"></trkpt>`).join("");
     const gpx = `<?xml version="1.0"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><wpt lat="44.0003" lon="-83.98127"><name>TEST DAM</name></wpt>` +
