@@ -313,6 +313,10 @@ function liveHex(seq, tMs, inDrive, force) {
     await page.goto(pageUrl + "?demo");
     await page.waitForTimeout(1500);
     check("?demo link starts the demo", (await page.textContent("#pill-text")) === "Demo");
+    check("?demo removed from the address", !new URL(page.url()).search, page.url());
+    await page.reload();
+    await page.waitForTimeout(1200);
+    check("reload opens the normal app", (await page.textContent("#pill-text")) === "Not connected");
     await ctx.close();
   }
 

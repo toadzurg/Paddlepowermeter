@@ -328,7 +328,7 @@
 // scripts into the page, and shared global names would break one or both.
 (() => {
 "use strict";
-const APP_VERSION = "2026-10-15.3";
+const APP_VERSION = "2026-10-15.4";
 // Must match src/BleProtocol.h.
 const UUID = {
   service: "7e1a0001-5c3b-4c2e-9a77-0f5d3e2b9c10",
@@ -794,7 +794,12 @@ const noteOutside = () =>
   log("note: the browser reported an error in one of its own scripts (not this app)");
 if (window.__ppmOutsideErrors) noteOutside();
 window.__ppmOnOutsideError = noteOutside;
-if (/[?&]demo\b/.test(location.search)) startDemo();
+if (/[?&]demo\b/.test(location.search)) {
+  startDemo();
+  // Start it once: drop ?demo from the address so a reload or a bookmark
+  // opens the normal app.
+  try { history.replaceState(null, "", location.pathname + location.hash); } catch (e) {}
+}
 if (!hasBluetooth()) $("unsupported").hidden = false;
 
 // Exposed for tests.
