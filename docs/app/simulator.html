@@ -71,11 +71,11 @@
 
   /* Phones: results, views, then the sliders right below them, then the race.
      Wide screens: sliders in a sticky column beside everything. */
-  .layout { display: grid; gap: 12px; grid-template-areas: "eff" "views" "ctl" "race"; grid-template-columns: minmax(0, 1fr); }
-  #eff-card { grid-area: eff; } #views-card { grid-area: views; } #controls { grid-area: ctl; } #race-card { grid-area: race; }
+  .layout { display: grid; gap: 12px; grid-template-areas: "eff" "curve" "views" "ctl" "race"; grid-template-columns: minmax(0, 1fr); }
+  #eff-card { grid-area: eff; } #curve-card { grid-area: curve; } #views-card { grid-area: views; } #controls { grid-area: ctl; } #race-card { grid-area: race; }
   @media (min-width: 960px) {
-    .layout { grid-template-columns: minmax(0, 1fr) 360px; grid-template-areas: "eff ctl" "views ctl" "race ctl";
-              grid-template-rows: auto auto 1fr; align-items: start; }
+    .layout { grid-template-columns: minmax(0, 1fr) 360px; grid-template-areas: "eff ctl" "curve ctl" "views ctl" "race ctl";
+              grid-template-rows: auto auto auto 1fr; align-items: start; }
     .controls { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow: auto; } }
 
   /* Boat switcher: which boat the sliders edit. */
@@ -188,6 +188,28 @@
   .times .time { font-size: 26px; font-weight: 650; font-variant-numeric: tabular-nums; }
   .times .cond { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
   .verdict { font-size: 16px; font-weight: 600; margin-top: 10px; }
+  /* Force curve */
+  .curve-legend { display: flex; gap: 6px 18px; flex-wrap: wrap; font-size: 13px; color: var(--text-secondary);
+    margin-top: 8px; font-variant-numeric: tabular-nums; }
+  .curve-legend b { color: var(--text-primary); font-weight: 600; }
+  .key { display: inline-block; width: 18px; height: 0; border-top: 2.5px solid; vertical-align: 3px; margin-right: 6px; }
+  .key.a { border-color: var(--series-1); } .key.b { border-color: var(--series-2); border-top-style: dashed; }
+  .curve-wrap { position: relative; }
+  svg.curve { display: block; width: 100%; height: auto; margin-top: 4px; touch-action: pan-y; }
+  svg.curve text { fill: var(--text-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
+  svg.curve .grid { stroke: var(--grid); }
+  svg.curve .axis { stroke: var(--axis); }
+  svg.curve .ln { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  svg.curve .ln.a { stroke: var(--series-1); } svg.curve .ln.b { stroke: var(--series-2); stroke-dasharray: 6 4; }
+  svg.curve .cross { stroke: var(--text-secondary); stroke-width: 1; }
+  svg.curve .dot { stroke: var(--surface-1); stroke-width: 2; }
+  svg.curve .dot.a { fill: var(--series-1); } svg.curve .dot.b { fill: var(--series-2); }
+  .tip { position: absolute; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 8px; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+  .tip b { font-weight: 600; }
+  table.data { border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; margin-top: 6px; }
+  table.data th, table.data td { padding: 2px 10px 2px 0; text-align: right; }
   svg.race { display: block; width: 100%; height: auto; margin-top: 6px; }
   svg.race text { fill: var(--text-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
   svg.race text.strong { fill: var(--text-primary); font-weight: 600; }
@@ -243,6 +265,21 @@
           <p id="why-a"></p>
           <p id="why-b"></p>
         </details>
+      </section>
+
+      <!-- ---------------------------------------------- force curve -->
+      <section class="card" id="curve-card">
+        <div class="card-head">
+          <h2>Force curve</h2>
+          <div class="row chips" id="curve-mode" role="group" aria-label="Force shown"></div>
+        </div>
+        <div class="sub" id="curve-sub"></div>
+        <div class="curve-legend" id="curve-legend"></div>
+        <div class="curve-wrap">
+          <svg class="curve" id="curve" role="img" aria-label="Force through the drive for boats A and B"></svg>
+          <div class="tip" id="curve-tip" hidden></div>
+        </div>
+        <details id="curve-table-d"><summary>Show as a table</summary><table class="data" id="curve-table"></table></details>
       </section>
 
       <!-- ---------------------------------------------------- views -->
@@ -560,9 +597,123 @@ function showEfficiency() {
   const force = (r) => [r.forceShare.forward, r.forceShare.sideways, r.forceShare.vertical].map((v) => v * 100);
   breakdown("power", ["moves the boat", "slip", "sideways drag", "surge & bounce"], power(A), power(B), 1);
   breakdown("force", ["forward", "sideways", "vertical"], force(results.a), force(results.b), 0);
+  drawCurve();
   $("why-a").innerHTML = `<b><span class="a-dot"></span>A:</b> ${why(results.a, A.at)}`;
   $("why-b").innerHTML = `<b><span class="b-dot"></span>B:</b> ${why(results.b, B.at)}`;
 }
+// ---------------------------------------------------------- force curve
+// Each boat's drive at the comparison effort and its own stroke rate:
+// forces scale as (effort / paddler power)^(2/3), time is the real drive
+// (60 / rate × time in the drive). "Blade force" is the water's push on the
+// face; "Forward push" is its part along the boat, whose area is the
+// stroke's impulse.
+const CURVE_MODES = [["force", "Blade force"], ["forward", "Forward push"]];
+let curveMode = "force", curveData = null;
+function renderCurveModes() {
+  $("curve-mode").innerHTML = "";
+  for (const [v, label] of CURVE_MODES) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    b.dataset.value = v;
+    b.setAttribute("aria-pressed", String(curveMode === v));
+    b.addEventListener("click", () => { curveMode = v; renderCurveModes(); drawCurve(); });
+    $("curve-mode").append(b);
+  }
+}
+function curveOf(r) {
+  const scale = Math.pow(effortW / Math.max(1e-9, r.paddlerPower), 2 / 3);
+  const Td = (60 / r.params.rateSpm) * r.params.driveFraction, Td0 = r.samples[r.samples.length - 1].t || 1;
+  const pts = r.samples.map((q) => ({ t: (q.t / Td0) * Td, force: q.F * scale, forward: Math.max(0, q.thrust[0]) * scale }));
+  let impulse = 0;
+  for (let i = 1; i < pts.length; i++) impulse += (pts[i].forward + pts[i - 1].forward) / 2 * (pts[i].t - pts[i - 1].t);
+  const peak = (k) => pts.reduce((m, p) => Math.max(m, p[k]), 0);
+  return { pts, Td, impulse, peakForce: peak("force"), peakForward: peak("forward") };
+}
+const niceStep = (max, n) => {
+  const raw = max / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  return [1, 2, 2.5, 5, 10].map((m) => m * mag).find((v) => v >= raw);
+};
+function drawCurve() {
+  const C = { a: curveOf(results.a), b: curveOf(results.b) }, k = curveMode;
+  curveData = C;
+  $("curve-sub").textContent = k === "force"
+    ? `The water's push on the blade face, from the catch through the drive, at ${effortW} W and each boat's stroke rate.`
+    : `The part of that push along the boat. The area under each curve is the stroke's impulse.`;
+  const peakKey = k === "force" ? "peakForce" : "peakForward";
+  $("curve-legend").innerHTML = BOATS.map((x) =>
+    `<span><i class="key ${x}"></i>${x.toUpperCase()}: peak <b>${fmtNum(C[x][peakKey], 0)} N</b> · ` +
+    `impulse <b>${fmtNum(C[x].impulse, 1)} N·s</b> · drive <b>${fmtNum(C[x].Td, 2)} s</b></span>`).join("");
+  const svg = $("curve");
+  const W = Math.max(280, Math.round(svg.getBoundingClientRect().width)) || 320, H = 220;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const m = { l: 52, r: 12, t: 12, b: 30 }, pw = W - m.l - m.r, ph = H - m.t - m.b;
+  const tMax = Math.max(C.a.Td, C.b.Td), fMax = Math.max(1, C.a[peakKey], C.b[peakKey]) * 1.08;
+  const ys = niceStep(fMax, 4), yTop = Math.ceil(fMax / ys) * ys, xs = niceStep(tMax, 5);
+  const X = (t) => m.l + (t / tMax) * pw, Y = (f) => m.t + ph - (f / yTop) * ph;
+  let g = "";
+  // Units ride on the last tick of each axis.
+  for (let f = 0; f <= yTop + 1e-9; f += ys)
+    g += `<line class="${f === 0 ? "axis" : "grid"}" x1="${m.l}" x2="${W - m.r}" y1="${Y(f)}" y2="${Y(f)}"/>` +
+      `<text x="${m.l - 6}" y="${Y(f) + 4}" text-anchor="end">${fmtNum(f, 0)}${f + ys > yTop + 1e-9 ? " N" : ""}</text>`;
+  const lastX = Math.floor(tMax / xs + 1e-9) * xs;
+  for (let t = 0; t <= tMax + 1e-9; t += xs) {
+    const end = Math.abs(t - lastX) < 1e-9;
+    g += `<text x="${end ? Math.min(X(t), W - m.r) : X(t)}" y="${H - 10}" text-anchor="${end ? "end" : "middle"}">` +
+      `${fmtNum(t, xs < 0.1 ? 2 : 1)}${end ? " s" : ""}</text>`;
+  }
+  // B under A, so the solid line stays readable where they cross.
+  for (const x of ["b", "a"])
+    g += `<path class="ln ${x}" d="${C[x].pts.map((p, i) => `${i ? "L" : "M"}${X(p.t).toFixed(1)},${Y(p[k]).toFixed(1)}`).join(" ")}"/>`;
+  // Direct labels at each peak, nudged apart if they'd collide.
+  const peaks = BOATS.map((x) => { const p = C[x].pts.reduce((a, q) => (q[k] > a[k] ? q : a)); return { x, px: X(p.t), py: Y(p[k]) }; });
+  if (Math.abs(peaks[0].py - peaks[1].py) < 16 && Math.abs(peaks[0].px - peaks[1].px) < 60) {
+    const up = peaks[0].py <= peaks[1].py ? 0 : 1;
+    peaks[up].py -= 8; peaks[1 - up].py += 8;
+  }
+  for (const p of peaks)
+    g += `<text x="${Math.min(W - m.r - 4, p.px + 6)}" y="${Math.max(m.t + 10, p.py - 6)}" class="peak">${p.x.toUpperCase()}</text>`;
+  g += `<g id="curve-hover"></g>`;
+  g += `<rect id="curve-hit" x="${m.l}" y="${m.t}" width="${pw}" height="${ph}" fill="transparent"/>`;
+  svg.innerHTML = g;
+  const hit = $("curve-hit"), tip = $("curve-tip"), hover = $("curve-hover");
+  tip.hidden = true;   // a redraw drops the old hover
+  const at = (pts, t) => {
+    if (t > pts[pts.length - 1].t) return null;
+    let i = 1; while (i < pts.length - 1 && pts[i].t < t) i++;
+    const a = pts[i - 1], b = pts[i], f = (t - a.t) / Math.max(1e-9, b.t - a.t);
+    return a[k] + (b[k] - a[k]) * Math.min(1, Math.max(0, f));
+  };
+  const show = (clientX) => {
+    const r = svg.getBoundingClientRect(), sx = W / r.width;
+    const t = Math.min(tMax, Math.max(0, ((clientX - r.left) * sx - m.l) / pw * tMax));
+    const va = at(C.a.pts, t), vb = at(C.b.pts, t);
+    let h = `<line class="cross" x1="${X(t)}" x2="${X(t)}" y1="${m.t}" y2="${m.t + ph}"/>`;
+    if (va !== null) h += `<circle class="dot a" cx="${X(t)}" cy="${Y(va)}" r="4.5"/>`;
+    if (vb !== null) h += `<circle class="dot b" cx="${X(t)}" cy="${Y(vb)}" r="4.5"/>`;
+    hover.innerHTML = h;
+    const fmt = (v) => v === null ? "drive over" : `${fmtNum(v, 0)} N`;
+    tip.innerHTML = `<b>${fmtNum(t, 2)} s</b><br><i class="key a"></i>A ${fmt(va)}<br><i class="key b"></i>B ${fmt(vb)}`;
+    tip.hidden = false;
+    const left = X(t) / sx;
+    tip.style.top = "8px";
+    tip.style.left = left > r.width / 2 ? "" : `${left + 12}px`;
+    tip.style.right = left > r.width / 2 ? `${r.width - left + 12}px` : "";
+  };
+  hit.addEventListener("pointermove", (e) => show(e.clientX));
+  hit.addEventListener("pointerdown", (e) => show(e.clientX));
+  hit.addEventListener("pointerleave", () => { hover.innerHTML = ""; tip.hidden = true; });
+  // Table view: every 0.05 s of the longer drive.
+  const rows = [];
+  for (let t = 0; t <= tMax + 1e-9; t += 0.05) {
+    const va = at(C.a.pts, t), vb = at(C.b.pts, t);
+    rows.push(`<tr><td>${fmtNum(t, 2)}</td><td>${va === null ? "—" : fmtNum(va, 0)}</td><td>${vb === null ? "—" : fmtNum(vb, 0)}</td></tr>`);
+  }
+  $("curve-table").innerHTML = `<tr><th>s</th><th>A (N)</th><th>B (N)</th></tr>${rows.join("")}`;
+}
+renderCurveModes();
+addEventListener("resize", () => { if (results.a && results.b) drawCurve(); });
+
 function breakdown(id, names, a, b, digits) {
   const bar = (vals) => `<div class="bar">${vals.map((v, i) => v > 0.05
     ? `<span class="s${i + 1}" style="flex:${Math.max(0.6, v).toFixed(2)}"></span>` : "").join("")}</div>`;
