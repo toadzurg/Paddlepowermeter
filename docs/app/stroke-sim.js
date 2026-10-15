@@ -62,7 +62,9 @@
 
 (function (root) {
   "use strict";
-  const RHO = 1000, CD = 1.6, BLADE_AREA = 0.095;  // ~20"×8.5" marathon blade
+  const RHO = 1000, CD = 1.6;
+  // A marathon blade is a rounded teardrop: about 0.78 of its length × width.
+  const BLADE_FILL = 0.78;
   // Hull drag k·V² (still air included). A coast-down test measured k = 4.26 by
   // coasting a USCA C-1 (18'6", ~109 kg aboard) at mostly under 2.3 m/s
   // (The Science of Paddling, Part 14). Scaled to 90 kg by wetted area, that
@@ -100,8 +102,18 @@
   // toward hull speed; only it changes in shallow water.
   const WAVE_SHARE = 0.23, WAVE_VREF = 2.5, SHALLOW_MAX = 5;
 
-  // Bent-shaft marathon paddle, distances from the grip (m).
-  const PADDLE = { throat: 0.82, bladeLen: 0.50, copFromThroat: 0.25 };
+  // Roll. A USCA C1 is 31–32" wide at its 4" waterline; at race weight it
+  // floats a little lower and narrower. Transverse waterplane inertia
+  // C_IT·L·B³/12 over the displaced volume is the metacentric radius; the
+  // paddler kneeling or sitting high puts the centre of gravity KG up. The
+  // roll inertia is mostly the paddler's (radius of gyration ~0.35 m).
+  const ROLL_BEAM = 0.72, ROLL_CIT = 0.45, ROLL_KG = 0.45, ROLL_KB = 0.04;
+  const ROLL_GYR = 0.35, BOAT_KG = 11, ROLL_ZETA = 0.2;
+  // Bent-shaft marathon paddle, distances from the grip (m): throat, blade
+  // length and the blade's centre of pressure, from its length and blade
+  // (a ZRE Revolution: 51" overall, 17" × 8" blade, by default).
+  const paddleOf = (p) => ({ throat: p.paddleLenM - p.bladeLenM, bladeLen: p.bladeLenM, copFromThroat: 0.5 * p.bladeLenM,
+                             area: BLADE_FILL * p.bladeLenM * p.bladeWidthM });
 
   const DEFAULTS = {
     pivotFromGrip: 0.10,  // m: the point on the shaft that stays put
@@ -115,6 +127,9 @@
     bendDeg: 12,
     pitchDeg: 0,          // blade turned about the shaft; + = face turned out, away from the hull
     bladeLift: 1,         // 1: flat-plate force with lift; 0: drag only
+    paddleLenM: 1.295,         // 51"
+    bladeLenM: 0.432,          // 17"
+    bladeWidthM: 0.203,        // 8"
     rateSpm: 60,
     driveFraction: DRIVE_FRACTION,  // share of each stroke spent in the drive
     massKg: 90,                // paddler + boat
@@ -150,7 +165,7 @@
     d = [d[0] * Math.cos(psi) - d[1] * Math.sin(psi), d[0] * Math.sin(psi) + d[1] * Math.cos(psi), d[2]];
     // The pivot stays put in the boat (plus hand travel aft), at the height
     // that puts the throat at the waterline.
-    const pivot = [-p.handTravelM * e, -p.handOutM, -d[2] * (PADDLE.throat - p.pivotFromGrip)];
+    const pivot = [-p.handTravelM * e, -p.handOutM, -d[2] * (paddleOf(p).throat - p.pivotFromGrip)];
     const at = (s) => add(pivot, mul(d, s - p.pivotFromGrip));  // point s m from the grip
     return { d, pivot, at, th, psi };
   }
@@ -165,6 +180,7 @@
     }
     const along = unit(add(mul(P.d, Math.cos(b)), mul(ey, -Math.sin(b))));
     const n = unit(add(mul(P.d, Math.sin(b)), mul(ey, Math.cos(b))));  // power face normal
+    const PADDLE = paddleOf(p);
     const throat = P.at(PADDLE.throat);
     const cop = add(throat, mul(along, PADDLE.copFromThroat));
     const tip = add(throat, mul(along, PADDLE.bladeLen));
@@ -180,7 +196,7 @@
   // Samples one drive at a given boat speed V. Velocities in the boat frame.
   function drive(p, V, steps = 240) {
     const Tc = 60 / p.rateSpm, Td = Tc * p.driveFraction, dt = Td / steps;
-    const k = 0.5 * RHO * CD * BLADE_AREA;
+    const PADDLE = paddleOf(p), k = 0.5 * RHO * CD * PADDLE.area;
     const out = [];
     for (let i = 0; i <= steps; i++) {
       const u = i / steps, du = 1e-3;
@@ -389,6 +405,56 @@
       cache.set(key, r);
       return r;
     }
+    // One stroke at `watts`, n steps: what the stroke and the water do to the
+    // hull. Forward, sideways and vertical push (N); speed (m/s) and hull drag
+    // k·V² (N) from the surge; distance ahead of a boat at the same average
+    // speed (m); heave (m, + up); the roll moment about the keel (N·m, + puts
+    // the paddle side down) and the heel it would cause if the paddler held
+    // still (rad, about the balanced mean), with the hip shift that balances
+    // the mean (m, toward the paddle side when +).
+    function cycleAt(watts, n = 200) {
+      const e = at(watts), scale = Math.pow(watts / pd, 2 / 3);
+      const Tc1 = 60 / p.rateSpm, Td1 = Tc1 * p.driveFraction, dt = Tc1 / n;
+      const sampleAt = (t) => (t > Td1 ? null : samples[Math.min(samples.length - 1, Math.round((t / Td1) * (samples.length - 1)))]);
+      const t = [], push = [], side = [], up = [], roll = [];
+      for (let i = 0; i < n; i++) {
+        const s = sampleAt(i * dt), f = s ? mul(s.thrust, scale) : [0, 0, 0];
+        t.push(i * dt); push.push(f[0] * sw.duty); side.push(f[1]); up.push(f[2]);
+        roll.push(s ? s.B.cop[1] * f[2] - s.B.cop[2] * f[1] : 0);
+      }
+      // A periodic linear response to a forcing f: m·x'' + c·x' + K·x = f − mean (K = 0: surge).
+      const periodic = (f, m, c, K) => {
+        const mean = f.reduce((a, x) => a + x, 0) / n;
+        let x = 0, v = 0, xs = [], vs = [];
+        for (let k = 0; k < 40; k++) {
+          xs = []; vs = [];
+          for (let i = 0; i < n; i++) { v += ((f[i] - mean - c * v - K * x) / m) * dt; x += v * dt; xs.push(x); vs.push(v); }
+        }
+        return { xs, vs, mean };
+      };
+      const V = e.waterSpeed, ms = p.massKg * (1 + SURGE_ADDED);
+      const sg = periodic(push, ms, 2 * k * V, 0);
+      const vAvg = sg.vs.reduce((a, x) => a + x, 0) / n;
+      const speed = sg.vs.map((x) => V + x - vAvg);
+      let ahead = 0;
+      const gap = speed.map((v) => (ahead += (v - V) * dt));
+      const gAvg = gap.reduce((a, x) => a + x, 0) / n;
+      const Kh = RHO * G * WATERPLANE, mh = p.massKg * (1 + HEAVE_ADDED);
+      const hv = periodic(up, mh, 2 * HEAVE_ZETA * Math.sqrt(Kh * mh), Kh);
+      const hAvg = hv.xs.reduce((a, x) => a + x, 0) / n;
+      // Roll stiffness Δ·g·GM; inertia mostly the paddler's.
+      const vol = p.massKg / RHO, BM = (ROLL_CIT * HULL_L * Math.pow(ROLL_BEAM, 3)) / 12 / vol;
+      const GM = ROLL_KB + BM - ROLL_KG, Kr = p.massKg * G * GM;
+      const Ir = (p.massKg - BOAT_KG) * ROLL_GYR * ROLL_GYR + BOAT_KG * 0.25 * 0.25;
+      const rl = periodic(roll, Ir, 2 * ROLL_ZETA * Math.sqrt(Kr * Ir), Kr);
+      const rAvg = rl.xs.reduce((a, x) => a + x, 0) / n;
+      return {
+        t, push, side, up, speed, drag: speed.map((v) => k * v * v), ahead: gap.map((x) => x - gAvg),
+        heave: hv.xs.map((x) => x - hAvg), roll, heel: rl.xs.map((x) => x - rAvg),
+        rollMean: rl.mean, hipShift: -rl.mean / ((p.massKg - BOAT_KG) * G),
+        rollPeriod: 2 * Math.PI * Math.sqrt(Ir / Kr), GM, drive: Td1, cycle: Tc1,
+      };
+    }
     const e = at(p.effortW);
     return {
       params: p, speed: V, cycle: Tc,
@@ -411,6 +477,7 @@
       yawMoment: yawMean,  // N·m; > 0 turns the bow away from the paddle side
       peakForce,
       speedAt: (watts) => at(watts).speed,
+      cycleAt,
       // Turning moment scales with speed², i.e. with effort^(2/3).
       yawAt: (watts) => yawMean * Math.pow(watts / pd, 2 / 3),
       samples,
@@ -748,7 +815,8 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 26;
+  const API_LEVEL = 27;
+  const PADDLE = paddleOf(DEFAULTS);
   const api = { API_LEVEL, simulate, race, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.StrokeSim = api;
