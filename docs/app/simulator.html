@@ -244,7 +244,9 @@
   .scrub { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
   .scrub input[type=range] { flex: 1; margin: 0; }
   .scrub button { min-height: 36px; padding: 4px 10px; }
-  .scrub-info { display: flex; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap; }
+  /* Where each boat is gets its own two-line slot, so scrubbing never moves the page. */
+  .scrub-info { display: flex; flex-direction: column; gap: 2px; }
+  #scrub-where { min-height: 2.7em; line-height: 1.35; }
   svg.curve .bendband { fill: var(--water); }
   svg.curve .turn { stroke: var(--text-secondary); stroke-dasharray: 3 3; }
   svg.curve .marker { stroke: var(--text-primary); stroke-width: 1; }
@@ -1011,10 +1013,14 @@ const raceEnd = () => {
 };
 // The gap when the winner finishes. The race views keep one scale for the
 // whole race, sized to this, so the gap visibly grows.
+// During a run the recording is still growing, so use the prediction.
 function finalGap() {
-  let t = winTime();
-  if (rec) { const fins = [rec.finA, rec.finB].filter((f) => f !== null); t = fins.length ? Math.min(...fins) : rec.end; }
-  const st = stateAtT(t), g = Math.abs(st.A.d - st.B.d);
+  let st;
+  if (rec && !run) {
+    const fins = [rec.finA, rec.finB].filter((f) => f !== null);
+    st = stateAtT(fins.length ? Math.min(...fins) : rec.end);
+  } else st = { A: predicted("A", winTime()), B: predicted("B", winTime()) };
+  const g = Math.abs(st.A.d - st.B.d);
   return isFinite(g) ? g : 0;
 }
 // A canoe with its nose at (x, y), pointing along deg.
@@ -1033,7 +1039,7 @@ function drawRiverRace(dA, dB) {
   const centres = race.profileA.filter((g) => g.kind === "bend").map((g) => (g.d0 + g.d1) / 2);
   const unit = centres.length > 1 ? centres[1] - centres[0] : Infinity;
   const lead = Math.max(dA, dB);
-  const S = Math.min(L, Math.max(isFinite(unit) ? 3 * unit : 400, finalGap() * 2.5, 150));
+  const S = Math.min(L, Math.max(isFinite(unit) ? unit : 150, finalGap() * 2.5, 150));
   const start = Math.max(0, Math.min(L - S, lead - 0.75 * S));
   const X = (d) => left + ((d - start) / S) * (right - left);
   const amp = isFinite(unit) ? Math.min(26, 8 + (right - left) / (S / unit) / 10) : 0;
