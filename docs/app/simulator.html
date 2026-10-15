@@ -1327,19 +1327,21 @@ function finalGap() {
 // Zoom: 1 is Fit (the scale above); each step halves or doubles the view.
 // The view stays between minSpan metres and the whole course.
 let raceZoom = 1;
-// While a race runs, the followed view is at least as wide as the boats go
-// in about 4 s of the replay, so the map doesn't lurch kilometres a frame.
-function liveSpan() {
-  if (!run || run.paused) return 0;
-  const slowed = $("race-slow").getAttribute("aria-pressed") === "true" ? 0.25 : 1;
-  return Math.max(run.A.v, run.B.v) * run.scale * slowed * 4;
-}
-function zoomSpan(fit, minSpan, L) {
+// A followed view (river, map) while a race runs. By default it is as wide
+// as the boats go in about 4 s, so the map doesn't lurch kilometres a frame.
+// Zoom in further and the replay slows to match: the boats then cross at
+// most a quarter of the view each second.
+const slowFactor = () => ($("race-slow").getAttribute("aria-pressed") === "true" ? 0.25 : 1);
+const travel4s = () => (run ? Math.max(run.A.v, run.B.v, 0.5) * run.scale * slowFactor() * 4 : 0);
+let viewFit = 1, viewSpan = 1, viewFollows = false;
+function zoomSpan(fit, minSpan, L, follows = false) {
   raceZoom = Math.min(fit / minSpan, Math.max(fit / L, raceZoom));
-  const span = Math.min(L, Math.max(minSpan, fit / raceZoom, liveSpan()));
+  const floor = follows && run && !run.paused && !run.userZoomed ? travel4s() : 0;
+  const span = Math.min(L, Math.max(minSpan, fit / raceZoom, floor));
+  viewFit = fit; viewSpan = span; viewFollows = follows;
   $("zoom-in").disabled = span <= minSpan * 1.001;
   $("zoom-out").disabled = span >= L * 0.999;
-  $("zoom-fit").disabled = Math.abs(raceZoom - 1) < 1e-9;
+  $("zoom-fit").disabled = Math.abs(raceZoom - 1) < 1e-9 && !(run && run.userZoomed);
   return span;
 }
 // A distance marker, with enough decimals that neighbours differ.
@@ -1360,7 +1362,7 @@ function drawRiverRace(dA, dB) {
   const centres = race.profileA.filter((g) => g.kind === "bend").map((g) => (g.d0 + g.d1) / 2);
   const unit = centres.length > 1 ? centres[1] - centres[0] : Infinity;
   const lead = Math.max(dA, dB);
-  const S = zoomSpan(Math.min(L, Math.max(isFinite(unit) ? unit : 150, finalGap() * 2.5, 150)), 50, L);
+  const S = zoomSpan(Math.min(L, Math.max(isFinite(unit) ? unit : 150, finalGap() * 2.5, 150)), 50, L, true);
   const start = Math.max(0, Math.min(L - S, lead - 0.75 * S));
   const X = (d) => left + ((d - start) / S) * (right - left);
   // Zoomed far out the bends are too tight to draw: a straight band with the
@@ -1899,7 +1901,7 @@ function drawCourseRace(dA, dB) {
   const svg = $("course-view"), L = race.metres;
   const W = Math.max(280, Math.round(widthOf(svg))) || 320, H = 220;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
-  const S = zoomSpan(Math.min(L, Math.max(500, finalGap() * 2.5)), 50, L);
+  const S = zoomSpan(Math.min(L, Math.max(500, finalGap() * 2.5)), 50, L, true);
   let k, ox, oy, d0, d1;
   if (S >= L * 0.999) {
     const xs = cb.xy.map((p) => p[0]), ys = cb.xy.map((p) => p[1]);
@@ -2374,8 +2376,11 @@ function drawStats(st) {
   const kmh = (v) => fmtNum(v * 3.6, 1);
   const time = (s) => (s.fin !== null && st.t >= s.fin ? clock(s.fin) : clock(st.t));
   // + ahead, − behind
-  const lead = st.A.d - st.B.d, gap = (me) => Math.abs(lead) < 0.5 ? "level" :
-    `${(me === "A") === (lead > 0) ? "+" : "−"}${fmtNum(Math.abs(lead), 0)} m`;
+  // Both finished: the gap is in time. Before that, in metres.
+  const doneBoth = st.A.fin !== null && st.B.fin !== null && st.t >= Math.max(st.A.fin, st.B.fin);
+  const lead = st.A.d - st.B.d, gap = (me) => doneBoth
+    ? (Math.abs(st.A.fin - st.B.fin) < 0.5 ? "level" : `${(me === "A") === (st.A.fin < st.B.fin) ? "+" : "−"}${span(st.A.fin - st.B.fin)}`)
+    : Math.abs(lead) < 0.5 ? "level" : `${(me === "A") === (lead > 0) ? "+" : "−"}${fmtNum(Math.abs(lead), 0)} m`;
   const rows = [
     row("Time", ...both((s) => time(s) + (s.fin !== null && st.t >= s.fin ? " ✓" : ""), "")),
     row("Distance", ...both((s) => fmtNum(s.d / 1000, 2), " km")),
@@ -2394,7 +2399,7 @@ function drawStats(st) {
     row("Avg distance per stroke", ...both((s) => (s.strokes >= 1 ? fmtNum(s.d / s.strokes, 2) : "—"), " m")),
     row("Switches", ...both((s) => fmtNum(s.switches, 0), "")),
     row("Energy", ...both((s) => fmtNum(s.energy / 1000, 0), " kJ")),
-    `<tr><td>Gap${info("+ ahead, − behind, in metres along the course.")}</td><td class="v">${gap("A")}</td><td class="v">${gap("B")}</td></tr>`,
+    `<tr><td>Gap${info("+ ahead, − behind: in metres along the course, and in time once both have finished.")}</td><td class="v">${gap("A")}</td><td class="v">${gap("B")}</td></tr>`,
   );
   $("race-stats").tBodies[0].innerHTML = rows.join("");
 }
@@ -2450,23 +2455,38 @@ function drawSpeed(st) {
 // mid-race applies from that moment and the finish times are the ones
 // actually raced. The run is recorded for replay. Race time runs so the
 // whole race takes about 12 s on screen (×¼ in slow motion).
+// Race seconds per second on screen: the whole race in raceWallS, slow motion
+// a quarter of that, and slower still when zoomed in on a followed view.
+function replayRate() {
+  const base = run.scale * slowFactor();
+  if (!viewFollows || !run.userZoomed) return base;
+  return base * Math.min(1, viewSpan / Math.max(1e-9, travel4s()));
+}
 function raceFrame(now) {
   if (!run) return;
   const dtWall = Math.min(0.1, Math.max(0, (now - run.last) / 1000));
   run.last = now;
   const L = race.metres;
   if (!run.paused) {
-    const dt = dtWall * run.scale * ($("race-slow").getAttribute("aria-pressed") === "true" ? 0.25 : 1);
+    const dt = dtWall * replayRate();
     for (const x of ["A", "B"]) {
-      const b = run[x];
+      const b = run[x], prof = race[`profile${x}`];
       if (b.fin !== null) continue;
-      const g = segAt(race[`profile${x}`], Math.min(b.d, L - 1e-6)), v = Math.max(0, g.v);
-      let step = dt;
-      if (b.d + v * dt >= L) { step = v > 0 ? (L - b.d) / v : dt; b.fin = run.t + step; b.d = L; }
-      else b.d += v * dt;
-      const strokes = (step * g.rate) / 60 * (g.perSide / (g.perSide + g.loss));
-      b.strokes += strokes; b.switches += strokes / g.perSide; b.energy += g.watts * step;
-      b.v = b.fin !== null ? 0 : v; b.g = g;
+      // Through each section at its own speed: a frame can span several, and
+      // taking one speed for all of it would drift from the prediction.
+      let left = dt, g = segAt(prof, Math.min(b.d, L - 1e-6));
+      for (let k = 0; k < 10000 && left > 1e-9; k++) {
+        g = segAt(prof, Math.min(b.d, L - 1e-6));
+        const v = Math.max(0, g.v);
+        if (v <= 0) break;   // stuck (no headway): the race ends without it
+        const end = Math.min(g.d1, L), toEnd = Math.max(0, (end - b.d) / v), step = Math.min(left, toEnd);
+        const strokes = (step * g.rate) / 60 * (g.perSide / (g.perSide + g.loss));
+        b.strokes += strokes; b.switches += strokes / g.perSide; b.energy += g.watts * step;
+        left -= step;
+        b.d = step === toEnd ? end : b.d + v * step;
+        if (b.d >= L) { b.d = L; b.fin = run.t + (dt - left); break; }
+      }
+      b.v = b.fin !== null ? 0 : Math.max(0, segAt(prof, Math.min(b.d, L - 1e-6)).v); b.g = g;
     }
     run.t += dt;
     run.samples.push({ t: run.t, A: Object.assign({}, run.A), B: Object.assign({}, run.B) });
@@ -2477,7 +2497,9 @@ function raceFrame(now) {
   // Redraw at most ~15 times a second, and not at all while paused (the
   // pause draws once): a phone stays free to answer taps.
   if (!dragging && !run.paused && (done || now - run.shownAt >= 66)) { liveShow(); run.shownAt = now; }
-  const msg = run.paused ? `Paused at ${clock(run.t)}.` : done ? finishText() : "";
+  const slowedBy = run.scale * slowFactor() / replayRate();
+  const msg = run.paused ? `Paused at ${clock(run.t)}.` : done ? finishText() :
+    slowedBy > 1.05 ? `Zoomed in, so slowed: 1 s here is ${span(replayRate())} of race. Fit for full speed.` : "";
   if ($("race-status").textContent !== msg) $("race-status").textContent = msg;
   if (done) endRun(false);
   else requestAnimationFrame(raceFrame);
@@ -2489,7 +2511,9 @@ function liveShow() {
 }
 function finishText() {
   const t = (x) => (run[x].fin === null ? "didn't finish" : clock(run[x].fin));
-  return `Raced: A ${t("A")}, B ${t("B")}.` + (run.changed ? " Settings changed mid-race, so this differs from the prediction above." : "");
+  const a = run.A.fin, b = run.B.fin;
+  const win = a !== null && b !== null && Math.abs(a - b) >= 1 ? ` ${a < b ? "A" : "B"} by ${span(Math.abs(a - b))}.` : "";
+  return `Finished: A ${t("A")}, B ${t("B")}.${win}` + (run.changed ? " Settings changed mid-race, so this differs from the prediction above." : "");
 }
 function startRun() {
   if (!race) return;
@@ -2510,10 +2534,11 @@ function endRun(stopped) {
   $("race-pause").disabled = $("race-stop").disabled = true;
   $("race-pause").textContent = "Pause";
   if (stopped) { $("race-status").textContent = "Stopped."; rec = null; scrubT = 0; updateRace(); return; }
-  // Finished: keep the recording to replay, starting at the winner's finish.
+  // Finished: keep the recording to replay, stopped at the last boat's finish
+  // so both finish times show.
   const fins = [r.A.fin, r.B.fin].filter((f) => f !== null);
   rec = { samples: r.samples, end: fins.length ? Math.max(...fins) : r.t, finA: r.A.fin, finB: r.B.fin, changed: r.changed };
-  scrubT = fins.length ? Math.min(...fins) : r.t;
+  scrubT = rec.end;
   $("race-status").textContent = status;
   showAt(scrubT);
 }
@@ -2542,17 +2567,20 @@ $("scrub").addEventListener("input", (e) => { dragging = true; scrubTo(+e.target
 onTap($("scrub-back"), () => scrubTo(+$("scrub").value / 1000 - 0.01));
 onTap($("scrub-fwd"), () => scrubTo(+$("scrub").value / 1000 + 0.01));
 // Zoom buttons, pinch on touch screens, Ctrl + scroll (and trackpad pinch) on computers.
-function setZoom(z) { raceZoom = z; if (race) showAt(shownT); }
-onTap($("zoom-in"), () => setZoom(raceZoom * 2));
-onTap($("zoom-out"), () => setZoom(raceZoom / 2));
-onTap($("zoom-fit"), () => setZoom(1));
+// Zoom from what is on screen (during a race that can be wider than the zoom
+// setting). Zooming during a race takes over from the default width.
+const zoomNow = () => viewFit / Math.max(1e-9, viewSpan);
+function setZoom(z) { raceZoom = z; if (run) run.userZoomed = true; if (race) showAt(shownT); }
+onTap($("zoom-in"), () => setZoom(zoomNow() * 2));
+onTap($("zoom-out"), () => setZoom(zoomNow() / 2));
+onTap($("zoom-fit"), () => { setZoom(1); if (run) run.userZoomed = false; });
 for (const id of ["race-view", "river-map"]) {
   const el = $(id), touches = new Map();
   let pinch = null;
   const spread = () => { const [a, b] = [...touches.values()]; return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); };
   el.addEventListener("pointerdown", (e) => {
     touches.set(e.pointerId, e);
-    if (touches.size === 2) pinch = { d: Math.max(1, spread()), z: raceZoom };
+    if (touches.size === 2) pinch = { d: Math.max(1, spread()), z: zoomNow() };
   });
   el.addEventListener("pointermove", (e) => {
     if (!touches.has(e.pointerId)) return;
@@ -2564,7 +2592,7 @@ for (const id of ["race-view", "river-map"]) {
   el.addEventListener("wheel", (e) => {
     if (!e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
-    setZoom(raceZoom * Math.exp(-e.deltaY / 200));
+    setZoom(zoomNow() * Math.exp(-e.deltaY / 200));
   }, { passive: false });
 }
 let pendingRace = 0;
