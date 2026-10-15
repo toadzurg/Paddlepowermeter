@@ -204,7 +204,14 @@ between them.
 - **Force curve:** A and B through the drive at the comparison effort and
   each boat's stroke rate, as blade force or forward push (the area under
   forward push is the stroke's impulse). Hover for values; a table view is
-  included.
+  included. **Live** traces each curve in step with the animated paddles.
+- **Blade lift:** the water meets the blade at an angle because the boat is
+  moving, and a flat blade's force stays square to its face (the plate's
+  sine law, Hoerner), so part of it is lift. Blade pitch turns the face
+  about the shaft. "Drag only" is a stricter bound for comparison. With
+  lift, a sweep that slices the blade sideways gains much more than a clean
+  vertical stroke; the model doesn't charge for strength in that position,
+  ventilation near the surface, or unsteady flow, so read that with care.
 - **Stroke views:** side, end and top, animated, shown split (A beside B),
   overlaid, or one boat only. With both boats set the same, the overlay
   and the force curve blend the two colours.
