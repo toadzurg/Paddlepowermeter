@@ -249,6 +249,47 @@ function liveHex(seq, tMs, inDrive, force) {
     await ctx.close();
   }
 
+  // ------------------------------------------- browser-injected scripts
+  // Bluefy (and similar) inject their own scripts into the page. These were
+  // the cause of "demo does nothing" in Bluefy on iPhone.
+  console.log("\nWeb app: alongside browser-injected scripts");
+  {
+    const src = fs.readFileSync(path.join(root, "docs/app/index.html"), "utf8");
+    const variant = (name, html) => {
+      const f = path.resolve(shotDir || "/tmp", name);
+      fs.writeFileSync(f, html);
+      return "file://" + f;
+    };
+    const cases = [
+      ["another script uses the same global names",
+       variant("collide.html", src.replace("<main>", "<script>let state = {}; function log() {} var $ = 1;</script><main>")), null],
+      ["Bluetooth add-on throws when read", pageUrl,
+       () => Object.defineProperty(navigator, "bluetooth", { configurable: true,
+         get() { throw new Error("polyfill not ready"); } })],
+      ["outside script reports 'Script error.'", pageUrl, null],
+    ];
+    for (const [name, url, init] of cases) {
+      const ctx = await browser.newContext();
+      if (init) await ctx.addInitScript(init);
+      const page = await ctx.newPage();
+      const errors = [];
+      page.on("pageerror", (e) => errors.push(e.message));
+      await page.goto(url + "?demo");
+      if (name.startsWith("outside"))  // as WebKit reports an injected script's error
+        await page.evaluate(() => window.dispatchEvent(new ErrorEvent("error", { message: "Script error." })));
+      await page.waitForTimeout(1200);
+      const ok = (await page.textContent("#pill-text")) === "Demo" && !(await page.isVisible("#js-status"));
+      check(`${name}: app still starts, no error box`, ok,
+            (await page.textContent("#js-status-text")).slice(0, 90));
+      if (name.startsWith("outside")) {
+        await page.click('nav button[data-tab="setup"]');
+        check("outside error noted in the console instead",
+              (await page.textContent("#console")).includes("not this app"));
+      }
+      await ctx.close();
+    }
+  }
+
   // ----------------------------------------------------------------- demo
   console.log("\nWeb app: demo mode");
   {
