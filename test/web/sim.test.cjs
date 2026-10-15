@@ -435,7 +435,8 @@ console.log("\nStroke simulator physics");
     check(`${tag}: copy`, (await text("#nm-a")) === "Defaults" && (await cellVal("eff", 2)) === (await cellVal("eff", 3)));
     await page.click("#view-mode >> text=Overlay"); await settle();
     check(`${tag}: same settings: overlay blends B over A`, (await page.$$("svg.view g.blend-b")).length === 3 &&
-          (await page.$$eval("svg.view", (ss) => ss.map((s) => s.querySelector("g.blend-b") === s.querySelectorAll("g")[1]))).every(Boolean));
+          (await page.$$eval("svg.view", (ss) => ss.map((s) => s.querySelector("g.blend-b") === s.querySelectorAll("g")[1]))).every(Boolean) &&
+          (await page.$$eval("svg.view", (ss) => ss.every((s) => s.querySelectorAll(".fig-head").length === 1))));
     await page.click("#view-mode >> text=Split");
     check(`${tag}: same settings: curves blend, one label`, (await page.$$("#curve-same")).length === 1 &&
           (await page.$$eval("#curve text.peak", (ts) => ts.map((t) => t.textContent))).join() === "A = B" &&
@@ -830,6 +831,11 @@ console.log("\nStroke simulator physics");
           (await page.$$("#hp-chart path.ln.still")).length >= 1, await text("#e-hinge"));
     check(`${tag}: pitch readout and the paddler`, /^A Pitches ±[\d.]+°, the bow moving ±[\d.]+ mm, costing [\d.]+%/.test(await text("#hull-pitch-read")) &&
           (await page.$$("#hp-pitch .fig-head")).length >= 1 && (await page.$$("svg.view .fig-head")).length >= 3, await text("#hull-pitch-read"));
+    await page.click("#view-mode >> text=Overlay"); await page.waitForTimeout(200);
+    check(`${tag}: overlay: both paddlers, each in its colour`, await page.$$eval("svg.view", (ss) => ss.every((s) =>
+          s.querySelectorAll(".fig-head").length === 2 && /series-1/.test(s.querySelector(".fig-head.fig-a").getAttribute("style")))) &&
+          (await page.$$("#hp-pitch .fig-head")).length === 2);
+    await page.click("#view-mode >> text=Split");
     await slide("#c-hinge", 0);
     await page.click("#effort-mode >> text=What each can hold"); await page.waitForTimeout(300);
     await scoreReady();
