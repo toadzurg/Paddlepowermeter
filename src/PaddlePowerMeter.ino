@@ -17,6 +17,7 @@
 //                 pressure, in newtons (e.g. a 5 kg weight: cal 49.03)
 //   debug         toggle 10 Hz telemetry
 //   status        print calibration and sensor state
+//   imu           print both IMUs once, in paddle axes and raw chip axes
 //   boat pair     pair with the next boat node heard (away from other boats)
 //   boat cal start   then paddle a measured distance on still water ...
 //   boat cal <m>     ... and enter it, e.g. boat cal 500
@@ -112,6 +113,27 @@ void printStatus() {
   printLogStatus();
 }
 
+// For checking the axis maps on the bench (docs/BENCH_TEST.md). Gyro bias
+// is removed in the paddle line but not in the chip line.
+void printImu() {
+  ImuReading p[2], raw[2];
+  readIMU(p, raw);
+  for (int i = 0; i < 2; i++) {
+    if (!p[i].valid) {
+      Serial.printf("IMU%d missing\n", i + 1);
+      continue;
+    }
+    Serial.printf("IMU%d paddle  accel x %6.2f y %6.2f z %6.2f m/s2   "
+                  "gyro x %6.3f y %6.3f z %6.3f rad/s\n", i + 1,
+                  p[i].accel[0], p[i].accel[1], p[i].accel[2],
+                  p[i].gyro[0], p[i].gyro[1], p[i].gyro[2]);
+    Serial.printf("IMU%d chip    accel x %6.2f y %6.2f z %6.2f m/s2   "
+                  "gyro x %6.3f y %6.3f z %6.3f rad/s\n", i + 1,
+                  raw[i].accel[0], raw[i].accel[1], raw[i].accel[2],
+                  raw[i].gyro[0], raw[i].gyro[1], raw[i].gyro[2]);
+  }
+}
+
 void handleBoatCommand(const String &arg) {
   if (arg == "pair") {
     startBoatPairing();
@@ -165,6 +187,8 @@ void handleCommand(const String &cmd) {
     debug = !debug;
   } else if (cmd == "status") {
     printStatus();
+  } else if (cmd == "imu") {
+    printImu();
   } else if (cmd == "log start") {
     if (logging()) Serial.println("log: already recording");
     else if (!startLog(makeLogHeader())) Serial.println("log: no SD card");
@@ -179,7 +203,7 @@ void handleCommand(const String &cmd) {
     arg.trim();
     handleBoatCommand(arg);
   } else if (cmd.length()) {
-    Serial.println("commands: tare | cal <newtons> | debug | status | boat ... | log ...");
+    Serial.println("commands: tare | cal <newtons> | debug | status | imu | boat ... | log ...");
   }
 }
 
