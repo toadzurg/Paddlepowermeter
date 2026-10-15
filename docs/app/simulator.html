@@ -394,13 +394,22 @@
               <div class="sub" id="s-b"></div><div class="cond" id="c-b"></div></div>
           </div>
           <div class="verdict" id="verdict"></div>
-          <details id="race-curve-d"><summary id="race-curve-sum"></summary>
-            <div class="curve-legend" id="race-curve-cap"></div>
+          <details id="race-curve-d" open><summary id="race-curve-sum"></summary>
+            <div class="row" style="justify-content:space-between;margin-top:4px">
+              <div class="curve-legend" id="race-curve-cap" style="margin-top:0"></div>
+              <div class="row chips"><button type="button" id="race-curve-live" aria-pressed="false">Live</button></div>
+            </div>
             <svg class="curve" id="race-curve" role="img" aria-label="Force per stroke for each boat at its race effort"></svg>
           </details>
           <svg class="race river-only" id="river-map" role="img" aria-label="River map with each boat's line" hidden></svg>
           <svg class="race" id="race-view" role="img" aria-label="Race between boat A and boat B"></svg>
-          <div class="row" style="margin-top:8px"><button class="primary" id="race-start">Start race</button></div>
+          <div class="row" style="margin-top:8px">
+            <button class="primary" id="race-start">Start race</button>
+            <button id="race-pause" disabled>Pause</button>
+            <button id="race-stop" disabled>Stop</button>
+            <span class="row chips"><button type="button" id="race-slow" aria-pressed="false">Slow motion</button></span>
+          </div>
+          <div class="note" id="race-status"></div>
         </div>
       </section>
 
@@ -688,10 +697,14 @@ let curveMode = "force", curveData = null, curveGeom = null, curveLive = false;
 // Live trace: each boat's curve up to where its paddle is now in the
 // animation (the stroke views' phase), with a dot and the force readout.
 function drawCurveLive(ph) {
-  const gEl = $("curve-live-g");
-  if (!gEl || !curveGeom) return;
-  if (!curveLive) { gEl.innerHTML = ""; return; }
-  const { C, k, X, Y, W, m } = curveGeom;
+  traceLive($("curve-live-g"), curveGeom, curveLive, ph);
+  traceLive($("race-curve-live-g"), raceCurveGeom, raceCurveLive && $("race-curve-d").open, ph);
+}
+// Each boat's curve traced up to where its paddle is in the animation.
+function traceLive(gEl, geom, on, ph) {
+  if (!gEl || !geom) return;
+  if (!on) { if (gEl.innerHTML) gEl.innerHTML = ""; return; }
+  const { C, k, X, Y, W, m } = geom;
   let h = "";
   const read = [];
   for (const x of BOATS) {
@@ -854,7 +867,7 @@ function why(r, at) {
 }
 
 // ----------------------------------------------------------------- race
-let race = null, raceAnim = null, course = "point", water = "open";
+let race = null, run = null, course = "point", water = "open";
 const lines = { a: "best", b: 0 };
 // [value, label] pairs, in display order.
 const COURSES = [["point", "Point to point"], ["outback", "There and back"]];
@@ -959,7 +972,8 @@ function updateRace() {
   // Show the moment the winner crosses the line.
   const won = [race.tA, race.tB].filter(isFinite);
   const tWin = won.length ? Math.min(...won) : 3600;
-  if (!raceAnim) drawRace(race.posA(tWin), race.posB(tWin));
+  if (!run) drawRace(race.posA(tWin), race.posB(tWin));
+  else run.changed = true;   // settings changed mid-race: they apply from here on
 }
 // Race clock when the animation ends: when the last boat that can finish
 // does (an hour if neither can).
@@ -972,10 +986,11 @@ const raceEnd = () => {
 function drawRaceCurve(effA, effB) {
   const C = { a: curveOf(results.a, effA), b: curveOf(results.b, effB) };
   $("race-curve-sum").textContent = `${$("race-curve-d").open ? "Hide" : "Show"} force per stroke`;
-  $("race-curve-cap").innerHTML = `<i class="key a"></i>A at ${effA} W: peak ${fmtNum(C.a.peakForce, 0)} N · ` +
-    `<i class="key b"></i>B at ${effB} W: peak ${fmtNum(C.b.peakForce, 0)} N`;
+  $("race-curve-cap").innerHTML = `<span><i class="key a"></i>A at ${effA} W: peak ${fmtNum(C.a.peakForce, 0)} N</span>` +
+    `<span><i class="key b"></i>B at ${effB} W: peak ${fmtNum(C.b.peakForce, 0)} N</span>`;
   const svg = $("race-curve");
   if (!$("race-curve-d").open) return;
+  svg.classList.toggle("live", raceCurveLive);
   const same = C.a.pts.length === C.b.pts.length && Math.abs(C.a.Td - C.b.Td) < 1e-9 &&
     C.a.pts.every((p, i) => Math.abs(p.force - C.b.pts[i].force) < 0.5);
   svg.classList.toggle("same", same);
@@ -992,9 +1007,16 @@ function drawRaceCurve(effA, effB) {
   g += `<text x="${m.l}" y="${H - 6}">0</text><text x="${W - m.r}" y="${H - 6}" text-anchor="end">${fmtNum(tMax, 2)} s</text>`;
   for (const x of ["a", "b"])
     g += `<path class="ln ${x}" d="${C[x].pts.map((p, i) => `${i ? "L" : "M"}${X(p.t).toFixed(1)},${Y(p.force).toFixed(1)}`).join(" ")}"/>`;
-  svg.innerHTML = g;
+  svg.innerHTML = g + `<g id="race-curve-live-g"></g>`;
+  raceCurveGeom = { C, k: "force", X, Y, W, m };
 }
+let raceCurveGeom = null, raceCurveLive = false;
 $("race-curve-d").addEventListener("toggle", () => updateRace());
+$("race-curve-live").addEventListener("click", () => {
+  raceCurveLive = !raceCurveLive;
+  $("race-curve-live").setAttribute("aria-pressed", String(raceCurveLive));
+  $("race-curve").classList.toggle("live", raceCurveLive);
+});
 
 // Top-down river map: a stretch of the river (two S-bends when it bends),
 // flowing per the current, with each boat's line on the first leg.
@@ -1037,7 +1059,7 @@ function drawRace(dA, dB, elapsed) {
   const W = Math.max(280, Math.round(svg.getBoundingClientRect().width)) || 320, H = 150;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   const L = race.metres, lead = Math.max(dA, dB);
-  const span = Math.min(L, Math.max(40, Math.abs(race.distanceGap) * 2.5));
+  const span = Math.min(L, Math.max(40, Math.abs(dA - dB) * 2.5));
   const left = 36, right = W - 14;
   const x = (d) => left + ((d - (lead - span * 0.8)) / span) * (right - left);
   let g = "";
@@ -1066,19 +1088,72 @@ function drawRace(dA, dB, elapsed) {
     `<text x="${right}" y="${H - 4}" text-anchor="end">${fmtNum(Math.max(dA, dB) / 1000, 2)} of ${fmtNum(L / 1000, 2)} km</text>`;
   svg.innerHTML = g;
 }
-$("race-start").addEventListener("click", () => {
+// A race run. Each frame, each boat moves on at the speed the current
+// settings give it where it is now (its leg), so a change mid-race applies
+// from that moment and the finish times are the ones actually raced. Race
+// time runs so the whole race takes about 12 s on screen (×¼ in slow motion).
+const speedAt = (legs, d) => {
+  let cum = 0;
+  for (const l of legs) { if (d < cum + l.len) return l.v; cum += l.len; }
+  return legs[legs.length - 1].v;
+};
+function raceFrame(now) {
+  if (!run) return;
+  const dtWall = Math.min(0.1, Math.max(0, (now - run.last) / 1000));
+  run.last = now;
+  if (!run.paused) {
+    const dt = dtWall * run.scale * ($("race-slow").getAttribute("aria-pressed") === "true" ? 0.25 : 1);
+    const L = race.metres;
+    for (const [x, legs] of [["A", race.legsA], ["B", race.legsB]]) {
+      if (run[`fin${x}`] !== null) continue;
+      const v = Math.max(0, speedAt(legs, run[`d${x}`]));
+      const d = run[`d${x}`] + v * dt;
+      if (d >= L) { run[`fin${x}`] = run.t + (L - run[`d${x}`]) / v; run[`d${x}`] = L; }
+      else run[`d${x}`] = d;
+    }
+    run.t += dt;
+  }
+  const L = race.metres;
+  run.dA = Math.min(run.dA, L); run.dB = Math.min(run.dB, L);
+  drawRace(run.dA, run.dB, run.t);
+  const stuck = (x, legs) => run[`fin${x}`] === null && speedAt(legs, run[`d${x}`]) <= 0;
+  const done = (run.finA !== null || stuck("A", race.legsA)) && (run.finB !== null || stuck("B", race.legsB));
+  $("race-status").textContent = run.paused ? `Paused at ${clock(run.t)}.` : done ? finishText() : "";
+  if (done) endRun(false);
+  else requestAnimationFrame(raceFrame);
+}
+function finishText() {
+  const t = (x) => (run[`fin${x}`] === null ? "didn't finish" : clock(run[`fin${x}`]));
+  return `Raced: A ${t("A")}, B ${t("B")}.` + (run.changed ? " Settings changed mid-race, so this differs from the prediction above." : "");
+}
+function startRun() {
   if (!race) return;
-  const total = raceEnd(), wall = 12;  // seconds on screen
-  const t0 = performance.now();
+  run = { t: 0, dA: 0, dB: 0, finA: null, finB: null, last: performance.now(), paused: false, changed: false,
+          scale: raceEnd() / (window.sim && window.sim.raceWallS || 12) };
   $("race-start").textContent = "Restart race";
-  const step = (now) => {
-    const raceT = Math.min(total, ((now - t0) / 1000 / wall) * total);
-    drawRace(race.posA(raceT), race.posB(raceT), raceT);
-    if (raceT < total) raceAnim = requestAnimationFrame(step);
-    else raceAnim = null;
-  };
-  if (raceAnim) cancelAnimationFrame(raceAnim);
-  raceAnim = requestAnimationFrame(step);
+  $("race-pause").disabled = $("race-stop").disabled = false;
+  $("race-pause").textContent = "Pause";
+  $("race-status").textContent = "";
+  requestAnimationFrame(raceFrame);
+}
+function endRun(stopped) {
+  const status = $("race-status").textContent;
+  run = null;
+  $("race-pause").disabled = $("race-stop").disabled = true;
+  $("race-pause").textContent = "Pause";
+  if (stopped) { $("race-status").textContent = "Stopped."; updateRace(); }
+  else $("race-status").textContent = status;
+}
+$("race-start").addEventListener("click", startRun);
+$("race-pause").addEventListener("click", () => {
+  if (!run) return;
+  run.paused = !run.paused;
+  $("race-pause").textContent = run.paused ? "Resume" : "Pause";
+});
+$("race-stop").addEventListener("click", () => { if (run) endRun(true); });
+$("race-slow").addEventListener("click", () => {
+  const on = $("race-slow").getAttribute("aria-pressed") !== "true";
+  $("race-slow").setAttribute("aria-pressed", String(on));
 });
 for (const id of ["effA", "effB", "dist", "depth", "wind", "windDir", "current", "width", "bends"]) $(id).addEventListener("input", updateRace);
 renderCourse();
@@ -1290,6 +1365,8 @@ requestAnimationFrame(frame);
 window.sim = {
   boats, results, PRESETS,
   get editing() { return editing; }, get race() { return race; }, get mode() { return mode; },
+  get run() { return run; },
+  raceWallS: 12,   // seconds on screen for a whole race (tests shorten it)
 };
 })();
 </script>

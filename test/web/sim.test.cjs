@@ -404,16 +404,20 @@ console.log("\nStroke simulator physics");
     check(`${tag}: race verdict`, /^Boat [AB] wins by (\d+(\.\d)? s|\d+:\d\d), \d+ m ahead/.test(await verdict()), await verdict());
     // Force per stroke at race effort: folded away, summary shows the peaks.
     const sumTxt = () => text("#race-curve-sum");
-    check(`${tag}: race force curve closed, with peaks`, !(await page.$eval("#race-curve-d", (d) => d.open)) &&
-          (await sumTxt()) === "Show force per stroke", await sumTxt());
+    check(`${tag}: race force curve open by default`, (await page.$eval("#race-curve-d", (d) => d.open)) &&
+          (await sumTxt()) === "Hide force per stroke" && (await page.$$("#race-curve path.ln")).length === 2, await sumTxt());
     await page.click("#race-curve-sum"); await settle();
-    check(`${tag}: race force curve opens to both boats`, (await page.$$("#race-curve path.ln")).length === 2 &&
-          (await sumTxt()).startsWith("Hide"));
+    check(`${tag}: race force curve folds away`, (await sumTxt()) === "Show force per stroke");
+    await page.click("#race-curve-sum"); await settle();
+    await page.click("#race-curve-live");
+    await page.waitForFunction(() => document.querySelectorAll("#race-curve path.trace").length >= 1, null, { timeout: 5000 });
+    check(`${tag}: race curve live trace`, /^A (\d+ N|recovery) · B (\d+ N|recovery)$/.test(await text("#race-curve .live-read")));
+    await page.click("#race-curve-live");
     const cap = () => text("#race-curve-cap");
-    check(`${tag}: race curve caption: each boat's effort and peak`, /^A at 150 W: peak \d+ N · B at 150 W: peak \d+ N$/.test(await cap()), await cap());
+    check(`${tag}: race curve caption: each boat's effort and peak`, /^A at 150 W: peak \d+ NB at 150 W: peak \d+ N$/.test(await cap()), await cap());
     const before = await cap();
     await slide("#effB", 250);
-    check(`${tag}: race curve follows each boat's effort`, (await cap()) !== before && (await cap()).startsWith(before.split(" · B")[0]) &&
+    check(`${tag}: race curve follows each boat's effort`, (await cap()) !== before && (await cap()).startsWith(before.split("B at")[0]) &&
           (await cap()).includes("B at 250 W"), `${before} → ${await cap()}`);
     await slide("#effB", 150);
     await page.click("#race-curve-sum");
@@ -476,6 +480,37 @@ console.log("\nStroke simulator physics");
     await page.click("#course >> text=Point to point");
     await page.click("#water >> text=Open water");
     check(`${tag}: back to open water`, !(await riverShown()) && (await text("#l-current")) === "Current");
+
+    // Race controls: pause, resume, slow motion, stop; a change mid-race applies from then on.
+    await page.evaluate(() => { window.sim.raceWallS = 1.5; });
+    const run = () => page.evaluate(() => window.sim.run && { t: window.sim.run.t, dA: window.sim.run.dA, paused: window.sim.run.paused });
+    check(`${tag}: pause and stop start disabled`, await page.$eval("#race-pause", (b) => b.disabled) && await page.$eval("#race-stop", (b) => b.disabled));
+    await page.click("#race-start");
+    await page.waitForTimeout(300);
+    await page.click("#race-pause");
+    const p1 = await run(); await page.waitForTimeout(250); const p2 = await run();
+    check(`${tag}: pause holds the race`, p1.paused && p2.t === p1.t && p2.dA === p1.dA && /^Paused at /.test(await text("#race-status")));
+    await page.click("#race-pause");
+    await page.waitForTimeout(150);
+    check(`${tag}: resume`, (await run()).t > p1.t && (await text("#race-pause")) === "Pause");
+    await page.click("#race-stop");
+    check(`${tag}: stop`, !(await run()) && (await text("#race-status")) === "Stopped." && await page.$eval("#race-pause", (b) => b.disabled));
+    await page.click("#race-slow");
+    check(`${tag}: slow motion toggle`, (await page.$eval("#race-slow", (b) => b.getAttribute("aria-pressed"))) === "true");
+    await page.click("#race-slow");
+    // Mid-race change: B goes to 400 W halfway, so B finishes between its 150 W and 400 W times.
+    const tB150 = await page.evaluate(() => window.sim.race.tB);
+    await page.click("#race-start");
+    await page.waitForFunction(() => window.sim.run && window.sim.run.dB > window.sim.race.metres / 2, null, { timeout: 5000 });
+    await slide("#effB", 400);
+    const tB400 = await page.evaluate(() => window.sim.race.tB);
+    await page.waitForFunction(() => !window.sim.run, null, { timeout: 8000 });
+    const raced = await text("#race-status");
+    const finB = secs(raced.match(/B (\d+:\d\d(:\d\d)?)/)[1]);
+    check(`${tag}: mid-race change applies from then on`, finB < tB150 - 1 && finB > tB400 + 1 && /changed mid-race/.test(raced),
+          `${raced} (150 W ${tB150.toFixed(0)} s, 400 W ${tB400.toFixed(0)} s)`);
+    await slide("#effB", 150);
+    await page.evaluate(() => { window.sim.raceWallS = 12; });
 
     await page.click("#race-start");
     await page.waitForTimeout(600);
