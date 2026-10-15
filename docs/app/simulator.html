@@ -295,6 +295,9 @@
   .score-find { margin-top: 8px; font-size: 14px; } .score-find b { font-weight: 600; }
   .ctl .eff { font-size: 13px; margin-top: 3px; padding: 4px 8px; border-radius: 8px; background: var(--water); }
   .ctl .eff b { font-weight: 600; }
+  .engine-box { border: 1px solid var(--border); border-radius: 12px; padding: 8px 12px; margin: 8px 0 4px; }
+  .engine-box .big { font-size: 24px; font-weight: 700; } .engine-box .big small { font-size: 13px; font-weight: 500; color: var(--text-secondary); }
+  .engine-box b { color: var(--text-primary); }
   .score { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
   .score .tile { border: 1px solid var(--border); border-radius: 12px; padding: 8px 12px; }
   .score .big { font-size: 32px; font-weight: 700; line-height: 1.1; } .score .big small { font-size: 14px; font-weight: 500; color: var(--text-secondary); }
@@ -454,6 +457,7 @@
           <div class="heads" id="score-heads"></div>
           <div class="score-verdict" id="score-verdict"></div>
           <h3>Where the time goes</h3>
+          <div class="sub">Each loss taken away in turn, top to bottom, so they add up: the difference between the boats' rows is the gap.</div>
           <svg class="bars" id="score-bars" role="img" aria-label="Time each loss costs each boat over the race"></svg>
           <div class="note">Faded: set by the course (portages) or by physics: a blade has to move water to push, so slip is never zero. A bigger blade or a longer drive cuts it.</div>
           <div class="score-find" id="score-find"></div>
@@ -461,6 +465,7 @@
         <div class="race-cols">
           <section>
             <h3>Paddlers</h3>
+            <div class="row chips" id="effort-mode" role="group" aria-label="Effort" style="margin-top:6px"></div>
             <div class="ctl"><label class="top"><span><span class="a-dot"></span>Boat A effort</span><output id="o-effA"></output></label>
               <input type="range" id="effA" min="50" max="400" step="10" value="150" aria-label="Boat A effort"></div>
             <div class="ctl"><label class="top"><span><span class="b-dot"></span>Boat B effort</span><output id="o-effB"></output></label>
@@ -583,7 +588,7 @@
           <div class="row chips" id="lift-mode" role="group" aria-label="Blade force model" style="margin-top:6px"></div>
           <div class="help">With lift: the blade still pushes hard when the water hits it at an angle. Drag only ignores that.</div></div>
       </details>
-      <details class="group"><summary>Paddler</summary><div id="ctl-paddler"></div></details>
+      <details class="group"><summary>Paddler</summary><div id="ctl-paddler"></div><div class="engine-box" id="engine-box"></div></details>
       <details class="group"><summary>Body</summary><div id="ctl-body"></div></details>
       <details class="group"><summary>Switching sides</summary><div id="ctl-switch"></div></details>
       <details>
@@ -612,14 +617,14 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of stroke-sim.js (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. -->
-<script src="stroke-sim.js?v=ec267376ce"></script>
+<script src="stroke-sim.js?v=75e0a30c28"></script>
 <script>
 (() => {
 "use strict";
 const $ = (id) => document.getElementById(id);
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 29;
+const NEEDS_API = 30;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -669,8 +674,9 @@ const CONTROLS = [
     help: "0° pulls straight back along the boat; + angles the pull outward." },
   { group: "ctl-stroke", key: "sweepDeg", label: "Sweep", min: 0, max: 90, step: 1, unit: "°",
     help: "How much the blade's path curves around you during the drive." },
-  { group: "ctl-paddle", key: "pivotFromGrip", label: "Pivot point, from the grip", min: 0, max: 0.5, step: 0.01, unit: " m",
-    help: "The point on the shaft that stays put relative to the boat." },
+  { group: "ctl-paddle", key: "pivotFromGrip", label: "Pull ↔ push", min: 0, max: 0.5, step: 0.01, unit: " m",
+    fmt: (v) => `${v < 0.15 ? "pull" : v > 0.35 ? "push" : "pull and push"} (pivot ${fmtNum(v, 2)} m from the grip)`,
+    help: "Pull with the bottom hand, or push with the top: the point on the shaft that stays put." },
   { group: "ctl-paddle", key: "paddleLenM", label: "Paddle length", min: 1.1, max: 1.5, step: 0.005, unit: "",
     fmt: (v) => `${fmtNum(v / 0.0254, 1)} in (${fmtNum(v, 2)} m)`, help: "Grip to tip. A C1 paddle is typically about 51 in." },
   { group: "ctl-paddle", key: "bladeLenM", label: "Blade length", min: 0.3, max: 0.6, step: 0.005, unit: "",
@@ -692,12 +698,19 @@ const CONTROLS = [
   { group: "ctl-paddler", key: "driveFraction", label: "Time in the drive", min: 0.3, max: 0.7, step: 0.05, unit: "",
     fmt: (v) => `${Math.round(v * 100)}% of each stroke`,
     help: "A longer drive moves more water more gently: lower peak force, less slip." },
+  { group: "ctl-paddler", key: "fitnessW", label: "Fitness", min: 80, max: 400, step: 5, unit: " W",
+    help: "The power you could hold for an hour using your whole body." },
+  { group: "ctl-paddler", key: "rotation", label: "Trunk rotation", min: 0, max: 1, step: 0.05, unit: "", eff: true,
+    fmt: (v) => (v ? `${Math.round(v * 100)}%` : "none"), help: "Turn your shoulders into the catch and unwind through the drive." },
+  { group: "ctl-paddler", key: "legDrive", label: "Leg drive", min: 0, max: 1, step: 0.05, unit: "", eff: true,
+    fmt: (v) => (v ? `${Math.round(v * 100)}%` : "none"), help: "Drive from the foot or knee on the paddle side through the drive." },
+  { group: "ctl-paddler", key: "dropM", label: "Drop onto the paddle at the catch", min: 0, max: 0.1, step: 0.005, unit: "", eff: true,
+    fmt: (v) => (v ? `${fmtNum(v * 100, 1)} cm` : "none"), help: "Your weight onto the shaft: loads the blade early, and bobs the boat." },
   { group: "ctl-paddler", key: "massKg", label: "Paddler + boat weight", min: 50, max: 150, step: 1, unit: " kg",
     help: "Heavier sits deeper, so more drag." },
   { group: "ctl-body", key: "swingM", label: "Body swing, fore–aft", min: 0, max: 0.2, step: 0.01, unit: "", eff: true,
     fmt: (v) => (v ? `±${fmtNum(v * 100, 0)} cm` : "still"), help: "Your body moving pushes the boat the other way. A quiet body keeps the boat running." },
-  { group: "ctl-body", key: "dropM", label: "Drop onto the paddle at the catch", min: 0, max: 0.1, step: 0.005, unit: "", eff: true,
-    fmt: (v) => (v ? `${fmtNum(v * 100, 1)} cm` : "none"), help: "Only what it does to the boat: the extra load it puts on the blade isn't counted yet." },
+
   { group: "ctl-body", key: "heelDeg", label: "Heel the boat toward the paddle", min: 0, max: 12, step: 1, unit: "°", eff: true,
     fmt: (v) => (v ? `${v}°` : "level"), help: "Brings the blade nearer the keel line, so each stroke turns the boat less." },
   { group: "ctl-body", key: "hipRock", label: "Hip rock against the roll", min: 0, max: 1, step: 0.05, unit: "", eff: true,
@@ -747,14 +760,22 @@ function showBodyEffects() {
   if (!r) return;
   const p = r.params, e = r.at(effortW), c = r.cycleAt(effortW), kmh = (v) => fmtNum(v * 3.6, 1);
   $("e-swingM").innerHTML = p.swingM ? `Hull speed swings <b>${kmh(Math.min(...c.speed))}–${kmh(Math.max(...c.speed))} km/h</b>: costs <b>${fmtNum(e.shares.swing * 100, 1)}%</b> of your power` : "";
-  $("e-dropM").innerHTML = p.dropM ? `Bob <b>±${fmtNum(e.bounceMm, 1)} mm</b> (from ±${fmtNum(e.bounceStillMm, 1)}): costs <b>${fmtNum(e.shares.drop * 100, 1)}%</b>` : "";
+  const peak = (rr) => { const sm = rr.samples, Td = sm[sm.length - 1].t; let m = 0, t = 0; for (const q of sm) if (q.thrust[0] > m) { m = q.thrust[0]; t = q.t; } return Math.round((t / Td) * 100); };
+  const flat = peak(simOf(Object.assign({}, p, { legDrive: 0, dropM: 0 })));
+  $("e-dropM").innerHTML = p.dropM ? `Loads the blade early: force peaks at <b>${peak(r)}%</b> of the drive (from ${flat}%). Bob <b>±${fmtNum(e.bounceMm, 1)} mm</b> (from ±${fmtNum(e.bounceStillMm, 1)}), costing ${fmtNum(e.shares.drop * 100, 1)}%` : "";
+  $("e-rotation").innerHTML = p.rotation ? `Reach <b>+${fmtNum(15 * p.rotation, 1)}°</b>, hand travel <b>+${fmtNum(12 * p.rotation, 1)} cm</b>. Uses more muscle: <b>+${fmtNum(0.15 * p.fitnessW * p.rotation, 0)} W</b> you can hold` : "";
+  $("e-legDrive").innerHTML = p.legDrive ? `Force holds later: it peaks at <b>${peak(r)}%</b> of the drive (from ${flat}%). <b>+${fmtNum(0.15 * p.fitnessW * p.legDrive, 0)} W</b> you can hold` : "";
+  const hours = raceHours[editing] || 1;
+  $("engine-box").innerHTML = `<div class="help">What ${NAME[editing]} can hold</div><div class="big">${fmtNum(S.capacity(p), 0)} W <small>for an hour</small></div>` +
+    `<div class="help">This race (${fmtNum(hours, hours < 10 ? 1 : 0)} h): <b>${fmtNum(S.capacity(p, hours), 0)} W</b>, as power fades over a long race (${fmtNum(Math.pow(Math.max(1, hours), -0.07) * 100, 0)}%).</div>` +
+    `<div class="help">Arms only: ${fmtNum(0.7 * p.fitnessW, 0)} W. Whole body: ${fmtNum(p.fitnessW, 0)} W.</div>`;
   if (p.heelDeg && !(bodyRef[editing] && bodyRef[editing].key === JSON.stringify(Object.assign({}, p, { heelDeg: 0 }))))
     bodyRef[editing] = { key: JSON.stringify(Object.assign({}, p, { heelDeg: 0 })), r: S.simulate(Object.assign({}, p, { heelDeg: 0 })) };
   const r0 = p.heelDeg ? bodyRef[editing].r : r;
   $("e-heelDeg").innerHTML = p.heelDeg ? `Switch every <b>${fmtNum(r.strokesPerSide, 1)}</b> strokes (from ${fmtNum(r0.strokesPerSide, 1)}), ` +
     `<b>${fmtNum(Math.abs(r0.switchDuty - r.switchDuty) * 100, 1)}%</b> ${r.switchDuty >= r0.switchDuty ? "less" : "more"} time lost switching` : "";
   $("e-hipRock").innerHTML = p.hipRock ? `Heel <b>±${fmtNum(Math.max(...c.heel.map(Math.abs)) * 180 / Math.PI, 1)}°</b> instead of ±${fmtNum(c.heelStill * 180 / Math.PI, 1)}°, hips moving up to <b>${fmtNum(c.hipMax * 1000, 0)} mm</b>` : "";
-  for (const k of ["swingM", "dropM", "heelDeg", "hipRock"]) $(`e-${k}`).hidden = !p[k];
+  for (const k of ["swingM", "dropM", "heelDeg", "hipRock", "rotation", "legDrive"]) $(`e-${k}`).hidden = !p[k];
 }
 const showValue = (c) => {
   const v = boats[editing][c.key];
@@ -1156,14 +1177,31 @@ function legNote(l, both) {
   } else if (l.shallow > 1.005) bits.push(`wave drag ×${fmtNum(l.shallow, 1)} in the shallows`);
   return bits.join("; ");
 }
+// Race effort: set by hand, or what each paddler can hold for the race's
+// length (from the last race's time, or a first guess; power fades so
+// slowly with time that a guess is close).
+let effortMode = "hand";
+const raceHours = { a: 0, b: 0 };
+const EFFORT_MODES = [["hold", "What each can hold"], ["hand", "Set by hand"]];
+function raceWatts(x, metres) {
+  if (effortMode === "hand") return parseFloat($(`eff${x.toUpperCase()}`).value);
+  const p = results[x].params;
+  let h = raceHours[x];
+  if (!h) { const v = results[x].at(S.capacity(p)).speed || 2.5; h = (metres || (cb ? cb.L : 10000)) / v / 3600; }
+  return Math.round(S.capacity(p, h) * 10) / 10;
+}
 function updateRace() {
   if (!results.a || !results.b) return;
-  const effA = parseFloat($("effA").value), effB = parseFloat($("effB").value);
+  chips("effort-mode", EFFORT_MODES, () => effortMode, (v) => { effortMode = v; });
+  const kmIn = parseFloat($("dist").value), mapIn = water === "map";
+  const effA = raceWatts("a", mapIn ? 0 : kmIn * 1000), effB = raceWatts("b", mapIn ? 0 : kmIn * 1000);
+  for (const id of ["effA", "effB"]) $(id).disabled = effortMode === "hold";
   const km = parseFloat($("dist").value), depth = parseFloat($("depth").value);
   const wind = parseFloat($("wind").value), dir = parseFloat($("windDir").value), current = parseFloat($("current").value);
   const out = course === "outback" ? " going out" : "";
-  $("o-effA").textContent = `${effA} W`;
-  $("o-effB").textContent = `${effB} W`;
+  const holdNote = (x) => (effortMode === "hold" ? ` · what ${x} can hold` : "");
+  $("o-effA").textContent = `${fmtNum(effA, 0)} W${holdNote("A")}`;
+  $("o-effB").textContent = `${fmtNum(effB, 0)} W${holdNote("B")}`;
   $("o-dist").textContent = km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`;
   $("o-depth").textContent = depthText(depth);
   $("o-wind").textContent = wind === 0 ? "calm" : `${wind} km/h`;
@@ -1181,7 +1219,7 @@ function updateRace() {
   raceSetup = {
     map, metres: map ? 0 : km * 1000, eff: { a: effA, b: effB },
     label: `${map ? cb.name : `${fmtNum(km, km < 10 ? 1 : 0)} km ${water === "river" ? "river" : "open water"}${course === "outback" ? ", there and back" : ""}`}, ` +
-      (effA === effB ? `${effA} W` : `A ${effA} W, B ${effB} W`),
+      (effA === effB ? `${fmtNum(effA, 0)} W` : `A ${fmtNum(effA, 0)} W, B ${fmtNum(effB, 0)} W`) + (effortMode === "hold" ? " (what each can hold)" : ""),
     envFor: (x) => map ? { windSpeed: wind / 3.6, windFrom: dir, sections: legsNow, lines: { A: lines[x], B: lines[x] } } :
       { windSpeed: wind / 3.6, windAngle: dir, current: current / 3.6, depth: depth >= 5 ? (riverOn ? 5 : Infinity) : depth, course,
         river: riverOn ? { width, bendsDegPerKm: bends, lineA: lines[x], lineB: lines[x] } : null },
@@ -1196,6 +1234,7 @@ function updateRace() {
   });
   $("t-a").textContent = clock(race.tA);
   $("t-b").textContent = clock(race.tB);
+  for (const x of BOATS) { const t = race[`t${x.toUpperCase()}`]; if (isFinite(t)) raceHours[x] = t / 3600; }
   const avg = course === "outback" || map ? " average" : "";
   const spd = (v) => v > 1e-3 ? `${fmtNum(v, 2)} m/s · ${fmtNum(v * 3.6, 1)} km/h${avg}` : "can't make headway";
   $("s-a").textContent = spd(race.vA);
@@ -2102,7 +2141,7 @@ const simOf = (p) => {
   if (!simCache.has(k)) { if (simCache.size > 40) simCache.clear(); simCache.set(k, S.simulate(p)); }
   return simCache.get(k);
 };
-const FIXABLE = { "Body swing": "a quieter body", "Switching": "fewer switches", "Drop": "less drop at the catch", "Crab": "a straighter pull", "Speed swings & bob": "a smoother pull", "Heel": "" };
+const FIXABLE = { "Muscle not used": "more rotation and leg drive", "Body swing": "a quieter body", "Switching": "fewer switches", "Drop": "less drop at the catch", "Crab": "a straighter pull", "Speed swings & bob": "a smoother pull", "Heel": "" };
 const span = (s) => { s = Math.abs(s); return s >= 3600 ? `${Math.floor(s / 3600)}:${String(Math.round((s % 3600) / 60)).padStart(2, "0")} h` : `${Math.floor(s / 60)}:${String(Math.round(s % 60) % 60).padStart(2, "0")}`; };
 function scheduleScore() {
   const gen = ++scoreGen;
@@ -2110,26 +2149,37 @@ function scheduleScore() {
   $("score-status").textContent = "Working it out…";
   setTimeout(() => runScore(gen), 350);
 }
+// Losses come off one after another in this order, so each row counts only
+// what's left: the rows add up, and two boats' rows add up to their gap.
 async function runScore(gen) {
   const setup = raceSetup, tick = () => new Promise((res) => setTimeout(res, 0)), out = {};
   if (!setup || !race) return;
   for (const x of BOATS) {
-    const r = results[x], p = r.params, W = setup.eff[x], env = setup.envFor(x);
-    const T = (rr, w = W) => S.race(rr, null, setup.metres, w, w, env).tA;
-    const t = race[`t${x.toUpperCase()}`], sh = r.at(W).shares, h = sh.hull;
+    const t0 = race[`t${x.toUpperCase()}`], env = setup.envFor(x), hours = isFinite(t0) ? t0 / 3600 : 1;
+    const T = (pp, w) => S.race(simOf(pp), null, setup.metres, w, w, env).tA;
+    let p = Object.assign({}, results[x].params), W = setup.eff[x], t = t0;
     const rows = [];
-    const add = async (name, f) => { rows.push([name, isFinite(t) ? f() : NaN]); await tick(); return gen === scoreGen; };
-    const without = (key, v) => () => t - T(simOf(Object.assign({}, p, { [key]: v })));
-    const loss = (s) => () => t - T(r, (W * (h + s)) / h);
-    if (!(await add("Body swing", p.swingM ? without("swingM", 0) : () => 0))) return;
-    if (!(await add("Switching", without("switchLossStrokes", 0)))) return;
-    if (!(await add("Drop", p.dropM ? without("dropM", 0) : () => 0))) return;
-    if (!(await add("Crab", loss(sh.leeway)))) return;
-    if (!(await add("Speed swings & bob", loss(sh.surge + sh.bounce)))) return;
-    if (!(await add("Heel", p.heelDeg ? without("heelDeg", 0) : () => 0))) return;
+    const step = async (name, change) => {
+      if (!isFinite(t)) { rows.push([name, NaN]); return true; }
+      const prev = t;
+      change();
+      t = T(p, W);
+      rows.push([name, prev - t]);
+      await tick();
+      return gen === scoreGen;
+    };
+    const set = (k, v) => () => { p = Object.assign({}, p, { [k]: v }); };
+    const intoHull = (key) => () => { const sh = simOf(p).at(W).shares; W *= (sh.hull + [].concat(key).reduce((a, k) => a + sh[k], 0)) / sh.hull; };
+    if (effortMode === "hold" && !(await step("Muscle not used", () => { p = Object.assign({}, p, { rotation: 1, legDrive: 1 }); W = S.capacity(p, hours); }))) return;
+    if (p.swingM && !(await step("Body swing", set("swingM", 0)))) return;
+    if (p.dropM && !(await step("Drop", set("dropM", 0)))) return;
+    if (p.heelDeg && !(await step("Heel", set("heelDeg", 0)))) return;
+    if (!(await step("Switching", set("switchLossStrokes", 0)))) return;
+    if (!(await step("Crab", intoHull("leeway")))) return;
+    if (!(await step("Speed swings & bob", intoHull(["surge", "bounce", "swing", "drop"])))) return;
     if (setup.map) rows.push(["Portages", race[`legs${x.toUpperCase()}`].filter((l) => l.kind === "portage").reduce((a, l) => a + l.t, 0)]);
-    if (!(await add("Blade slip", loss(sh.slip)))) return;
-    out[x] = { t, rows };
+    if (!(await step("Blade slip", intoHull("slip")))) return;
+    out[x] = { t: t0, rows };
   }
   drawScoreCard(out, setup);
 }
@@ -2138,16 +2188,15 @@ function drawScoreCard(out, setup) {
   const fix = (x) => out[x].rows.filter(([k]) => k in FIXABLE).reduce((a, q) => a + (isFinite(q[1]) ? q[1] : 0), 0);
   $("score-status").textContent = `${setup.label}.`;
   $("score-heads").innerHTML = BOATS.map((x) => `<div class="head ${x}"><div class="lab">${NAME[x]}</div><div class="big">${clock(out[x].t)}</div>` +
-    `<div class="sub2">${isFinite(out[x].t) ? `technique to find: <b>${span(fix(x))}</b>` : "can't finish"}</div></div>`).join("");
-  const gap = out.a.t - out.b.t, slow = gap > 0 ? "a" : "b";
-  const tech = Object.keys(FIXABLE).filter((k) => out.a.rows.some((q) => q[0] === k));
-  let because = "";
-  if (isFinite(gap) && Math.abs(gap) >= 1) {
-    const k = tech.reduce((best, k2) => ((val(slow, k2) - val(other(slow), k2)) > (val(slow, best) - val(other(slow), best)) ? k2 : best), tech[0]);
-    if (val(slow, k) - val(other(slow), k) > 0.25 * Math.abs(gap)) because = ` Most of it: ${NAME[slow]}'s ${k.toLowerCase()}.`;
-  }
+    `<div class="sub2">${isFinite(out[x].t) ? `technique to find: <b>${span(fix(x))}</b>` : "can't finish"}${effortMode === "hold" ? ` · at ${fmtNum(setup.eff[x], 0)} W` : ""}</div></div>`).join("");
+  const gap = out.a.t - out.b.t, slow = gap > 0 ? "a" : "b", fast = other(slow);
+  // Why: the rows where the two boats differ most (they add up to the gap).
+  const names = out.a.rows.map((q) => q[0]).filter((k) => k !== "Portages");
+  const diffs = names.map((k) => [k, (val(slow, k) || 0) - (val(fast, k) || 0)]).filter(([, d]) => Math.abs(d) >= 1).sort((p, q) => Math.abs(q[1]) - Math.abs(p[1])).slice(0, 2);
+  const why = diffs.map(([k, d]) => `${k} costs ${NAME[d > 0 ? slow : fast]} ${span(Math.abs(d))} more`).join("; ");
   $("score-verdict").textContent = !isFinite(out.a.t) || !isFinite(out.b.t) ? "" : Math.abs(gap) < 1 ? "Dead heat." :
-    `${NAME[other(slow)]} is faster by ${span(gap)}.${because}`;
+    `${NAME[fast]} is faster by ${span(gap)}.${why ? ` ${why.charAt(0).toUpperCase()}${why.slice(1)}.` : ""}`;
+  const tech = Object.keys(FIXABLE).filter((k) => out.a.rows.some((q) => q[0] === k) || out.b.rows.some((q) => q[0] === k));
   // Bars: technique first, biggest first; then what technique can't remove.
   const sorted = tech.filter((k) => BOATS.some((x) => Math.abs(val(x, k)) >= 0.5))   // what costs neither boat anything stays out
     .sort((p, q) => Math.max(val("a", q), val("b", q)) - Math.max(val("a", p), val("b", p)));
@@ -2531,12 +2580,12 @@ function stateAt(r, ph) {
   }
   const u = (ph - df) / (1 - df);             // recovery progress
   const back = 1 - (1 - Math.cos(Math.PI * u)) / 2;
-  const P = S.pose(r.params, back);           // reverse through the arc
+  const P = S.pose(r.geom, back);             // reverse through the arc
   const lift = 0.45 * Math.sin(Math.PI * u);
   const liftAt = (s) => { const q = P.at(s); return [q[0], q[1], q[2] + lift]; };
   const Pl = Object.assign({}, P, { at: liftAt });
   const face = [-Math.cos(P.th), 0, Math.sin(P.th)];
-  return { P: Pl, B: S.blade(r.params, Pl, face), thrust: [0, 0, 0], F: 0, inDrive: false };
+  return { P: Pl, B: S.blade(r.geom, Pl, face), thrust: [0, 0, 0], F: 0, inDrive: false };
 }
 
 // One boat's paddle, blade path and push, in its colour.
