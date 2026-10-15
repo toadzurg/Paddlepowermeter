@@ -143,6 +143,10 @@
     dropM: 0,                  // drop onto the paddle at the catch, m
     heelDeg: 0,                // boat heeled toward the paddle side
     hipRock: 0,                // share of the blade's roll the hips cancel, 0–1
+    // The paddler's engine.
+    fitnessW: 200,             // power you could hold for an hour using your whole body
+    rotation: 0,               // trunk rotation, 0–1: more reach and hand travel, more muscle
+    legDrive: 0,               // leg drive, 0–1: force held later in the drive, more muscle
   };
 
   const rad = (d) => (d * Math.PI) / 180;
@@ -158,8 +162,11 @@
   const ease = (u) => (1 - Math.cos(Math.PI * u)) / 2;
 
   // Paddle pose at drive progress u ∈ [0, 1].
+  // When in the drive the force comes: leg drive holds it later, a drop
+  // onto the paddle loads the blade early (u^w: w > 1 later, < 1 earlier).
+  const driveWarp = (p) => (1 + 0.5 * (p.legDrive || 0)) * (1 - 0.35 * Math.min(1, (p.dropM || 0) / 0.1));
   function pose(p, u) {
-    const e = ease(u);
+    const e = ease(Math.pow(u, driveWarp(p)));
     const th = rad(-p.catchDeg + (p.catchDeg + p.exitDeg) * e);
     const psi = rad(p.directionDeg + p.sweepDeg * (0.5 - e));
     const phi = rad(p.leanDeg);
@@ -371,7 +378,11 @@
     const p = Object.assign({}, DEFAULTS, params);
     // Heeling the boat toward the paddle brings the hands (about 0.9 m up)
     // nearer the keel line: the stroke works as if the top hand were further in.
-    const pg = p.heelDeg ? Object.assign({}, p, { handOutM: Math.max(0.1, p.handOutM - 0.9 * Math.sin(rad(p.heelDeg))) }) : p;
+    // Trunk rotation reaches further at the catch and carries the hands further.
+    const pg = Object.assign({}, p, {
+      handOutM: Math.max(0.1, p.handOutM - 0.9 * Math.sin(rad(p.heelDeg || 0))),
+      catchDeg: p.catchDeg + 15 * (p.rotation || 0), handTravelM: p.handTravelM + 0.12 * (p.rotation || 0),
+    });
     const k = HULL_K * Math.pow(p.massKg / MASS_REF, 2 / 3);  // drag ∝ wetted area
     // Boat speed: mean thrust falls as the boat speeds up (less slip), so
     // bisect for thrust (less the time lost switching) = hull drag.
@@ -508,6 +519,7 @@
     const e = at(p.effortW);
     return {
       params: p, speed: V, cycle: Tc,
+      geom: pg,   // the stroke as paddled: heel and rotation applied (for drawing)
       paddlerPower: paddler, usefulPower: useful, slipPower: slip, hullPower: hull,
       leewayPower: leeway,
       // Share of your power that moves the boat at the comparison effort,
@@ -532,6 +544,15 @@
       yawAt: (watts) => yawMean * Math.pow(watts / pd, 2 / 3),
       samples,
     };
+  }
+
+  // The power a paddler can hold: fitness is whole-body power for an hour.
+  // Arms alone manage about 70% of it; trunk rotation and leg drive add
+  // about 15% each (kayak studies: blocking the legs costs ~16% of power).
+  // Over a longer race it fades as hours^-0.07 (82% for 16 h).
+  function capacity(p, hours = 1) {
+    const q = Object.assign({}, DEFAULTS, p);
+    return q.fitnessW * (0.7 + 0.15 * q.rotation + 0.15 * q.legDrive) * Math.pow(Math.max(1, hours), -0.07);
   }
 
   // Shallow water (The Science of Paddling, Part 4): the boat's own wave, wavelength
@@ -866,9 +887,9 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 29;
+  const API_LEVEL = 30;
   const PADDLE = paddleOf(DEFAULTS);
-  const api = { API_LEVEL, simulate, race, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
+  const api = { API_LEVEL, simulate, race, capacity, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.StrokeSim = api;
 })(typeof window !== "undefined" ? window : globalThis);

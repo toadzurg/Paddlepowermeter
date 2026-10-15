@@ -73,6 +73,17 @@ console.log("\nStroke simulator physics");
   check("off-centre strokes turn the boat more", Math.abs(sweep.yawMoment) > 2 * Math.abs(clean.yawMoment));
   check("paddling on the right turns the bow left", clean.yawMoment > 0);
   check("no J-stroke model left", !("steeringPower" in base) && !("steerLD" in S.DEFAULTS));
+  // Paddler engine: what each can hold, and how body use shapes the drive.
+  const holdArms = S.capacity({}), holdAll = S.capacity({ rotation: 1, legDrive: 1 }), holdLong = S.capacity({ rotation: 1, legDrive: 1 }, 16);
+  check("capacity: arms only 70%, whole body 100%, fading over a long race", Math.round(holdArms) === 140 && Math.round(holdAll) === 200 && Math.round(holdLong) === 165,
+        `${holdArms} ${holdAll} ${holdLong}`);
+  const peakPct = (rr) => { const sm = rr.samples, Td = sm[sm.length - 1].t; let m = 0, t = 0; for (const q of sm) if (q.thrust[0] > m) { m = q.thrust[0]; t = q.t; } return t / Td; };
+  const legsSim = S.simulate({ legDrive: 1 }), dropSim = S.simulate({ dropM: 0.03 });
+  check("leg drive moves the force peak later, a drop moves it earlier", peakPct(legsSim) > peakPct(base) && peakPct(dropSim) < peakPct(base),
+        `${peakPct(base)} ${peakPct(legsSim)} ${peakPct(dropSim)}`);
+  const rotSim = S.simulate({ rotation: 1 });
+  check("rotation reaches further; settings left as set", rotSim.geom.catchDeg === rotSim.params.catchDeg + 15 && rotSim.params.rotation === 1 &&
+        Math.abs(S.simulate({}).efficiency - base.efficiency) < 1e-9);
   check("clean stroke: about 8 strokes per side", clean.strokesPerSide > 6 && clean.strokesPerSide < 10,
         clean.strokesPerSide.toFixed(1));
   check("sweep forces more frequent switches", sweep.strokesPerSide < clean.strokesPerSide / 3,
@@ -793,11 +804,24 @@ console.log("\nStroke simulator physics");
     check(`${tag}: heel: fewer switches`, /^Switch every [\d.]+ strokes \(from [\d.]+\), [\d.]+% less time lost switching$/.test(await text("#e-heelDeg")), await text("#e-heelDeg"));
     await slide("#c-hipRock", 0.8); await slide("#c-dropM", 0.03); await page.waitForTimeout(400);
     check(`${tag}: hip rock and drop`, /^Heel ±[\d.]+° instead of ±[\d.]+°, hips moving up to \d+ mm$/.test(await text("#e-hipRock")) &&
-          /^Bob ±[\d.]+ mm \(from ±[\d.]+\): costs [\d.]+%$/.test(await text("#e-dropM")) && /Hip rock 80%/.test(await text("#hull-roll-read")));
+          /^Loads the blade early: force peaks at \d+% of the drive \(from \d+%\)\. Bob ±[\d.]+ mm \(from ±[\d.]+\), costing [\d.]+%$/.test(await text("#e-dropM")) && /Hip rock 80%/.test(await text("#hull-roll-read")));
     for (const k of ["swingM", "heelDeg", "hipRock", "dropM"]) await slide(`#c-${k}`, 0);
     await page.click("#swing-timing >> text=Back in the drive");
     await page.waitForTimeout(300);
     check(`${tag}: body back to still`, (await text("#boat-score .tile.a .big")) === score0 && (await page.isHidden("#e-swingM")));
+    // Paddler engine: rotation shows its reach, the engine box, and "what each can hold".
+    await page.$eval("#ctl-paddler", (e) => e.closest("details").open = true);
+    check(`${tag}: engine box: arms only by default`, /What Boat A can hold140 W for an hour/.test(await text("#engine-box")), await text("#engine-box"));
+    await slide("#c-rotation", 0.8); await page.waitForTimeout(400);
+    check(`${tag}: rotation: reach and muscle`, /^Reach \+12\.0°, hand travel \+9\.6 cm\. Uses more muscle: \+24 W you can hold$/.test(await text("#e-rotation")) &&
+          /164 W/.test(await text("#engine-box")), await text("#e-rotation"));
+    await page.click("#effort-mode >> text=What each can hold"); await page.waitForTimeout(300);
+    await scoreReady();
+    check(`${tag}: effort: what each can hold`, (await page.isDisabled("#effA")) && (await page.isDisabled("#effB")) &&
+          /^\d+ W · what A can hold$/.test(await text("#o-effA")) && /Muscle not used/.test(await text("#score-bars")) &&
+          /^Boat A is faster by [\d:]+\. .+ costs Boat [AB] [\d:]+ more/.test(await text("#score-verdict")), `${await text("#o-effA")} | ${await text("#score-verdict")}`);
+    await page.click("#effort-mode >> text=Set by hand"); await slide("#c-rotation", 0); await page.waitForTimeout(300);
+    check(`${tag}: effort: back to set by hand`, !(await page.isDisabled("#effA")) && !/what A can hold/.test(await text("#o-effA")));
     // The C1 shape in the stroke views: a gunwale line inside the hull from above.
     check(`${tag}: stroke views draw the C1 (hull and gunwale from above)`, (await page.$$('.pair[data-view="top"] svg path.hull-in')).length >= 1);
     await slide("#depth", 0.9);
