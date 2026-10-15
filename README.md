@@ -149,13 +149,16 @@ time (up to three devices).
 - **Paddle tab:**
   - stroke power, with a 5-stroke average
   - stroke rate, boat speed, efficiency (useful vs slip) and lever arm
+  - a stroke view: an animated side view of the paddle with the live pivot,
+    lever arm and blade force, drawn from the shaft angle the paddle sends
   - a live force curve: the latest stroke, with the previous four behind it
   - power, force, shaft rate, pivot, battery and SD-log status right now
 - **Setup tab:** buttons for tare, force calibration (enter the mass in kg),
   boat pairing and calibration, and SD logging, plus a console for any
   serial command.
 - **Try demo** shows the whole interface with simulated strokes, no paddle
-  needed.
+  needed. The demo's pivot wanders between strokes the way the paddle's
+  estimate does, and power follows the changing lever arm.
 
 **Opening it:**
 - iPhone: open the link in the free **Bluefy** browser. Safari, Chrome and

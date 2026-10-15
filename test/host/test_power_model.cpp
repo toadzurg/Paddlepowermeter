@@ -206,6 +206,25 @@ int main() {
   oneImu.imu2Ok = false;
   reportSim("Simulated stroke: IMU2 failed", oneImu, 0.07);
 
+  std::printf("\nShaft angle (for the app's stroke view)\n");
+  {
+    PowerModel model;
+    double trueAngle = 0, sq = 0;
+    int n = 0;
+    bool first = true;
+    generateStroke(SimConfig(), 1, [&](const PaddleSample &s, double t) {
+      if (first) model.begin(s);
+      first = false;
+      model.update(s);
+      if (t > 5) {
+        double e = model.shaftAngle() - trueAngle;
+        sq += e * e;
+        n++;
+      }
+    }, &trueAngle);
+    CHECK_NEAR("rms error (deg)", std::sqrt(sq / n) * 180 / M_PI, 0, 3.0);
+  }
+
   std::printf("\nPower split: no impeller\n");
   {
     SimResult r = simulate(SimConfig());

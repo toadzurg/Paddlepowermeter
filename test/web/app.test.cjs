@@ -174,8 +174,12 @@ function liveHex(seq, tMs, inDrive, force) {
     const widest = await page.evaluate(() => Math.max(...window.ppm.state.curves.map((c) => c[c.length - 1][0])));
     check("dropout mid-drive discarded (no stretched curve)", widest < 0.7, `widest ${widest.toFixed(2)} s`);
     check("history strokes drawn", (await page.$$("#chart path.history")).length === 3);
+    check("17-byte packets from older firmware still decode", await page.isVisible("#stroke-view"));
+    check("stroke view asks for newer firmware when there's no angle",
+          (await page.textContent("#stroke-view")).includes("update the paddle firmware"));
     check("peak labelled", (await page.textContent("#chart text.peak-label")) === "peak 200 N",
           await page.textContent("#chart text.peak-label"));
+    await page.locator("#chart").scrollIntoViewIfNeeded();
     const box = await page.locator("#chart").boundingBox();
     await page.mouse.move(box.x + box.width * 0.45, box.y + box.height * 0.5);
     const tipBox = await page.locator("#tooltip").boundingBox();
@@ -305,6 +309,25 @@ function liveHex(seq, tMs, inDrive, force) {
     check("demo shows stroke power", /^\d+W$/.test(await page.textContent("#v-power")),
           await page.textContent("#v-power"));
     check("demo draws force curves", await page.isVisible("#chart"));
+    check("stroke view drawn", await page.isVisible("#stroke-view") &&
+          (await page.$$("#stroke-view line.blade")).length === 1);
+    const pivots = [];
+    for (let i = 0; i < 6; i++) {
+      pivots.push(parseFloat((await page.textContent("#v-pivot")).replace("\u2212", "-")));
+      await page.waitForTimeout(1000);
+    }
+    const spread = Math.max(...pivots) - Math.min(...pivots);
+    check("demo pivot is dynamic", spread > 0.03, `moved ${(spread * 100).toFixed(0)} cm in 6 s`);
+    const lever = parseFloat(await page.textContent("#v-lever"));
+    const pivotNow = parseFloat((await page.textContent("#v-pivot")).replace("\u2212", "-"));
+    check("lever arm = blade − pivot", Math.abs(lever - (0.95 - pivotNow)) < 0.015, `${lever} vs ${0.95 - pivotNow}`);
+    if (shotDir) {
+      await page.waitForFunction(() => document.querySelector("#stroke-view line.force"), null, { timeout: 3000 });
+      await page.locator("#stroke-view").screenshot({ path: path.join(shotDir, "stroke-drive.png") });
+      await page.waitForFunction(() => !document.querySelector("#stroke-view line.force"), null, { timeout: 3000 });
+      await page.waitForTimeout(250);
+      await page.locator("#stroke-view").screenshot({ path: path.join(shotDir, "stroke-recovery.png") });
+    }
     await page.click("#demo");
     check("demo button stops it", (await page.textContent("#demo")) === "Try demo" &&
           (await page.textContent("#pill-text")) === "Not connected");

@@ -48,6 +48,9 @@ public:
   float angularAccel() const { return rateKf_.accel(); }
   float pivotPosition() const { return pivotKf_.value(); }
   float leverArm() const { return leverArm_; }
+  // Shaft angle from vertical in the stroke plane, rad; positive with the
+  // blade aft of the pivot (exit), negative forward (catch).
+  float shaftAngle() const;
 
   // Per-stroke values
   float strokePower() const { return strokePower_; }  // W, energy / cycle time

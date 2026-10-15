@@ -44,6 +44,7 @@ struct __attribute__((packed)) LivePacket {
   uint16_t boatSpeedCms; // cm/s
   int16_t pivotMm;
   int16_t leverMm;
+  int16_t shaftAngleMrad;  // PowerModel::shaftAngle(), for the stroke view
 };
 
 // StrokePacket.flags
@@ -60,7 +61,7 @@ struct __attribute__((packed)) StrokePacket {
   uint8_t flags;
 };
 
-static_assert(sizeof(LivePacket) == 17, "LivePacket layout changed");
+static_assert(sizeof(LivePacket) == 19, "LivePacket layout changed");
 static_assert(sizeof(StrokePacket) == 15, "StrokePacket layout changed");
 
 // Saturating conversions: an out-of-range value pins at the limit instead

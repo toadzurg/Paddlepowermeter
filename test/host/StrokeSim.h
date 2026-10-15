@@ -38,9 +38,11 @@ struct SimTruth {
   double paddleTime = 0;    // s
 };
 
-// Calls onSample(const PaddleSample &s, double t) for every sample.
+// Calls onSample(const PaddleSample &s, double t) for every sample. If
+// shaftAngle is given, it holds the true shaft angle during each call.
 template <class OnSample>
-SimTruth generateStroke(const SimConfig &c, unsigned seed, OnSample onSample) {
+SimTruth generateStroke(const SimConfig &c, unsigned seed, OnSample onSample,
+                        double *shaftAngle = nullptr) {
   std::mt19937 rng(seed);
   std::normal_distribution<double> N01(0, 1);
 
@@ -120,6 +122,7 @@ SimTruth generateStroke(const SimConfig &c, unsigned seed, OnSample onSample) {
     s.boatSpeedMps = s.boatSpeedValid ? (float)boatPipe.front() : 0;
     if (boatPipe.size() > lag) boatPipe.pop_front();
 
+    if (shaftAngle) *shaftAngle = th;
     onSample(s, t);
   }
   return truth;

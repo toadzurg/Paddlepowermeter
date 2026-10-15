@@ -115,6 +115,14 @@ void PowerModel::update(const PaddleSample &s) {
   updateStrokes(s, instP, usefulP, dt);
 }
 
+float PowerModel::shaftAngle() const {
+  // Paddle-frame "up" is (−cosθ, sinθ, ·) for a shaft at θ from vertical
+  // in the stroke plane (X toward blade, Y power face).
+  float ux, uy, uz;
+  ahrs_.upVector(ux, uy, uz);
+  return atan2f(uy, -ux);
+}
+
 void PowerModel::updatePivot(const PaddleSample &s, const float omega[3],
                              float alphaZ) {
   float ux, uy, uz;

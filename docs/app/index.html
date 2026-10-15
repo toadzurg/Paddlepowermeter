@@ -18,6 +18,9 @@
     --axis: #c3c2b7;
     --border: #e1e0d9;
     --series-1: #2a78d6;
+    --series-2: #eb6834;
+    --water: rgba(42, 120, 214, 0.10);
+    --water-line: #86b6ef;
     --history: #c3c2b7;
     --good: #0ca30c;
     --warning: #fab219;
@@ -37,6 +40,9 @@
       --axis: #383835;
       --border: #2c2c2a;
       --series-1: #3987e5;
+      --series-2: #d95926;
+      --water: rgba(57, 135, 229, 0.14);
+      --water-line: #1c5cab;
       --history: #52514e;
       --button: #f0efec;
       --button-text: #1a1a19;
@@ -111,6 +117,19 @@
   svg.chart .peak { fill: var(--series-1); stroke: var(--surface-1); stroke-width: 2; }
   svg.chart text.peak-label { fill: var(--text-primary); font-weight: 600; }
   svg.chart .cross { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+  svg.stroke-view { display: block; width: 100%; height: auto; margin-top: 6px; }
+  svg.stroke-view text { fill: var(--text-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
+  svg.stroke-view text.strong { fill: var(--text-primary); font-weight: 600; }
+  svg.stroke-view .water { fill: var(--water); }
+  svg.stroke-view .water-line { stroke: var(--water-line); stroke-width: 1.5; }
+  svg.stroke-view .hull { fill: var(--grid); fill-opacity: 0.55; stroke: var(--axis); stroke-width: 1.5; }
+  svg.stroke-view .shaft { stroke: var(--text-primary); stroke-width: 4; stroke-linecap: round; }
+  svg.stroke-view .blade { stroke: var(--text-primary); stroke-width: 9; stroke-linecap: round; }
+  svg.stroke-view .imu { fill: var(--muted); }
+  svg.stroke-view .pivot { fill: var(--series-1); stroke: var(--surface-1); stroke-width: 2; }
+  svg.stroke-view .lever { stroke: var(--series-1); stroke-width: 2; fill: none; }
+  svg.stroke-view .force { stroke: var(--series-2); stroke-width: 3; stroke-linecap: round; fill: none; }
+  svg.stroke-view .force-head { fill: var(--series-2); }
   .tooltip { position: absolute; pointer-events: none; background: var(--surface-1);
              border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px;
              font-size: 13px; font-variant-numeric: tabular-nums;
@@ -198,6 +217,15 @@
         <div class="value" id="v-lever">—<span class="unit">m</span></div>
         <div class="sub" id="v-lever-sub">&nbsp;</div>
       </div>
+    </div>
+
+    <div class="card chart-card">
+      <h2>Stroke</h2>
+      <div class="sub">Side view, bow to the right. The pivot and lever arm (blue)
+        are the paddle's live estimates; the orange arrow is the water's force on the blade.</div>
+      <div id="stroke-empty" class="empty">The stroke view starts when data arrives.</div>
+      <svg class="stroke-view" id="stroke-view" role="img" hidden
+           aria-label="Side view of the paddle, its pivot, lever arm and blade force"></svg>
     </div>
 
     <div class="card chart-card">
@@ -328,7 +356,7 @@
 // scripts into the page, and shared global names would break one or both.
 (() => {
 "use strict";
-const APP_VERSION = "2026-10-15.4";
+const APP_VERSION = "2026-10-15.5";
 // Must match src/BleProtocol.h.
 const UUID = {
   service: "7e1a0001-5c3b-4c2e-9a77-0f5d3e2b9c10",
@@ -347,6 +375,8 @@ function decodeLive(dv) {
     force: dv.getInt16(5, true) / 10, omega: dv.getInt16(7, true) / 100,
     instPower: dv.getInt16(9, true), boatSpeed: dv.getUint16(11, true) / 100,
     pivot: dv.getInt16(13, true) / 1000, lever: dv.getInt16(15, true) / 1000,
+    // Added later: older firmware sends 17 bytes without it.
+    shaftAngle: dv.byteLength >= 19 ? dv.getInt16(17, true) / 1000 : null,
   };
 }
 function decodeStroke(dv) {
@@ -374,6 +404,7 @@ const state = {
   curve: null,            // force curve being recorded
   curves: [],             // finished curves, newest first
   replyBuf: "",
+  view: { target: null, running: false },  // stroke view animation
 };
 
 function setPill(stateName, text) {
@@ -410,6 +441,9 @@ function onLive(p) {
     state.curves.length = Math.min(state.curves.length, 5);
     state.curve = null;
   }
+
+  state.view.target = p;
+  if (!state.view.running) startStrokeView();
 
   setValue("v-inst", num(p.instPower), "W");
   setValue("v-force", num(p.force), "N");
@@ -547,6 +581,117 @@ function hideTip() {
 $("chart").addEventListener("pointermove", showTip);
 $("chart").addEventListener("pointerdown", showTip);
 $("chart").addEventListener("pointerleave", hideTip);
+
+// ---------------------------------------------------------- stroke view
+// Side view of the paddle in the boat's frame, drawn from the live data:
+// the pivot stays put on screen and the shaft swings (and slides, as the
+// pivot estimate moves along it) through it. Positions along the shaft are
+// metres from IMU1, as in src/Config.h.
+const GEOM = { grip: -0.42, bladeStart: 0.70, bladeCop: 0.95, bladeTip: 1.20, imu2: 0.30 };
+const WATER_BELOW_PIVOT = 0.80;  // m
+const RECOVERY_LIFT = 0.58;      // m the paddle is drawn lifted between drives
+const GUNWALE_BELOW_PIVOT = 0.60, KEEL_BELOW_PIVOT = 0.93;
+
+function startStrokeView() {
+  state.view.running = true;
+  const svg = $("stroke-view");
+  svg.toggleAttribute("hidden", false);
+  $("stroke-empty").hidden = true;
+  const v = { angle: 0, pivot: -0.14, lever: 1.09, force: 0, lift: RECOVERY_LIFT, last: performance.now() };
+  const frame = (now) => {
+    const p = state.view.target;
+    if (!p || performance.now() - state.lastLiveAt > 3000) {  // data stopped
+      state.view.running = false;
+      return;
+    }
+    // Ease toward the latest packet: packets come at 20 Hz, frames at 60.
+    const dt = Math.min(0.1, (now - v.last) / 1000);
+    v.last = now;
+    const k = 1 - Math.exp(-dt / 0.05), slow = 1 - Math.exp(-dt / 0.3);
+    if (p.shaftAngle !== null) v.angle += k * (p.shaftAngle - v.angle);
+    v.pivot += slow * (p.pivot - v.pivot);
+    v.lever += slow * (p.lever - v.lever);
+    v.force += k * (Math.max(0, p.force) - v.force);
+    v.lift += (1 - Math.exp(-dt / 0.12)) * ((p.inDrive ? 0 : RECOVERY_LIFT) - v.lift);
+    drawStrokeView(svg, v, p.shaftAngle === null);
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}
+
+function drawStrokeView(svg, v, noAngle) {
+  const W = Math.max(280, Math.round(svg.getBoundingClientRect().width)) || 360;
+  const H = 270;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const scale = H / 2.45;                       // px per metre
+  const cx = W / 2, cy = 1.0 * scale;           // pivot on screen
+  // World: X toward the bow (right), Z up, metres relative to the pivot.
+  const P = (X, Z) => [cx + X * scale, cy - Z * scale];
+  const th = v.angle;
+  const ex = [-Math.sin(th), -Math.cos(th)];    // along the shaft, toward the blade
+  const ey = [-Math.cos(th), Math.sin(th)];     // power face direction
+  const at = (sAlong, off = 0) => P(
+    ex[0] * (sAlong - v.pivot) + ey[0] * off,
+    ex[1] * (sAlong - v.pivot) + ey[1] * off + v.lift);
+  const f = (pt) => `${pt[0].toFixed(1)},${pt[1].toFixed(1)}`;
+  const water = P(0, -WATER_BELOW_PIVOT)[1];
+
+  // Canoe, behind the paddle (which is on the near side): low freeboard,
+  // the sheer rising toward bow (right) and stern (left), shallow draft.
+  const gz = -GUNWALE_BELOW_PIVOT, kz = -KEEL_BELOW_PIVOT;
+  const hull = `M${f(P(-1.75, gz + 0.16))} Q${f(P(0, gz - 0.05))} ${f(P(1.75, gz + 0.16))}` +
+    ` Q${f(P(1.55, kz + 0.05))} ${f(P(0.9, kz))} L${f(P(-0.9, kz))}` +
+    ` Q${f(P(-1.55, kz + 0.05))} ${f(P(-1.75, gz + 0.16))} Z`;
+  let g = `<path class="hull" d="${hull}"/>` +
+    `<rect class="water" x="0" y="${water}" width="${W}" height="${H - water}"/>` +
+    `<line class="water-line" x1="0" x2="${W}" y1="${water}" y2="${water}"/>` +
+    `<text x="${W - 8}" y="16" text-anchor="end">bow →</text>`;
+
+  // Paddle
+  const grip = at(GEOM.grip), bladeA = at(GEOM.bladeStart), tip = at(GEOM.bladeTip);
+  const gl = at(GEOM.grip, -0.07), gr = at(GEOM.grip, 0.07);
+  g += `<line class="shaft" x1="${grip[0]}" y1="${grip[1]}" x2="${bladeA[0]}" y2="${bladeA[1]}"/>` +
+    `<line class="shaft" x1="${gl[0]}" y1="${gl[1]}" x2="${gr[0]}" y2="${gr[1]}"/>` +
+    `<line class="blade" x1="${bladeA[0]}" y1="${bladeA[1]}" x2="${tip[0]}" y2="${tip[1]}"/>`;
+  for (const sIMU of [0, GEOM.imu2]) {
+    const q = at(sIMU, -0.035);
+    g += `<rect class="imu" x="${q[0] - 4}" y="${q[1] - 4}" width="8" height="8" rx="2"/>`;
+  }
+
+  // Lever arm: dimension line beside the shaft, pivot to blade centre.
+  const off = 0.13;
+  const l0 = at(v.pivot, off), l1 = at(GEOM.bladeCop, off);
+  const t0a = at(v.pivot, off - 0.04), t0b = at(v.pivot, off + 0.04);
+  const t1a = at(GEOM.bladeCop, off - 0.04), t1b = at(GEOM.bladeCop, off + 0.04);
+  // Label just outside the dimension line, anchored away from the shaft.
+  const sMid = (v.pivot + GEOM.bladeCop) / 2;
+  const mid = at(sMid, off + 0.06), onShaft = at(sMid);
+  const anchor = mid[0] >= onShaft[0] ? "start" : "end";
+  g += `<path class="lever" d="M${f(l0)} L${f(l1)} M${f(t0a)} L${f(t0b)} M${f(t1a)} L${f(t1b)}"/>` +
+    `<text class="strong" x="${mid[0]}" y="${mid[1] + 4}" text-anchor="${anchor}">L ${num(v.lever, 2)} m</text>`;
+
+  // Force of the water on the blade: opposite the power face's motion.
+  if (v.force > 8) {
+    const c = at(GEOM.bladeCop);
+    const len = Math.min(110, 0.42 * v.force) ;
+    const end = [c[0] - ey[0] * len, c[1] + ey[1] * len];
+    const ang = Math.atan2(end[1] - c[1], end[0] - c[0]);
+    const h1 = [end[0] - 9 * Math.cos(ang - 0.45), end[1] - 9 * Math.sin(ang - 0.45)];
+    const h2 = [end[0] - 9 * Math.cos(ang + 0.45), end[1] - 9 * Math.sin(ang + 0.45)];
+    g += `<line class="force" x1="${c[0]}" y1="${c[1]}" x2="${end[0]}" y2="${end[1]}"/>` +
+      `<path class="force-head" d="M${f(end)} L${f(h1)} L${f(h2)} Z"/>` +
+      `<text class="strong" x="${end[0]}" y="${end[1] + 18}" text-anchor="middle">${Math.round(v.force)} N</text>`;
+  }
+
+  // Pivot last, on top
+  // Label on the opposite side of the shaft from the lever arm.
+  const pv = at(v.pivot), lab = at(v.pivot, -0.12);
+  const side = lab[0] >= pv[0] ? "start" : "end";
+  g += `<circle class="pivot" cx="${pv[0]}" cy="${pv[1]}" r="6"/>` +
+    `<text x="${lab[0]}" y="${lab[1] + 4}" text-anchor="${side}">pivot ${num(v.pivot, 2)} m</text>`;
+  if (noAngle) g += `<text x="8" y="16">update the paddle firmware for the live shaft angle</text>`;
+  svg.innerHTML = g;
+}
 
 // ------------------------------------------------------------- console
 function log(text, cls) {
@@ -720,11 +865,12 @@ $("wake").addEventListener("click", async () => {
 // Synthesises packets in the firmware's byte format, so the demo exercises
 // the same decoders as a real paddle.
 function encodeLive(p) {
-  const dv = new DataView(new ArrayBuffer(17));
+  const dv = new DataView(new ArrayBuffer(19));
   dv.setUint16(0, p.seq, true); dv.setUint16(2, p.tMs & 0xffff, true); dv.setUint8(4, p.flags);
   dv.setInt16(5, Math.round(p.force * 10), true); dv.setInt16(7, Math.round(p.omega * 100), true);
   dv.setInt16(9, Math.round(p.instPower), true); dv.setUint16(11, Math.round(p.boatSpeed * 100), true);
   dv.setInt16(13, Math.round(p.pivot * 1000), true); dv.setInt16(15, Math.round(p.lever * 1000), true);
+  dv.setInt16(17, Math.round(p.shaftAngle * 1000), true);
   return dv;
 }
 function encodeStroke(s) {
@@ -737,29 +883,47 @@ function encodeStroke(s) {
 function startDemo() {
   if (state.device) return;
   stopDemo();
+  // A physically consistent stroke, like test/host/StrokeSim.h: the shaft
+  // swings through the water and back, and power = force × shaft rate ×
+  // lever arm. The pivot estimate wanders slowly between strokes, as the
+  // firmware's does for a real paddler, and power follows the lever arm.
+  const A = 0.6, drive = 0.6, cycle = 1.2, dt = 0.05;
   let seq = 0, t = 0, count = 0, energy = 0, wasDrive = false;
-  const drive = 0.6, cycle = 1.2;
   const timer = setInterval(() => {
-    t += 0.05;
+    t += dt;
     const k = Math.floor(t / cycle), tau = t - k * cycle;
     const vary = 1 + 0.08 * Math.sin(k * 1.7);
     const inDrive = tau < drive;
-    const force = inDrive ? 210 * vary * Math.sin(Math.PI * tau / drive) ** 1.3 + 4 * Math.random() : 1.5 * Math.random();
-    const omega = inDrive ? 3.1 * Math.sin(Math.PI * tau / drive) : -2.4 * Math.sin(Math.PI * (tau - drive) / (cycle - drive));
-    const instPower = Math.max(0, force * omega * 1.1);
-    if (inDrive) energy += instPower * 0.05;
+    let angle, omega, force;
+    if (inDrive) {
+      const w = Math.PI / drive;
+      angle = -A * Math.cos(w * tau);
+      omega = A * w * Math.sin(w * tau);
+      force = 210 * vary * Math.sin(w * tau) ** 1.3 + 4 * Math.random();
+    } else {
+      const w = Math.PI / (cycle - drive), r = tau - drive;
+      angle = A * Math.cos(w * r);
+      omega = -A * w * Math.sin(w * r);
+      force = 1.5 * Math.random();
+    }
+    const pivot = -0.14 + 0.08 * Math.sin(2 * Math.PI * t / 23) + 0.03 * Math.sin(2 * Math.PI * t / 7);
+    const lever = GEOM.bladeCop - pivot;
+    const instPower = Math.max(0, force * omega * lever);
+    if (inDrive) energy += instPower * dt;
     if (wasDrive && !inDrive) {
       count++;
       const power = Math.round(energy / cycle);
-      const useful = Math.round(power * 0.82);
+      const eff = 0.8 + 0.04 * Math.sin(k * 0.9);
+      const useful = Math.round(power * eff);
       onStroke(decodeStroke(encodeStroke({ count, power: count > 1 ? power : 0, rate: count > 1 ? 50 : 0,
-        energy, useful, slip: power - useful, efficiency: useful / power })));
+        energy, useful, slip: power - useful, efficiency: eff })));
       energy = 0;
     }
     wasDrive = inDrive;
-    onLive(decodeLive(encodeLive({ seq: seq++, tMs: Math.round(t * 1000), flags: (inDrive ? LIVE_IN_DRIVE : 0) | LIVE_BOAT_FRESH,
-      force, omega, instPower, boatSpeed: 2.3 + 0.12 * Math.sin(2 * Math.PI * t / cycle), pivot: -0.14, lever: 1.09 })));
-  }, 50);
+    onLive(decodeLive(encodeLive({ seq: seq++, tMs: Math.round(t * 1000),
+      flags: (inDrive ? LIVE_IN_DRIVE : 0) | LIVE_BOAT_FRESH, force, omega, instPower,
+      boatSpeed: 2.3 + 0.12 * Math.sin(2 * Math.PI * t / cycle), pivot, lever, shaftAngle: angle })));
+  }, dt * 1000);
   state.demo = {
     timer,
     command(text) {

@@ -286,6 +286,7 @@ void sendAppPackets(uint32_t nowMs, const BoatSpeed &b) {
     p.boatSpeedCms = ble::toU16(b.speedMps * 100);
     p.pivotMm = ble::toI16(model.pivotPosition() * 1000);
     p.leverMm = ble::toI16(model.leverArm() * 1000);
+    p.shaftAngleMrad = ble::toI16(model.shaftAngle() * 1000);
     sendLive(p);
   }
   if (model.strokeCount() != lastStrokeSent) {
