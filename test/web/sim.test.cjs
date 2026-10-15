@@ -433,6 +433,12 @@ console.log("\nStroke simulator physics");
     await slide("#effB", 150);
     await page.click("#race-curve-sum");
     check(`${tag}: point to point by default`, JSON.stringify(await pressed("#course")) === '["point"]');
+    check(`${tag}: point to point: no turn mentioned`, /the start isn't timed\.$/.test(await text("#race-sub")));
+    await page.click("#course >> text=There and back");
+    check(`${tag}: there and back: the turn is mentioned`, /the turn at halfway aren't timed\.$/.test(await text("#race-sub")));
+    await page.click("#course >> text=Point to point");
+    check(`${tag}: no chip label is cut off`, (await page.$$eval(".chips button:not(.info)", (bs) =>
+      bs.filter((b) => b.offsetParent && b.scrollWidth > b.clientWidth + 1).map((b) => b.textContent))).length === 0);
     const t0 = await text("#t-a");
     await slide("#effB", 250);
     check(`${tag}: more effort for B flips the race`, /^Boat B wins/.test(await verdict()), await verdict());

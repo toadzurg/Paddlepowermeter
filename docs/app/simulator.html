@@ -98,7 +98,8 @@
   /* Choice chips: the selected one gets a coloured outline, tint and tick. */
   .chips { --chip: var(--series-1); }
   .chips.b { --chip: var(--series-2); }
-  .chips button { padding: 6px 10px; min-height: 36px; font-size: 14px; }
+  /* Long labels wrap rather than being cut off in a narrow column. */
+  .chips button { padding: 6px 10px; min-height: 36px; font-size: 14px; max-width: 100%; white-space: normal; text-align: left; }
   .chips button[aria-pressed="true"] {
     border: 2px solid var(--chip); padding: 5px 9px;
     background: color-mix(in srgb, var(--chip) 16%, var(--surface-1));
@@ -258,6 +259,7 @@
     border-radius: 50%; border: 1px solid var(--axis); background: transparent; color: var(--text-secondary);
     font-size: 11px; font-weight: 700; line-height: 1; cursor: help; }
   button.info::before { content: ""; position: absolute; inset: -9px; }   /* bigger tap target */
+  .chips button.info { padding: 0; min-height: 0; max-width: none; }   /* a ? inside a chip row stays round */
   button.info[aria-expanded="true"] { border-color: var(--series-1); color: var(--series-1); }
   #tip { position: fixed; z-index: 50; max-width: min(280px, calc(100vw - 24px)); padding: 8px 10px;
     background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border); border-radius: 8px;
@@ -354,7 +356,7 @@
       <!-- ----------------------------------------------------- race -->
       <section class="card" id="race-card">
         <h2>Race</h2>
-        <div class="sub">A against B in the same conditions. Speed changes along the course; starts and turns aren't timed.</div>
+        <div class="sub" id="race-sub">A against B in the same conditions.</div>
         <div class="race-cols">
           <section>
             <h3>Paddlers</h3>
@@ -930,6 +932,9 @@ function renderCourse() {
   for (const el of document.querySelectorAll(".river-only")) el.toggleAttribute("hidden", water !== "river");
   $("race-view").toggleAttribute("hidden", water === "river");
   $("l-depth").textContent = water === "river" ? "Depth mid-channel" : "Water depth";
+  // Only mention a turn when the course has one.
+  $("race-sub").textContent = "A against B in the same conditions. Speed changes along the course; " +
+    (course === "outback" ? "the start and the turn at halfway aren't timed." : "the start isn't timed.");
   $("l-current").textContent = water === "river" ? "Current mid-channel" : "Current";
 }
 const clock = (sec) => {
