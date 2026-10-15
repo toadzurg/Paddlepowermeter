@@ -1983,17 +1983,19 @@ function drawHullLive(ph) {
     const x = +el.dataset.x0 + ph * +el.dataset.w;
     el.setAttribute("x1", x); el.setAttribute("x2", x);
   }
-  // Bob: side view, height ×200.
+  // Bob: side view, height ×50 (a 2 mm bob draws at a third of the hull's depth),
+  // the waterline low enough that the hull never reaches the labels.
   for (const { svg, bs } of panesIn("hp-bob")) {
-    svg.setAttribute("viewBox", `0 0 ${W_HV} 86`);
-    let g = hullDefs + `<rect class="water" x="0" y="50" width="${W_HV}" height="36"/><line class="wl" x1="0" x2="${W_HV}" y1="50" y2="50"/>`;
+    const wlB = 64, H = 108;
+    svg.setAttribute("viewBox", `0 0 ${W_HV} ${H}`);
+    let g = hullDefs + `<rect class="water" x="0" y="${wlB}" width="${W_HV}" height="${H - wlB}"/><line class="wl" x1="0" x2="${W_HV}" y1="${wlB}" y2="${wlB}"/>`;
     bs.forEach((x, k) => {
-      const [c, i] = at(x), y = 50 - c.heave[i] * 200 * s;
+      const [c, i] = at(x), y = wlB - c.heave[i] * 50 * s;
       g += `<path class="hull boat-${x}" d="${hullPath("side", sideP(180, y, s))}"/>`;
       if (c.up[i] > 2) g += `<line x1="${170 + k * 20}" x2="${170 + k * 20}" y1="${y + 8 + Math.min(30, c.up[i] * 0.35)}" y2="${y + 8}" stroke="${COL[x]}" stroke-width="4" marker-end="url(#ha-${x})"/>`;
       g += `<text x="8" y="${16 + k * 15}"><tspan class="strong" style="fill:${COL[x]}">${x.toUpperCase()}</tspan> ${c.heave[i] >= 0 ? "up" : "down"} ${fmtNum(Math.abs(c.heave[i]) * 1000, 1)} mm</text>`;
     });
-    g += `<text x="${W_HV - 8}" y="16" text-anchor="end">height ×200</text>`;
+    g += `<text x="${W_HV - 8}" y="16" text-anchor="end">height ×50</text>`;
     svg.innerHTML = g;
   }
   // Pitch: side view, bow right, with the paddler; tilt ×20.
