@@ -61,6 +61,19 @@ public:
   float strokePower() const { return strokePower_; }  // W, energy / cycle time
   float strokeRate() const { return strokeRate_; }    // strokes per minute
   float strokeEnergy() const { return lastEnergy_; }  // J of last drive
+  // Forward impulse of the last drive, ∫ F·cos(θ − β) dt in N·s: the push
+  // along the boat's direction of travel, which is what changes its
+  // momentum (Burke, The Science of Paddling, Parts 25 and 33). Doesn't need
+  // boat speed.
+  float strokeImpulse() const { return lastImpulse_; }
+  // Length of the last drive (force above the stroke threshold), s.
+  float driveTime() const { return lastDriveS_; }
+  // Share of the stroke cycle spent in the drive (Burke's duty factor), and
+  // the forward push averaged over the whole cycle: impulse / cycle time,
+  // N. At steady speed it equals the hull's drag. Both need a timed cycle,
+  // like strokePower(); 0 until then and after the paddler stops.
+  float dutyFactor() const { return dutyFactor_; }
+  float meanForwardForce() const { return meanForward_; }
 
   // Split of strokePower() into the part that pushes the boat and the part
   // lost to blade slip. Needs boat speed for the whole drive; check
@@ -78,7 +91,7 @@ public:
 private:
   void updatePivot(const PaddleSample &s, const float omega[3], float alphaZ);
   void updateStrokes(const PaddleSample &s, float instP, float usefulP,
-                     float dt);
+                     float forwardN, float dt);
 
   RateKalman rateKf_;
   Kalman1D pivotKf_;
@@ -100,6 +113,7 @@ private:
   uint32_t lastStrokeMs_;
 
   float driveUseful_, lastUseful_;
+  float driveImpulse_, lastImpulse_, lastDriveS_, dutyFactor_, meanForward_;
   bool driveUsefulValid_, lastUsefulValid_;
   bool splitValid_;
   float usefulPower_, slipPower_, efficiency_;

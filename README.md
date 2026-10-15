@@ -151,6 +151,24 @@ drive.
 Efficiency is not capped at 100%. A reading above 100% means a calibration
 (force, lever arm or impeller) is off.
 
+### Impulse per stroke
+
+Every stroke also gets its forward impulse, the push along the boat's
+direction of travel added up over the drive (Burke, *The Science of
+Paddling*, Parts 25 and 33). It needs no impeller:
+
+```
+impulse    = ∫ F · cos(θ − β) dt   over the drive, N·s
+duty       = drive time / stroke time
+mean push  = impulse / stroke time  (= the boat's drag at steady speed)
+```
+
+Impulse is what changes the boat's momentum, so for the same stroke rate
+more impulse means more speed. Two strokes with the same power can differ:
+a long, gentle drive puts more impulse into the water than a short, hard
+one. `debug` prints impulse, drive time, duty and mean push. The app shows
+them, and `replay` adds them as CSV columns.
+
 ## Web app
 
 `docs/app/index.html` is a phone and laptop dashboard that connects to the
@@ -160,6 +178,7 @@ time (up to three devices).
 - **Paddle tab:**
   - stroke power, with a 5-stroke average
   - stroke rate, boat speed, efficiency (useful vs slip) and lever arm
+  - impulse per stroke, drive time and duty, and mean push
   - a stroke view: an animated side view of the paddle with the live pivot,
     lever arm and blade force, drawn from the shaft angle the paddle sends
   - a live force curve: the latest stroke, with the previous four behind it
@@ -281,8 +300,8 @@ python3 tools/log2csv.py PPM00001.BIN          # → PPM00001.csv for a spreadsh
 ```
 
 `replay` runs the same `PowerModel` the paddle runs and prints one CSV row
-per stroke: power, rate, energy, pivot, lever arm, and the useful/slip split
-when the impeller was logged. It also reports how closely it matches what
+per stroke: power, rate, energy, pivot, lever arm, the useful/slip split
+when the impeller was logged, and impulse, drive time, duty and mean push. It also reports how closely it matches what
 the paddle computed live. To try different geometry or filter tuning on the
 same recording, edit `src/Config.h` and rebuild.
 

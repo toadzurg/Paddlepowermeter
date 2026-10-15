@@ -74,6 +74,8 @@ int main(int argc, char **argv) {
   s.slipW = ble::toI16(24.8f);
   s.efficiencyPermille = ble::toU16(1.0731f * 1000);  // >100% is allowed
   s.flags = ble::STROKE_HAS_SPLIT;
+  s.impulseCentiNs = ble::toU16(78.456f * 100);
+  s.driveMs = ble::toU16(0.5674f * 1000);
 
   std::fprintf(f, "{\n  \"live\": [\n    {\"hex\": ");
   hex(f, &l1, sizeof l1);
@@ -89,7 +91,8 @@ int main(int argc, char **argv) {
   hex(f, &s, sizeof s);
   std::fprintf(f, ", \"expect\": {\"count\": 42, \"power\": 173, \"rate\": 50.04, "
                   "\"energy\": 207.5, \"useful\": 149, \"slip\": 25, "
-                  "\"efficiency\": 1.073, \"hasSplit\": true}}\n  ]\n}\n");
+                  "\"efficiency\": 1.073, \"hasSplit\": true, \"impulse\": 78.46, "
+                  "\"driveMs\": 567, \"duty\": 0.4729}}\n  ]\n}\n");
   std::fclose(f);
 
   std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "PASSED",

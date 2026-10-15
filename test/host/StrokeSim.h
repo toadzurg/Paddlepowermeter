@@ -36,6 +36,7 @@ struct SimTruth {
   double energy = 0;        // ∫ F·v_blade dt while paddling, J
   double usefulEnergy = 0;  // ∫ F·cosθ·v_boat dt while paddling, J
   double paddleTime = 0;    // s
+  double impulse = 0;       // ∫ F·cos(θ − β) dt while paddling, N·s
 };
 
 // Calls onSample(const PaddleSample &s, double t) for every sample. If
@@ -89,7 +90,10 @@ SimTruth generateStroke(const SimConfig &c, unsigned seed, OnSample onSample,
     double vBoat = c.boatSpeed - c.surgeAmp / cycleW * std::cos(cycleW * t);
     // Only the horizontal part of the blade force drives the boat; the
     // force is normal to the blade, which is at θ − β from vertical.
-    if (paddling) trueUsefulEnergy += force * std::cos(th - bend) * vBoat * dt;
+    if (paddling) {
+      trueUsefulEnergy += force * std::cos(th - bend) * vBoat * dt;
+      truth.impulse += force * std::cos(th - bend) * dt;
+    }
 
     // World frame: X forward, Y left, Z up. Paddle axes in world:
     double ex[3] = {-std::sin(th), 0, -std::cos(th)};  // toward blade

@@ -303,6 +303,8 @@ void sendAppPackets(uint32_t nowMs, const BoatSpeed &b) {
     p.slipW = split ? ble::toI16(model.slipPower()) : 0;
     p.efficiencyPermille = split ? ble::toU16(model.efficiency() * 1000) : 0;
     p.flags = split ? ble::STROKE_HAS_SPLIT : 0;
+    p.impulseCentiNs = ble::toU16(model.strokeImpulse() * 100);
+    p.driveMs = ble::toU16(model.driveTime() * 1000);
     sendStroke(p);
   }
 }
@@ -434,5 +436,10 @@ void loop() {
       Serial.printf("  useful %.0f W  slip %.0f W  efficiency %.0f%%\n",
                     model.usefulPower(), model.slipPower(),
                     100 * model.efficiency());
+    if (model.strokeRate() > 0)
+      Serial.printf("  impulse %.1f N·s  drive %.2f s (%.0f%% of stroke)  "
+                    "mean push %.1f N\n",
+                    model.strokeImpulse(), model.driveTime(),
+                    100 * model.dutyFactor(), model.meanForwardForce());
   }
 }

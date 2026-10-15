@@ -240,6 +240,48 @@ int main() {
     CHECK_NEAR("useful power within 1% (W)", r.meanUseful, r.trueUseful, 0.01 * r.trueUseful);
   }
 
+  std::printf("\nImpulse per stroke (no impeller needed)\n");
+  {
+    for (SimConfig c : {SimConfig(), [] { SimConfig f; f.driveS = 0.45; f.recoveryS = 0.35; f.peakForceN = 300; return f; }()}) {
+      PowerModel model;
+      double sumJ = 0, sumDuty = 0, sumDrive = 0, sumPush = 0;
+      int n = 0, last = 0;
+      bool first = true;
+      SimTruth truth = generateStroke(c, 1, [&](const PaddleSample &s, double t) {
+        if (first) model.begin(s);
+        first = false;
+        model.update(s);
+        if (model.strokeCount() != last) {
+          last = model.strokeCount();
+          if (t > 10 && model.strokeRate() > 0) {
+            sumJ += model.strokeImpulse(); sumDuty += model.dutyFactor();
+            sumDrive += model.driveTime(); sumPush += model.meanForwardForce();
+            n++;
+          }
+        }
+      });
+      const double cycle = c.driveS + c.recoveryS;
+      const double trueJ = truth.impulse / (truth.paddleTime / cycle);  // per stroke
+      std::printf("  %.0f spm, peak %.0f N\n", 60 / cycle, c.peakForceN);
+      // The drive counts from 25 N to 10 N, so the tails are missed: ~1%.
+      CHECK_NEAR("impulse per stroke (N·s)", sumJ / n, trueJ, 0.03 * trueJ);
+      CHECK_NEAR("drive time (s)", sumDrive / n, c.driveS, 0.05);
+      CHECK_NEAR("duty factor", sumDuty / n, c.driveS / cycle, 0.05);
+      CHECK_NEAR("mean forward push (N)", sumPush / n, trueJ / cycle, 0.03 * trueJ / cycle);
+    }
+    // Peak force × drive: a sine pulse's impulse is (2/π)·F·T before the
+    // cos(θ − β) projection, so the forward impulse must be below that.
+    SimConfig c;
+    PowerModel model;
+    bool first = true;
+    generateStroke(c, 1, [&](const PaddleSample &s, double) {
+      if (first) model.begin(s);
+      first = false;
+      model.update(s);
+    });
+    CHECK_NEAR("forward impulse below (2/π)·F·T", model.strokeImpulse() < 2 / M_PI * c.peakForceN * c.driveS, 1, 0);
+  }
+
   std::printf("\nPower split: no impeller\n");
   {
     SimResult r = simulate(SimConfig());
@@ -279,6 +321,17 @@ int main() {
   SimResult r = simulate(stop);
   CHECK_NEAR("power drops to 0 after stopping", r.finalPower, 0, 0);
   CHECK_NEAR("stroke rate drops to 0", r.finalRate, 0, 0);
+  {
+    PowerModel model;
+    bool first = true;
+    generateStroke(stop, 1, [&](const PaddleSample &s, double) {
+      if (first) model.begin(s);
+      first = false;
+      model.update(s);
+    });
+    CHECK_NEAR("duty factor drops to 0", model.dutyFactor(), 0, 0);
+    CHECK_NEAR("mean forward push drops to 0", model.meanForwardForce(), 0, 0);
+  }
 
   std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "PASSED",
               failures, failures == 1 ? "" : "s");
