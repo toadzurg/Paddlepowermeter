@@ -2283,8 +2283,8 @@ const f2 = (q) => `${q[0].toFixed(1)},${q[1].toFixed(1)}`;
 
 // A USCA C1 marathon canoe: 18'6" long, 32" at its widest (just aft of
 // midships, a little above the waterline), pulled in to 17" at the gunwale
-// (tumblehome), 12" deep at the centre and stern and 16" at the bow, with a
-// rounded forefoot and a fine stern. Metres; x toward the bow, y to the
+// (tumblehome), 12" deep at the centre and stern and 16" at the bow, with
+// near-vertical stems. Metres; x toward the bow, y to the
 // left, z up from the waterline (the boat floats about 9 cm deep).
 const C1 = { half: 2.82, beam: 0.405, gun: 0.215, xw: -0.15, keel: -0.09, mid: 0.215, bow: 0.316, stern: 0.225, wide: 0.03 };
 // Half-width at x: the hull at its widest, and the gunwale.
@@ -2300,8 +2300,9 @@ function c1Gun(x) {   // the gunwale tapers with the hull, a little fuller
 const c1Sheer = (x) => (x >= 0 ? C1.mid + (C1.bow - C1.mid) * Math.pow(x / C1.half, 2.2) : C1.mid + (C1.stern - C1.mid) * Math.pow(-x / C1.half, 2));
 function c1Keel(x) {
   const r = Math.abs(x) / C1.half;
-  if (x > 0 && r > 0.7) return C1.keel + (C1.bow - C1.keel) * Math.pow((r - 0.7) / 0.3, 2.2);    // forefoot
-  if (x < 0 && r > 0.86) return C1.keel + (C1.stern - C1.keel) * Math.pow((r - 0.86) / 0.14, 1.6);
+  // Near-vertical stems with a small round at the foot.
+  if (x > 0 && r > 0.95) return C1.keel + (C1.bow - C1.keel) * Math.pow((r - 0.95) / 0.05, 1.8);
+  if (x < 0 && r > 0.96) return C1.keel + (C1.stern - C1.keel) * Math.pow((r - 0.96) / 0.04, 1.8);
   return C1.keel + 0.004 * r * r;                                                              // a little rocker
 }
 const c1Xs = Array.from({ length: 61 }, (_, i) => -C1.half + (2 * C1.half * i) / 60);
