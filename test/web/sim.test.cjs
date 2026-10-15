@@ -155,6 +155,20 @@ console.log("\nStroke simulator physics");
   check("hull: the blade lifts the paddle side; hips shift toward it to balance", Math.min(...cyc.roll) < -10 && cyc.rollMean < 0 && cyc.hipShift > 0 &&
         Math.abs(avg(cyc.heel)) < 1e-6 && cyc.GM > 0.1);
   check("hull: a wider blade slips less", S.simulate({ bladeWidthM: 0.24 }).at(150).shares.slip < e150.shares.slip);
+  // Body motion and the boat score.
+  const bodyStill = S.simulate({}), sw10 = S.simulate({ swingM: 0.1 }), sw5 = S.simulate({ swingM: 0.05 });
+  check("body: defaults change nothing", Math.abs(bodyStill.efficiency - def.efficiency) < 1e-12 && bodyStill.at(150).shares.swing === 0);
+  check("body: a bigger swing costs more (±5 cm ~1%, ±10 cm ~3–5%)", sw5.at(150).shares.swing > 0.005 && sw5.at(150).shares.swing < 0.02 &&
+        sw10.at(150).shares.swing > 0.03 && sw10.at(150).shares.swing < 0.05 && sw10.at(150).speed < bodyStill.at(150).speed,
+        `${(sw5.at(150).shares.swing * 100).toFixed(2)}%, ${(sw10.at(150).shares.swing * 100).toFixed(2)}%`);
+  const dr = S.simulate({ dropM: 0.03 }).at(150);
+  check("body: a drop at the catch makes the boat bob more", dr.bounceMm > 2 * dr.bounceStillMm && dr.shares.drop > 0);
+  check("body: heeling toward the paddle means fewer switches", S.simulate({ heelDeg: 6 }).strokesPerSide > bodyStill.strokesPerSide + 0.5);
+  const hr = S.simulate({ hipRock: 0.8 }).cycleAt(150), heelAmp = (a) => Math.max(...a.map(Math.abs));
+  check("body: hip rock cancels the roll", Math.abs(heelAmp(hr.heel) / hr.heelStill - 0.2) < 0.08 && hr.hipMax > 0.02, `${(heelAmp(hr.heel) / hr.heelStill).toFixed(2)}`);
+  const sc0 = bodyStill.at(150).boatScore, scW = S.simulate({ leanDeg: 40, sweepDeg: 70, handOutM: 0.5, catchDeg: 25, exitDeg: 25 }).at(150).boatScore;
+  check("boat score: a clean stroke ~96, switching costs the wide sweep", sc0.total > 94 && sc0.total < 98 && scW.total < sc0.total - 8 &&
+        scW.parts.switching > 10 && sw10.at(150).boatScore.total < sc0.total - 4, `${sc0.total.toFixed(1)} / ${scW.total.toFixed(1)}`);
   // A real course, section by section.
   const rivEnv = { current: 0.7, depth: 3, river: { width: 40, bendsDegPerKm: 180, lineA: "best", lineB: 0 } };
   const one = S.race(clean, sweep, 0, 150, 150, { sections: [{ len: 10000, kind: "river", current: 0.7, depth: 3, width: 40, bendsDegPerKm: 180, section: 0 }], lines: { A: "best", B: 0 } });
@@ -744,8 +758,9 @@ console.log("\nStroke simulator physics");
           /^A Speed swings [\d.]+–[\d.]+ km\/h, costing [\d.]+%.*B Speed swings/.test(await text("#hull-surge-read")), await text("#hull-surge-read"));
     check(`${tag}: hull: roll and its balance`, /^A Lifts the paddle side up to \d+ N·m; balance with hips \d+ mm toward the paddle side\. Held still: ±[\d.]+°/.test(await text("#hull-roll-read")), await text("#hull-roll-read"));
     await page.$eval("#hull-card", (e) => e.scrollIntoView());   // it only redraws while on screen
-    const surge1 = await text("#hp-surge"); await page.waitForTimeout(300);
-    check(`${tag}: hull: the drawings move with the stroke`, (await text("#hp-surge")) !== surge1);
+    const surgeSvg = () => page.$eval("#hp-surge", (e) => e.innerHTML);
+    const surge1 = await surgeSvg(); await page.waitForTimeout(300);
+    check(`${tag}: hull: the drawings move with the stroke`, (await surgeSvg()) !== surge1);
     await page.click("#hull-mode >> text=Split");
     check(`${tag}: hull: split, a picture per boat`, (await page.$$("#hp-chart svg")).length === 2 && (await page.$$("#hp-surge svg")).length === 2 &&
           (await page.$$("#hp-chart path.ln")).length === 6 && (await page.$$('#hp-surge svg[data-boats="b"] path.hull.boat-b')).length === 1);
@@ -753,6 +768,25 @@ console.log("\nStroke simulator physics");
     check(`${tag}: hull: B only`, JSON.stringify(await pressed("#hull-mode")) === '["b"]' && (await page.$$("#hp-chart path.ln")).length === 3 &&
           !/^A /.test(await text("#hull-heading-read")) && (await page.$$("#hp-surge path.hull.boat-a")).length === 0);
     await page.click("#hull-mode >> text=Overlay");
+    // Boat score for both boats; body settings show what they do.
+    check(`${tag}: boat score for both boats`, /^Boat A\d+ \/ 100.*Boat B\d+ \/ 100/.test(await text("#boat-score")), await text("#boat-score"));
+    await page.$eval("#ctl-body", (e) => e.closest("details").open = true);
+    const score0 = await text("#boat-score .tile.a .big");
+    await slide("#c-swingM", 0.1); await page.waitForTimeout(400);
+    check(`${tag}: body swing: its cost, a lower score, the still-body curve`, /^Hull speed swings [\d.]+–[\d.]+ km\/h: costs [\d.]+% of your power$/.test(await text("#e-swingM")) &&
+          (await text("#boat-score .tile.a .big")) !== score0 && /Body swing −/.test(await text("#boat-score .tile.a")) && (await page.$$("#hp-chart path.ln.still")).length === 1,
+          await text("#e-swingM"));
+    await page.click("#swing-timing >> text=Forward in the drive");
+    check(`${tag}: body swing timing`, JSON.stringify(await pressed("#swing-timing")) === '["-1"]');
+    await slide("#c-heelDeg", 6); await page.waitForTimeout(400);
+    check(`${tag}: heel: fewer switches`, /^Switch every [\d.]+ strokes \(from [\d.]+\), [\d.]+% less time lost switching$/.test(await text("#e-heelDeg")), await text("#e-heelDeg"));
+    await slide("#c-hipRock", 0.8); await slide("#c-dropM", 0.03); await page.waitForTimeout(400);
+    check(`${tag}: hip rock and drop`, /^Heel ±[\d.]+° instead of ±[\d.]+°, hips moving up to \d+ mm$/.test(await text("#e-hipRock")) &&
+          /^Bob ±[\d.]+ mm \(from ±[\d.]+\): costs [\d.]+%$/.test(await text("#e-dropM")) && /Hip rock 80%/.test(await text("#hull-roll-read")));
+    for (const k of ["swingM", "heelDeg", "hipRock", "dropM"]) await slide(`#c-${k}`, 0);
+    await page.click("#swing-timing >> text=Back in the drive");
+    await page.waitForTimeout(300);
+    check(`${tag}: body back to still`, (await text("#boat-score .tile.a .big")) === score0 && (await page.isHidden("#e-swingM")));
     // The C1 shape in the stroke views: a gunwale line inside the hull from above.
     check(`${tag}: stroke views draw the C1 (hull and gunwale from above)`, (await page.$$('.pair[data-view="top"] svg path.hull-in')).length >= 1);
     await slide("#depth", 0.9);

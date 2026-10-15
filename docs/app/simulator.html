@@ -283,6 +283,14 @@
   .cb-editor .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
   .cb-editor .head b { font-size: 15px; }
   .warn { color: var(--cat-side); }
+  .ctl .eff { font-size: 13px; margin-top: 3px; padding: 4px 8px; border-radius: 8px; background: var(--water); }
+  .ctl .eff b { font-weight: 600; }
+  .score { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
+  .score .tile { border: 1px solid var(--border); border-radius: 12px; padding: 8px 12px; }
+  .score .big { font-size: 32px; font-weight: 700; line-height: 1.1; } .score .big small { font-size: 14px; font-weight: 500; color: var(--text-secondary); }
+  .score .lab { font-size: 13px; font-weight: 600; } .score .a .lab { color: var(--series-1); } .score .b .lab { color: var(--series-2); }
+  .score ul { margin: 4px 0 0; padding: 0; list-style: none; font-size: 12.5px; color: var(--text-secondary); }
+  .score li { display: flex; justify-content: space-between; gap: 8px; } .score li b { color: var(--text-primary); font-weight: 600; }
   table.secs { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 6px; font-variant-numeric: tabular-nums; }
   table.secs th { text-align: left; font-weight: 500; color: var(--text-secondary); padding: 4px; border-bottom: 1px solid var(--border); }
   table.secs td { padding: 6px 4px; border-bottom: 1px solid var(--border); cursor: pointer; }
@@ -298,6 +306,7 @@
   svg.hv .ghost { fill: none; stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 4 3; }
   svg.hv .grid { stroke: var(--grid); } svg.hv .axis { stroke: var(--axis); } svg.hv .drive { fill: var(--water); }
   svg.hv .ln { fill: none; stroke-width: 2; } svg.hv .ln.drag { stroke-dasharray: 5 3; stroke-width: 1.5; } svg.hv .ln.speed { stroke-dasharray: 1.5 3; stroke-width: 2; }
+  svg.hv .ln.still { stroke-width: 1; opacity: 0.45; }
   svg.hv .hull.boat-a { stroke: var(--series-1); } svg.hv .hull.boat-b { stroke: var(--series-2); fill-opacity: 0.6; }
   svg.hv .paddler { fill: var(--muted); }
   .hpair.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0 12px; }
@@ -400,6 +409,8 @@
           <div class="row chips" id="hull-mode" role="group" aria-label="Boats shown"></div>
         </div>
         <div class="sub" id="hull-sub"></div>
+        <h3>Boat score<button type="button" class="info" data-tip="How much of the push on the hull becomes steady forward speed. 100 is a boat gliding at an even speed that never turns and never stops for a switch. Blade slip isn't counted: that's in Efficiency." aria-label="What is this?">?</button></h3>
+        <div class="score" id="boat-score"></div>
         <div class="hull-grid">
           <section><h3>Through one stroke</h3>
             <div class="hpair" id="hp-surge" data-what="The boat against a steady boat, with push and drag"></div>
@@ -553,6 +564,7 @@
           <div class="help">With lift: the blade still pushes hard when the water hits it at an angle. Drag only ignores that.</div></div>
       </details>
       <details class="group"><summary>Paddler</summary><div id="ctl-paddler"></div></details>
+      <details class="group"><summary>Body</summary><div id="ctl-body"></div></details>
       <details class="group"><summary>Switching sides</summary><div id="ctl-switch"></div></details>
       <details>
         <summary>How this works</summary>
@@ -580,14 +592,14 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of stroke-sim.js (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. -->
-<script src="stroke-sim.js?v=a96720c83b"></script>
+<script src="stroke-sim.js?v=2649ae06a4"></script>
 <script>
 (() => {
 "use strict";
 const $ = (id) => document.getElementById(id);
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 27;
+const NEEDS_API = 28;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -662,6 +674,14 @@ const CONTROLS = [
     help: "A longer drive moves more water more gently: lower peak force, less slip." },
   { group: "ctl-paddler", key: "massKg", label: "Paddler + boat weight", min: 50, max: 150, step: 1, unit: " kg",
     help: "Heavier sits deeper, so more drag." },
+  { group: "ctl-body", key: "swingM", label: "Body swing, fore–aft", min: 0, max: 0.2, step: 0.01, unit: "", eff: true,
+    fmt: (v) => (v ? `±${fmtNum(v * 100, 0)} cm` : "still"), help: "Your body moving pushes the boat the other way. A quiet body keeps the boat running." },
+  { group: "ctl-body", key: "dropM", label: "Drop onto the paddle at the catch", min: 0, max: 0.1, step: 0.005, unit: "", eff: true,
+    fmt: (v) => (v ? `${fmtNum(v * 100, 1)} cm` : "none"), help: "Only what it does to the boat: the extra load it puts on the blade isn't counted yet." },
+  { group: "ctl-body", key: "heelDeg", label: "Heel the boat toward the paddle", min: 0, max: 12, step: 1, unit: "°", eff: true,
+    fmt: (v) => (v ? `${v}°` : "level"), help: "Brings the blade nearer the keel line, so each stroke turns the boat less." },
+  { group: "ctl-body", key: "hipRock", label: "Hip rock against the roll", min: 0, max: 1, step: 0.05, unit: "", eff: true,
+    fmt: (v) => (v ? `${Math.round(v * 100)}%` : "none"), help: "Rock your hips toward the paddle side as the blade lifts it." },
   { group: "ctl-switch", key: "switchStrokes", label: "Strokes per side", min: 0, max: 20, step: 1, unit: "",
     fmt: (v) => v === 0 ? "auto, by heading" : `${v} stroke${v === 1 ? "" : "s"}`,
     help: "Fewer: more time lost switching. More: a wider zigzag. In a crosswind it's the average; you take more on the windward side. 0 switches by heading." },
@@ -675,12 +695,46 @@ for (const c of CONTROLS) {
   wrap.className = "ctl";
   wrap.innerHTML = `<label class="top"><span>${c.label}</span><output id="o-${c.key}"></output></label>
     <input type="range" id="c-${c.key}" min="${c.min}" max="${c.max}" step="${c.step}" aria-label="${c.label}">
-    <div class="help">${c.help}</div>`;
+    ${c.eff ? `<div class="eff" id="e-${c.key}"></div>` : ""}<div class="help">${c.help}</div>`;
   $(c.group).append(wrap);
   wrap.querySelector("input").addEventListener("input", (ev) => {
     boats[editing][c.key] = parseFloat(ev.target.value);
     changed(editing);
   });
+}
+// When the body swings: aft through the drive, or forward.
+const SWING_TIMING = [["1", "Back in the drive"], ["-1", "Forward in the drive"]];
+{
+  const row = document.createElement("div");
+  row.className = "row chips"; row.id = "swing-timing"; row.style.marginTop = "4px";
+  $("c-swingM").after(row);
+}
+function renderSwingTiming() {
+  $("swing-timing").innerHTML = "";
+  $("swing-timing").classList.toggle("b", editing === "b");
+  for (const [v, label] of SWING_TIMING) {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = label; b.dataset.value = v;
+    b.setAttribute("aria-pressed", String(String(boats[editing].swingTiming) === v));
+    b.addEventListener("click", () => { boats[editing].swingTiming = +v; changed(editing); });
+    $("swing-timing").append(b);
+  }
+}
+// What each body setting does, for the boat being edited.
+let bodyRef = { a: null, b: null };   // the same boat with a level hull, for "from …"
+function showBodyEffects() {
+  const r = results[editing];
+  if (!r) return;
+  const p = r.params, e = r.at(effortW), c = r.cycleAt(effortW), kmh = (v) => fmtNum(v * 3.6, 1);
+  $("e-swingM").innerHTML = p.swingM ? `Hull speed swings <b>${kmh(Math.min(...c.speed))}–${kmh(Math.max(...c.speed))} km/h</b>: costs <b>${fmtNum(e.shares.swing * 100, 1)}%</b> of your power` : "";
+  $("e-dropM").innerHTML = p.dropM ? `Bob <b>±${fmtNum(e.bounceMm, 1)} mm</b> (from ±${fmtNum(e.bounceStillMm, 1)}): costs <b>${fmtNum(e.shares.drop * 100, 1)}%</b>` : "";
+  if (p.heelDeg && !(bodyRef[editing] && bodyRef[editing].key === JSON.stringify(Object.assign({}, p, { heelDeg: 0 }))))
+    bodyRef[editing] = { key: JSON.stringify(Object.assign({}, p, { heelDeg: 0 })), r: S.simulate(Object.assign({}, p, { heelDeg: 0 })) };
+  const r0 = p.heelDeg ? bodyRef[editing].r : r;
+  $("e-heelDeg").innerHTML = p.heelDeg ? `Switch every <b>${fmtNum(r.strokesPerSide, 1)}</b> strokes (from ${fmtNum(r0.strokesPerSide, 1)}), ` +
+    `<b>${fmtNum(Math.abs(r0.switchDuty - r.switchDuty) * 100, 1)}%</b> ${r.switchDuty >= r0.switchDuty ? "less" : "more"} time lost switching` : "";
+  $("e-hipRock").innerHTML = p.hipRock ? `Heel <b>±${fmtNum(Math.max(...c.heel.map(Math.abs)) * 180 / Math.PI, 1)}°</b> instead of ±${fmtNum(c.heelStill * 180 / Math.PI, 1)}°, hips moving up to <b>${fmtNum(c.hipMax * 1000, 0)} mm</b>` : "";
+  for (const k of ["swingM", "dropM", "heelDeg", "hipRock"]) $(`e-${k}`).hidden = !p[k];
 }
 const showValue = (c) => {
   const v = boats[editing][c.key];
@@ -703,6 +757,8 @@ function renderLift() {
 function syncControls() {
   for (const c of CONTROLS) { $(`c-${c.key}`).value = boats[editing][c.key]; showValue(c); }
   renderLift();
+  renderSwingTiming();
+  showBodyEffects();
   // A fixed stroke count replaces switching by heading.
   const fixed = boats[editing].switchStrokes > 0;
   $("c-switchHeadingDeg").disabled = fixed;
@@ -752,6 +808,7 @@ function changed(x) {
     for (const b of dirty) results[b] = S.simulate(Object.assign({}, boats[b], { effortW }));
     dirty.clear();
     showEfficiency();
+    showBodyEffects();
     paths = {};
     updateRace();
     updateHull();
@@ -1805,7 +1862,17 @@ function updateHull() {
   chips("hull-mode", HULL_MODES, () => hullMode, (v) => { hullMode = v; layoutHull(); updateHull(); });
   if (!document.querySelector("#hp-surge svg")) layoutHull();
   $("hull-sub").textContent = `What the stroke and the water do to the boat, at ${effortW} W.`;
-  drawSurgeChart(); drawHeading(); drawPower(); drawShallow(); hullReadouts(); drawHullLive(phase);
+  drawScore(); drawSurgeChart(); drawHeading(); drawPower(); drawShallow(); hullReadouts(); drawHullLive(phase);
+}
+// Each boat's score, and the biggest things costing it points.
+const SCORE_NAMES = { switching: "Switching", zigzag: "Zigzag", swing: "Body swing", drop: "Drop", surge: "Speed swings", bob: "Bob", crab: "Crab", riding: "Riding higher" };
+function drawScore() {
+  $("boat-score").innerHTML = BOATS.map((x) => {
+    const sc = results[x].at(effortW).boatScore;
+    const rows = Object.entries(sc.parts).filter(([, v]) => Math.abs(v) >= 0.05).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 5);
+    return `<div class="tile ${x}"><div class="lab">${NAME[x]}</div><div class="big">${fmtNum(sc.total, 0)}<small> / 100</small></div>` +
+      `<ul>${rows.map(([k, v]) => `<li>${SCORE_NAMES[k]} <b>${v > 0 ? "−" : "+"}${fmtNum(Math.abs(v), 1)}</b></li>`).join("")}</ul></div>`;
+  }).join("");
 }
 // Side-on and end-on pictures of the C1 at s px/m, waterline at y = wl.
 const sideP = (cx, wl, s) => (q) => [cx + q[0] * s, wl - q[2] * s];
@@ -1862,7 +1929,7 @@ function drawHullLive(ph) {
       const d = c.heel[i] * 180 / Math.PI;
       g += `<text x="205" y="${22 + k * 15}"><tspan class="strong" style="fill:${COL[x]}">${x.toUpperCase()}</tspan> ${Math.abs(d) < 0.05 ? "level" : `${fmtNum(Math.abs(d), 1)}° paddle side ${d > 0 ? "down" : "up"}`}</text>`;
     });
-    g += `<text x="205" y="${22 + bs.length * 15}">if you held still · tilt ×3</text><text x="${cx + 92}" y="${wl + 24}">← blade lifts</text>`;
+    g += `<text x="205" y="${22 + bs.length * 15}">${bs.some((x) => results[x].params.hipRock) ? "with hip rock" : "if you held still"} · tilt ×3</text><text x="${cx + 92}" y="${wl + 24}">← blade lifts</text>`;
     svg.innerHTML = g;
   }
 }
@@ -1871,7 +1938,7 @@ function drawSurgeChart() {
   const W = W_HV, H = 150, m = { l: 40, r: 44, t: 10, b: 22 }, pw = W - m.l - m.r, ph = H - m.t - m.b;
   const all = BOATS.map((x) => hullCyc[x]), top = Math.max(...all.flatMap((c) => c.push)) * 1.1;
   const ys = niceStep(top, 2), fMax = Math.ceil(top / ys) * ys;
-  const sp = all.flatMap((c) => c.speed), v0 = Math.min(...sp) * 3.6 - 0.2, v1 = Math.max(...sp) * 3.6 + 0.2;
+  const sp = all.flatMap((c) => c.speed.concat(c.speedStill)), v0 = Math.min(...sp) * 3.6 - 0.2, v1 = Math.max(...sp) * 3.6 + 0.2;
   const Y = (f) => m.t + ph - (f / fMax) * ph, YV = (v) => m.t + ph - ((v * 3.6 - v0) / (v1 - v0)) * ph;
   for (const { svg, bs } of panesIn("hp-chart")) {
     const c0 = hullCyc[bs[0]], n = c0.t.length, X = (i) => m.l + (i / (n - 1)) * pw;
@@ -1884,9 +1951,11 @@ function drawSurgeChart() {
     for (const x of bs) {
       const c = hullCyc[x];
       g += `<path class="ln push" style="stroke:${COL[x]}" d="${path(c.push, Y)}"/><path class="ln drag" style="stroke:${COL[x]}" d="${path(c.drag, Y)}"/>` +
-        `<path class="ln speed" style="stroke:${COL[x]}" d="${path(c.speed, YV)}"/>`;
+        `<path class="ln speed" style="stroke:${COL[x]}" d="${path(c.speed, YV)}"/>` +
+        (results[x].params.swingM ? `<path class="ln still" style="stroke:${COL[x]}" d="${path(c.speedStill, YV)}"/>` : "");
     }
-    g += `<line class="hull-cursor" data-x0="${m.l}" data-w="${pw}" x1="${m.l}" x2="${m.l}" y1="${m.t}" y2="${m.t + ph}" stroke="var(--text-primary)" opacity=".35"/>` + tagFor(bs);
+    g += `<line class="hull-cursor" data-x0="${m.l}" data-w="${pw}" x1="${m.l}" x2="${m.l}" y1="${m.t}" y2="${m.t + ph}" stroke="var(--text-primary)" opacity=".35"/>` +
+      bs.map((x, i) => `<text class="strong" x="${W - m.r - 6 - (bs.length - 1 - i) * 14}" y="${m.t + 12}" text-anchor="end" style="fill:${COL[x]}">${x.toUpperCase()}</text>`).join("");
     svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
     svg.innerHTML = g;
   }
@@ -1899,8 +1968,10 @@ function hullReadouts() {
   $("hull-bob-read").innerHTML = lines((x, c, e) => `Rides <b>${fmtNum(Math.abs(e.sinkMm), 1)} mm ${e.sinkMm < 0 ? "higher" : "lower"}</b> (${fmtNum(Math.abs(e.shares.sink) * 100, 1)}% ${e.shares.sink < 0 ? "less" : "more"} drag), bobs <b>±${fmtNum(e.bounceMm, 1)} mm</b> (${fmtNum(e.shares.bounce * 100, 1)}%)`);
   $("hull-roll-read").innerHTML = lines((x, c) => {
     const heel = Math.max(...c.heel.map(Math.abs)) * 180 / Math.PI, inStep = Math.abs(c.rollPeriod / c.cycle - 1) < 0.15;
+    const rock = results[x].params.hipRock;
     return `Lifts the paddle side up to <b>${fmtNum(-Math.min(...c.roll), 0)} N·m</b>; balance with hips <b>${fmtNum(Math.abs(c.hipShift) * 1000, 0)} mm</b> toward the ${c.hipShift >= 0 ? "paddle" : "off"} side. ` +
-      `Held still: <b>±${fmtNum(heel, 1)}°</b>, rolling back every ${fmtNum(c.rollPeriod, 1)} s${inStep ? ", in step with the strokes, so each one pumps it" : ""}`;
+      (rock ? `Hip rock ${Math.round(rock * 100)}%: <b>±${fmtNum(heel, 1)}°</b> (from ±${fmtNum(c.heelStill * 180 / Math.PI, 1)}°)` :
+        `Held still: <b>±${fmtNum(heel, 1)}°</b>, rolling back every ${fmtNum(c.rollPeriod, 1)} s${inStep ? ", in step with the strokes, so each one pumps it" : ""}`);
   });
   $("hull-heading-read").innerHTML = lines((x, c, e, r) => r.params.switchStrokes ? `Switching every <b>${r.params.switchStrokes}</b> strokes, the bow wanders <b>±${fmtNum(r.headingWanderDeg, 1)}°</b>` :
     `Switch every <b>${fmtNum(r.strokesPerSide, 1)} strokes</b> to stay within ±${fmtNum(r.headingWanderDeg, 1)}°`);
