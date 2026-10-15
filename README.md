@@ -67,7 +67,9 @@ accelerometer-difference α measurement and some pivot accuracy.
 2. Check the IMU axes. With the identity map, each chip's X axis points at
    the blade and its Y axis points the way the power face moves. If yours
    are mounted differently, edit `IMU1_AXES` / `IMU2_AXES`.
-3. Build and flash: `pio run -t upload`, then `pio device monitor`.
+3. Build and flash: `pio run -t upload`, then `pio device monitor`. The
+   project uses the "minimal SPIFFS" partition (1.9 MB app), because BLE and
+   Wi-Fi together don't fit the default 1.2 MB.
 4. Calibrate the force sensor once. The values are stored in flash.
    * Lay the paddle flat and type `tare`.
    * Support the paddle at the pivot. Hang a known mass at the blade's
@@ -77,7 +79,62 @@ accelerometer-difference α measurement and some pivot accuracy.
    removes gyro bias and re-zeros the strain gauge, whose offset drifts
    with temperature.
 
-Serial commands: `tare`, `cal <N>`, `debug` (10 Hz telemetry), `status`.
+Serial commands: `tare`, `cal <N>`, `debug` (10 Hz telemetry), `status`,
+and the `boat ...` commands below.
+
+## Boat speed (optional impeller)
+
+Boat speed through the water is optional; the paddle measures power without
+it. It's needed to split power into useful (force × boat speed) and wasted
+(slip). GPS can't stand in for it on moving water, because GPS measures
+speed over the ground, not through the water.
+
+The impeller is on the hull and the paddle can't be wired to it, so a
+second ESP32, the **boat node**, reads it and broadcasts over ESP-NOW (the
+ESP32's built-in peer-to-peer radio, which runs alongside the paddle's
+Bluetooth).
+
+```
+impeller magnets → Hall switch → boat node ESP32 ──ESP-NOW 20 Hz──► paddle ESP32
+```
+
+1. **Wiring.** Put a 3.3 V digital Hall switch (e.g. TI DRV5032) next to the
+   impeller's magnets. Connect its output to GPIO 4, VCC to 3V3 and GND to
+   GND. The internal pull-up handles open-drain outputs. If you use a reed
+   switch instead, raise `MIN_INTERVAL_US` in `src/boat/BoatNode.cpp` to
+   about 2000 to absorb contact bounce.
+2. **Flash the boat node:** `pio run -e boat -t upload`. Spin the impeller by
+   hand and watch the pulse count rise in `pio device monitor`.
+3. **Pair**, away from other boats: on the paddle, type `boat pair`. The
+   paddle then ignores every other boat node, e.g. at a race start.
+4. **Calibrate**, on still water: type `boat cal start`, paddle a measured
+   distance, then `boat cal <metres>`. On moving water, do it out and back
+   and enter the total distance, so the current mostly cancels.
+
+Impellers add drag and catch weeds, so fit it for training and take it off
+for racing. Check your race's rules on speed devices.
+
+### Useful vs slip power
+
+With a calibrated impeller, each stroke's power is split in two. The
+`debug` output shows both parts and the efficiency:
+
+```
+total  = F · v_blade                (what you put out; sent over BLE)
+useful = F · cosθ · v_boat          (what pushes the boat forward)
+slip   = total − useful             (lost churning water)
+efficiency = useful / total
+```
+
+`cosθ` is the horizontal share of the blade force, taken from the paddle's
+orientation. At the catch and the exit the angled blade partly lifts or
+sinks the boat rather than driving it forward. The calculation assumes the
+blade moves straight aft, so sweep and steering strokes read slightly high.
+A stroke gets no split if boat speed dropped out at any point during its
+drive.
+
+Efficiency is not capped at 100%. A reading above 100% means a calibration
+(force, lever arm or impeller) is off.
 
 ## Tests
 
@@ -90,7 +147,9 @@ with gravity, boat surge, sensor noise and gyro bias:
 ```
 
 Scenarios: nominal, a wrong pivot prior, boat surge, 75 spm race pace, IMU2
-failure, and the paddler stopping.
+failure, and the paddler stopping. The impeller pulse timing has its own
+tests, including the microsecond counter wrapping every 71 minutes during
+long races.
 
 ## Layout
 
@@ -105,6 +164,9 @@ src/
   Scale.{h,cpp}          NAU7802 driver → newtons
   Battery.{h,cpp}        MAX17048 state of charge
   BLEManager.{h,cpp}     Cycling Power + Battery services
-test/host/               PC simulation tests
+  BoatLink.{h,cpp}       receives boat speed from the boat node (ESP-NOW)
+  boat/BoatNode.cpp      boat node firmware (impeller reader)
+lib/BoatSpeed/           impeller pulse timing + radio packet (shared)
 lib/                     vendored sensor libraries
+test/host/               PC simulation tests
 ```

@@ -20,7 +20,10 @@ PowerModel::PowerModel()
     inDrive_(false), driveStartMs_(0), driveEnergy_(0),
     havePrev_(false), prevDriveStartMs_(0),
     strokePower_(0), strokeRate_(0), lastEnergy_(0),
-    strokeCount_(0), lastStrokeMs_(0) {}
+    strokeCount_(0), lastStrokeMs_(0),
+    driveUseful_(0), lastUseful_(0),
+    driveUsefulValid_(false), lastUsefulValid_(false), splitValid_(false),
+    usefulPower_(0), slipPower_(0), efficiency_(0) {}
 
 void PowerModel::begin(const PaddleSample &atRest) {
   const ImuReading &r = atRest.imu[0].valid ? atRest.imu[0] : atRest.imu[1];
@@ -97,7 +100,19 @@ void PowerModel::update(const PaddleSample &s) {
   float instP = s.forceN * vBlade;            // W
   smInstP_ += INST_P_SMOOTH * (instP - smInstP_);
 
-  updateStrokes(s, instP, dt);
+  // Useful (propulsive) power is the forward component of the blade force
+  // times boat speed. The power face moves along +Y, so the force's
+  // horizontal fraction is cosθ = √(1 − up_y²). This assumes the blade moves
+  // straight aft; sweep or steering strokes slightly overstate it.
+  float usefulP = 0;
+  if (s.boatSpeedValid) {
+    float ux, uy, uz;
+    ahrs_.upVector(ux, uy, uz);
+    float cosTheta = sqrtf(fmaxf(0.0f, 1.0f - uy * uy));
+    usefulP = s.forceN * cosTheta * s.boatSpeedMps;
+  }
+
+  updateStrokes(s, instP, usefulP, dt);
 }
 
 void PowerModel::updatePivot(const PaddleSample &s, const float omega[3],
@@ -127,7 +142,7 @@ void PowerModel::updatePivot(const PaddleSample &s, const float omega[3],
 }
 
 void PowerModel::updateStrokes(const PaddleSample &s, float instP,
-                               float dt) {
+                               float usefulP, float dt) {
   const uint32_t now = s.timeMs;
 
   if (!inDrive_ && s.forceN > cfg::STROKE_START_N) {
@@ -141,10 +156,18 @@ void PowerModel::updateStrokes(const PaddleSample &s, float instP,
     }
     driveStartMs_ = now - back;
     driveEnergy_ = 0;
+    driveUseful_ = 0;
+    driveUsefulValid_ = true;
   }
   prevForceN_ = s.forceN;
 
-  if (inDrive_) driveEnergy_ += instP * dt;
+  if (inDrive_) {
+    driveEnergy_ += instP * dt;
+    // One missing boat-speed sample spoils the stroke's split, not the
+    // stroke's total power.
+    if (s.boatSpeedValid) driveUseful_ += usefulP * dt;
+    else driveUsefulValid_ = false;
+  }
 
   if (inDrive_ && s.forceN < cfg::STROKE_END_N) {
     inDrive_ = false;
@@ -153,6 +176,8 @@ void PowerModel::updateStrokes(const PaddleSample &s, float instP,
       if (havePrev_ && cycle < cfg::MIN_CYCLE_MS) {
         // A second force peak inside the same stroke: fold it in.
         driveEnergy_ += lastEnergy_;
+        driveUseful_ += lastUseful_;
+        driveUsefulValid_ = driveUsefulValid_ && lastUsefulValid_;
         driveStartMs_ = prevDriveStartMs_;
         strokeCount_--;
       } else if (havePrev_ && cycle <= cfg::MAX_CYCLE_MS) {
@@ -160,8 +185,16 @@ void PowerModel::updateStrokes(const PaddleSample &s, float instP,
         // what a paddler's sustained output actually is.
         strokePower_ = fmaxf(0.0f, driveEnergy_ / (cycle * 0.001f));
         strokeRate_ = 60000.0f / cycle;
+        splitValid_ = driveUsefulValid_ && driveEnergy_ > 0;
+        if (splitValid_) {
+          usefulPower_ = driveUseful_ / (cycle * 0.001f);
+          slipPower_ = strokePower_ - usefulPower_;
+          efficiency_ = driveUseful_ / driveEnergy_;
+        }
       }
       lastEnergy_ = driveEnergy_;
+      lastUseful_ = driveUseful_;
+      lastUsefulValid_ = driveUsefulValid_;
       prevDriveStartMs_ = driveStartMs_;
       havePrev_ = true;
       strokeCount_++;
@@ -173,5 +206,7 @@ void PowerModel::updateStrokes(const PaddleSample &s, float instP,
   if (havePrev_ && !inDrive_ && now - prevDriveStartMs_ > cfg::MAX_CYCLE_MS) {
     strokePower_ = 0;
     strokeRate_ = 0;
+    splitValid_ = false;
+    usefulPower_ = slipPower_ = efficiency_ = 0;
   }
 }

@@ -19,6 +19,8 @@ struct PaddleSample {
   float dt;          // seconds since previous sample
   float forceN;      // force at blade centre of pressure
   ImuReading imu[2]; // imu[0] = IMU1 (position 0), imu[1] = IMU2
+  float boatSpeedMps;   // boat speed through the water (impeller), optional
+  bool boatSpeedValid;
 };
 
 // Estimates paddler power from blade force and paddle kinematics.
@@ -51,13 +53,24 @@ public:
   float strokePower() const { return strokePower_; }  // W, energy / cycle time
   float strokeRate() const { return strokeRate_; }    // strokes per minute
   float strokeEnergy() const { return lastEnergy_; }  // J of last drive
+
+  // Split of strokePower() into the part that pushes the boat and the part
+  // lost to blade slip. Needs boat speed for the whole drive; check
+  // hasPowerSplit() first.
+  bool hasPowerSplit() const { return splitValid_; }
+  float usefulPower() const { return usefulPower_; }  // W, F·cosθ·v_boat
+  float slipPower() const { return slipPower_; }      // W, total − useful
+  // useful / total. Not clamped: a value above 1 on the water means the
+  // force, lever arm or impeller calibration is off.
+  float efficiency() const { return efficiency_; }
   uint16_t strokeCount() const { return strokeCount_; }
   uint32_t lastStrokeTimeMs() const { return lastStrokeMs_; }
   bool inDrive() const { return inDrive_; }
 
 private:
   void updatePivot(const PaddleSample &s, const float omega[3], float alphaZ);
-  void updateStrokes(const PaddleSample &s, float instP, float dt);
+  void updateStrokes(const PaddleSample &s, float instP, float usefulP,
+                     float dt);
 
   RateKalman rateKf_;
   Kalman1D pivotKf_;
@@ -77,6 +90,11 @@ private:
   float strokePower_, strokeRate_, lastEnergy_;
   uint16_t strokeCount_;
   uint32_t lastStrokeMs_;
+
+  float driveUseful_, lastUseful_;
+  bool driveUsefulValid_, lastUsefulValid_;
+  bool splitValid_;
+  float usefulPower_, slipPower_, efficiency_;
 };
 
 #endif  // POWERMODEL_H
