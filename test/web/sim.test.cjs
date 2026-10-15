@@ -17,16 +17,31 @@ const pct = (x) => `${(x * 100).toFixed(1)}%`;
 console.log("\nStroke simulator physics");
 {
   const base = S.simulate({});
-  const balance = base.hullPower + base.leewayPower + base.surgePower + base.slipPower - base.paddlerPower;
-  check("power balance: hull + leeway + surge + slip = paddler", Math.abs(balance) < 1e-3 * base.paddlerPower,
+  const balance = base.hullPower + base.leewayPower + base.slipPower - base.paddlerPower;
+  check("power balance: hull + leeway + slip = paddler", Math.abs(balance) < 1e-3 * base.paddlerPower,
         `residual ${balance.toExponential(1)} W`);
-  check("thrust·speed = hull + leeway + surge",
-        Math.abs(base.usefulPower - base.hullPower - base.leewayPower - base.surgePower) < 1e-3 * base.paddlerPower);
+  check("thrust·speed = hull + leeway",
+        Math.abs(base.usefulPower - base.hullPower - base.leewayPower) < 1e-3 * base.paddlerPower);
   const sh = base.at(150).shares;
   const total = sh.hull + sh.slip + sh.leeway + sh.surge + sh.sink + sh.bounce;
   check("shares at 150 W add to 1", Math.abs(total - 1) < 1e-4, total.toFixed(6));
   check("efficiency is the hull share at the comparison effort", Math.abs(base.efficiency - sh.hull) < 1e-12);
   check("surge costs a little", sh.surge > 0.0005 && sh.surge < 0.02, pct(sh.surge));
+  // Burke (The Science of Paddling, Part 32) cites about ±10% speed swing.
+  const swing = base.at(150).surgeSwing;
+  check("speed swings 5–20% over a stroke at 60 spm", swing > 0.05 && swing < 0.2, pct(swing));
+  const slow = S.simulate({ rateSpm: 30 }), quick = S.simulate({ rateSpm: 90 });
+  check("same effort, slower rate: more surge", slow.at(150).shares.surge > 3 * quick.at(150).shares.surge,
+        `${pct(slow.at(150).shares.surge)} at 30 spm vs ${pct(quick.at(150).shares.surge)} at 90`);
+  check("same effort, slower rate: slower boat", slow.speedAt(150) < quick.speedAt(150));
+  const longDrive = S.simulate({ driveFraction: 0.65 }), shortDrive = S.simulate({ driveFraction: 0.35 });
+  check("longer drive: less slip, better efficiency", longDrive.efficiency > base.efficiency + 0.01 &&
+        base.efficiency > shortDrive.efficiency + 0.01,
+        `${pct(shortDrive.efficiency)} / ${pct(base.efficiency)} / ${pct(longDrive.efficiency)}`);
+  const peakAt = (r) => r.peakForce * Math.pow(150 / r.paddlerPower, 2 / 3);
+  check("longer drive: lower peak force at the same effort", peakAt(longDrive) < peakAt(base) && peakAt(base) < peakAt(shortDrive));
+  check("hull calibrated near Burke's C-1 (k 4.26 at 109 kg)", base.speedAt(150) > 2.5 && base.speedAt(150) < 2.85,
+        `${base.speedAt(150).toFixed(2)} m/s at 150 W`);
   check("plausible C1 speed at 150 W", base.speedAt(150) > 2.0 && base.speedAt(150) < 3.2, `${base.speedAt(150).toFixed(2)} m/s`);
   check("blade stays buried during the drive", base.samples.every((s) => s.B.wet > 0.99));
 
@@ -102,6 +117,18 @@ console.log("\nStroke simulator physics");
   const flood = S.race(clean, sweep, 10000, 150, 150, { current: -3 });
   check("race: too much current means nobody finishes", !isFinite(flood.tA) && !isFinite(flood.tB) &&
         flood.timeGap === 0 && flood.distanceGap === 0);
+  // There and back: what you lose against the current you don't win back
+  // with it (Burke, Part 7): T = (2L/V) / (1 − U²/V²).
+  const ob0 = S.race(clean, clean, 2000, 150, 150, { course: "outback" });
+  const ob = S.race(clean, clean, 2000, 150, 150, { course: "outback", current: 0.5 });
+  const V0 = clean.speedAt(150), burke = 1 / (1 - 0.25 / (V0 * V0));
+  check("there and back in still water = point to point", Math.abs(ob0.tA - S.race(clean, clean, 2000, 150, 150).tA) < 1e-6);
+  check("there and back with current matches Burke's formula", Math.abs(ob.tA / ob0.tA - burke) < 0.005,
+        `${(ob.tA / ob0.tA).toFixed(4)} vs ${burke.toFixed(4)}`);
+  const obw = S.race(clean, clean, 2000, 150, 150, { course: "outback", headwind: 4 });
+  const obt = S.race(clean, clean, 2000, 150, 150, { course: "outback", headwind: -4 });
+  check("there and back: wind costs either way round", obw.tA > ob0.tA && Math.abs(obw.tA - obt.tA) < 1e-6);
+  check("race positions: finish at the distance", Math.abs(ob.posA(ob.tA) - 2000) < 1e-6 && ob.posA(ob.tA / 4) < 1000);
   const strong = S.race(clean, clean, 10000, 300, 100, { current: -2.6 });
   check("race: only the stronger paddler makes headway", isFinite(strong.tA) && !isFinite(strong.tB) && strong.timeGap === Infinity);
 
@@ -191,10 +218,11 @@ console.log("\nStroke simulator physics");
 
     // Conditions
     const timeA = () => page.textContent("#t-a");
+    const secs = (t) => t.split(":").reduce((a, x) => a * 60 + +x, 0);
     const calm = await timeA();
     await page.$eval("#c-wind", (el) => { el.value = 20; el.dispatchEvent(new Event("input")); });
     check(`${scheme}: wind readout`, (await page.textContent("#o-wind")) === "20 km/h headwind");
-    check(`${scheme}: headwind slows the race`, (await timeA()) > calm, `${calm} → ${await timeA()}`);
+    check(`${scheme}: headwind slows the race`, secs(await timeA()) > secs(calm), `${calm} → ${await timeA()}`);
     await page.$eval("#c-wind", (el) => { el.value = 0; el.dispatchEvent(new Event("input")); });
     await page.$eval("#c-current", (el) => { el.value = -10; el.dispatchEvent(new Event("input")); });
     check(`${scheme}: current readout`, (await page.textContent("#o-current")) === "10.0 km/h against you");
@@ -205,6 +233,19 @@ console.log("\nStroke simulator physics");
     for (const id of ["#c-effA", "#c-effB"]) await page.$eval(id, (el) => { el.value = 150; el.dispatchEvent(new Event("input")); });
     await page.click("#chips-a >> text=Current sliders");
     await page.click("#chips-b >> text=Wide sweep");
+
+    // Course choice
+    check(`${scheme}: point to point by default`, JSON.stringify(await pressed("#chips-course")) === '["point"]');
+    const t1 = await timeA();
+    await page.$eval("#c-current", (el) => { el.value = 4; el.dispatchEvent(new Event("input")); });
+    const tWith = await timeA();
+    await page.click("#chips-course >> text=There and back");
+    check(`${scheme}: there and back selected`, JSON.stringify(await pressed("#chips-course")) === '["outback"]' &&
+          (await page.textContent("#o-current")).endsWith("going out"), await page.textContent("#o-current"));
+    check(`${scheme}: current helps one way, costs there and back`, secs(tWith) < secs(t1) && secs(await timeA()) > secs(t1),
+          `${t1} still, ${tWith} with current, ${await timeA()} there and back`);
+    await page.$eval("#c-current", (el) => { el.value = 0; el.dispatchEvent(new Event("input")); });
+    await page.click("#chips-course >> text=Point to point");
 
     await page.click("#race-start");
     await page.waitForTimeout(600);
@@ -224,6 +265,7 @@ console.log("\nStroke simulator physics");
     await page.waitForTimeout(150);
     check(`${scheme}: lean slider increases turning`, (await yaw()) > yaw0);
     check(`${scheme}: slider readout`, (await page.textContent("#o-leanDeg")) === "35°");
+    check(`${scheme}: drive time readout`, (await page.textContent("#o-driveFraction")) === "50% of each stroke");
     await page.$eval("#c-bendDeg", (el) => { el.value = -12; el.dispatchEvent(new Event("input")); });
     check(`${scheme}: bend readout shows direction`, (await page.textContent("#o-bendDeg")) === "12° toward power face");
 

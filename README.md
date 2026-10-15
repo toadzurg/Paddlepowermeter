@@ -190,9 +190,16 @@ slider.
 
 The race card puts two boats in the same canoe. Each boat picks a preset,
 the live sliders, or sliders saved for that boat (the selected one is
-highlighted), at its own effort over a chosen distance, with headwind or
-tailwind and current. It shows finishing times, speeds and the gap at the
+highlighted), at its own effort over a chosen distance, point to point or
+there and back, with headwind or tailwind and current. It shows finishing times, speeds and the gap at the
 finish, and animates the race.
+
+Several pieces are checked against Shawn Burke's
+[The Science of Paddling](https://thescienceofpaddling.net/index):
+- the hull drag is calibrated from his coast-down of a USCA C-1 (Part 14);
+- the best bend for Caplan's measured stroke comes out at 12°, as he found (Part 11);
+- surge grows at slower rates for the same power (Parts 25 and 33);
+- there-and-back times with current match his formula (Part 7).
 
 It is a simplified drag model, good for comparing techniques rather than
 predicting exact speeds. The switching assumptions (how far off course
