@@ -805,7 +805,7 @@ console.log("\nStroke simulator physics");
     await slide("#c-swingM", 0.1); await page.waitForTimeout(400);
     await scoreReady();
     check(`${tag}: race score: body swing costs A time`, /^Body swing/.test(await text("#score-bars").then((x) => x.replace(/^0[\d:]+/, ""))) &&
-          /Boat A: a quieter body, about \d+:\d\d\./.test(await text("#score-find")), await text("#score-find"));
+          /Boat A: body swing costs \d+:\d\d\. Keep your body quieter\./.test(await text("#score-find")), await text("#score-find"));
     check(`${tag}: body swing: its cost, a lower score, the still-body curve`, /^Hull speed swings [\d.]+–[\d.]+ km\/h: costs [\d.]+% of your power$/.test(await text("#e-swingM")) &&
           (await text("#boat-score .tile.a .big")) !== score0 && /Body swing −/.test(await text("#boat-score .tile.a")) && (await page.$$("#hp-chart path.ln.still")).length === 1,
           await text("#e-swingM"));
@@ -834,7 +834,7 @@ console.log("\nStroke simulator physics");
     await page.click("#view-mode >> text=Overlay"); await page.waitForTimeout(200);
     check(`${tag}: overlay: both paddlers, each in its colour`, await page.$$eval("svg.view", (ss) => ss.every((s) =>
           s.querySelectorAll(".fig-head").length === 2 && /series-1/.test(s.querySelector(".fig-head.fig-a").getAttribute("style")))) &&
-          (await page.$$("#hp-pitch .fig-head")).length === 2);
+          (await page.$$("#hp-pitch .fig-head")).length === 2 && (await page.$$("#hp-roll .fig-head")).length === 2 && (await page.$$("#hp-roll .paddler")).length === 0);
     await page.click("#view-mode >> text=Split");
     await slide("#c-hinge", 0);
     await page.click("#effort-mode >> text=What each can hold"); await page.waitForTimeout(300);
