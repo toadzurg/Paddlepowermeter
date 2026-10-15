@@ -143,6 +143,22 @@ console.log("\nStroke simulator physics");
   check("race positions: finish at the distance", Math.abs(ob.posA(ob.tA) - 2000) < 1e-6 && ob.posA(ob.tA / 4) < 1000);
   const strong = S.race(clean, clean, 10000, 300, 100, { current: -2.6 });
   check("race: only the stronger paddler makes headway", isFinite(strong.tA) && !isFinite(strong.tB) && strong.timeGap === Infinity);
+  // A real course, section by section.
+  const rivEnv = { current: 0.7, depth: 3, river: { width: 40, bendsDegPerKm: 180, lineA: "best", lineB: 0 } };
+  const one = S.race(clean, sweep, 0, 150, 150, { sections: [{ len: 10000, kind: "river", current: 0.7, depth: 3, width: 40, bendsDegPerKm: 180, section: 0 }], lines: { A: "best", B: 0 } });
+  const same = S.race(clean, sweep, 10000, 150, 150, rivEnv);
+  check("sections: one river section = the river race", Math.abs(one.tA - same.tA) < 1e-3 && Math.abs(one.tB - same.tB) < 1e-6, `${one.tA} vs ${same.tA}`);
+  const pond = S.race(clean, clean, 0, 150, 150, { sections: [{ len: 5000, kind: "pond", depth: 2, section: 0 }] });
+  check("sections: a pond = open water", Math.abs(pond.tA - S.race(clean, clean, 5000, 150, 150, { depth: 2 }).tA) < 1e-6);
+  const carry = S.race(clean, clean, 0, 150, 150, { sections: [{ len: 200, kind: "portage", section: 0 }] });
+  check("sections: a 200 m portage is carried (2 m/s + 30 s)", Math.abs(carry.tA - 130) < 1e-9 && carry.profileA[0].rate === 0);
+  const into = (h) => S.race(clean, clean, 0, 150, 150, { windSpeed: 5, windFrom: 0, sections: [{ len: 5000, kind: "pond", heading: h, section: 0 }] }).tA;
+  check("sections: the wind turns with the course", Math.abs(into(0) - S.race(clean, clean, 5000, 150, 150, { windSpeed: 5, windAngle: 0 }).tA) < 1e-6 &&
+        into(180) < into(90) && into(90) < into(0) && Math.abs(into(90) - into(270)) < 1e-9);
+  const mixed = S.race(clean, clean, 0, 150, 150, { sections: [{ len: 3000, kind: "river", current: 0.8, depth: 1.5, width: 30, bendsDegPerKm: 300, section: 0 },
+    { len: 200, kind: "portage", section: 1 }, { len: 2000, kind: "pond", depth: 4, section: 2 }] });
+  check("sections: lengths add up; positions reach the finish", mixed.metres === 5200 && Math.abs(mixed.posA(mixed.tA) - 5200) < 1e-6 &&
+        JSON.stringify([...new Set(mixed.profileA.map((g) => g.section))]) === "[0,1,2]");
 
   const out = S.simulate({ directionDeg: 25 });
   check("pulling outward loses forward force", out.forceShare.forward < base.forceShare.forward - 0.05);
@@ -616,6 +632,46 @@ console.log("\nStroke simulator physics");
       await page.waitForTimeout(400);
       await page.screenshot({ path: path.join(process.argv[2], `sim-${scheme}.png`), fullPage: true });
     }
+    // Real course: the AuSable preset, sections to edit, a GPX of your own.
+    await page.click("#water >> text=Real course");
+    await page.waitForFunction(() => document.querySelectorAll("#cb-secs tbody tr").length > 10, null, { timeout: 10000 });
+    const rows = () => page.$$eval("#cb-secs tbody tr", (r) => r.length);
+    check(`${tag}: real course: the AuSable loads in sections`, (await rows()) >= 20 &&
+          /^AuSable River Canoe Marathon · 180\.\d km · 6 portages/.test(await text("#cb-info")) && !(await page.isVisible("#dist")), await text("#cb-info"));
+    check(`${tag}: real course: raced on the map`, (await page.isVisible("#course-view")) && !(await page.isVisible("#race-view")) &&
+          (await page.$$("#course-view path.boat-a, #course-view path.boat-b")).length === 2 && /^\d+:\d\d:\d\d$/.test(await text("#t-a")) &&
+          /^river \d+ km \(.+\) · ponds \d+ km · 6 portages, \d+:\d\d carrying$/.test(await text("#c-a")), await text("#c-a"));
+    await page.click("#cb-secs tbody tr:nth-child(2)");
+    check(`${tag}: real course: a row opens its section`, (await text("#cb-sec-name")).startsWith("2. River to Mio Pond") &&
+          / bends per km$/.test(await text("#cb-sec-geo")), await text("#cb-sec-geo"));
+    const tCb = secs(await text("#t-a"));
+    await slide("#cb-current", 6); await page.waitForTimeout(250);
+    check(`${tag}: real course: more current, faster`, secs(await text("#t-a")) < tCb && /^6\.0$/.test(await page.$eval("#cb-secs tbody tr:nth-child(2) td:nth-child(4)", (e) => e.textContent)));
+    const n0 = await rows();
+    await page.click("#cb-split"); check(`${tag}: real course: split`, (await rows()) === n0 + 1 && / a$/.test(await text("#cb-sec-name")));
+    await page.click("#cb-merge"); check(`${tag}: real course: merge`, (await rows()) === n0);
+    await page.click("#cb-kind >> text=Pond");
+    check(`${tag}: real course: make it a pond`, !/bends/.test(await text("#cb-sec-geo")) && !(await page.isVisible("#cb-width")) &&
+          (await page.$eval("#cb-secs tbody tr:nth-child(2) td:nth-child(4)", (e) => e.textContent)) === "—");
+    await page.$eval("#scrub", (el) => { el.value = 500; el.dispatchEvent(new Event("input")); });
+    check(`${tag}: real course: replay names the section`, /^A (River to|.+ Pond)/.test(await text("#scrub-where")), await text("#scrub-where"));
+    for (let i = 0; i < 12 && !(await page.$eval("#zoom-out", (e) => e.disabled)); i++) await page.click("#zoom-out");
+    check(`${tag}: real course: zoomed out, the whole course`, /Whole course/.test(await text("#course-view")));
+    await page.click("#zoom-fit");
+    // Your own GPX: a 3 km straight with a dam halfway.
+    const trk = Array.from({ length: 61 }, (_, i) => `<trkpt lat="44.0" lon="${(-84 + (i / 60) * 0.03745).toFixed(6)}"></trkpt>`).join("");
+    const gpx = `<?xml version="1.0"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><wpt lat="44.0003" lon="-83.98127"><name>TEST DAM</name></wpt>` +
+      `<wpt lat="44.0" lon="-83.99"><name>FEED: Test Dam</name></wpt><trk><name>t</name><trkseg>${trk}</trkseg></trk></gpx>`;
+    await page.setInputFiles("#cb-file", { name: "mine.gpx", mimeType: "application/gpx+xml", buffer: Buffer.from(gpx) });
+    await page.waitForFunction(() => /^mine\.gpx/.test(document.getElementById("cb-info").textContent), null, { timeout: 5000 });
+    check(`${tag}: real course: import a GPX`, /^mine\.gpx · 3\.0 km · 1 portage from waypoints$/.test(await text("#cb-info")) &&
+          JSON.stringify(await page.$$eval("#cb-secs tbody tr td:nth-child(3)", (ts) => ts.map((t) => t.textContent))) ===
+          '["River to Test Dam","Test Dam portage","River to the finish"]', await text("#cb-info"));
+    await page.setInputFiles("#cb-file", { name: "nope.gpx", mimeType: "text/plain", buffer: Buffer.from("hello") });
+    await page.waitForFunction(() => /nope\.gpx/.test(document.getElementById("cb-info").textContent), null, { timeout: 5000 });
+    check(`${tag}: real course: a bad file says so`, /^Couldn't read nope\.gpx: /.test(await text("#cb-info")), await text("#cb-info"));
+    await page.click("#water >> text=Open water");
+    check(`${tag}: back from the real course`, (await page.isVisible("#dist")) && (await page.isVisible("#race-view")) && !(await page.isVisible("#builder")));
     check(`${tag}: no page errors`, errors.length === 0, errors.join("; "));
     // A stale, cached engine: the page asks for a reload instead of breaking.
     if (scheme === "light") {
