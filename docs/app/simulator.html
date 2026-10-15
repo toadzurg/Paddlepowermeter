@@ -2012,19 +2012,25 @@ function drawHullLive(ph) {
   }
   // Roll: from behind, paddle on the right; tilt ×3.
   for (const { svg, bs } of panesIn("hp-roll")) {
-    svg.setAttribute("viewBox", `0 0 ${W_HV} 140`);
-    const cx = 100, wl = 100, sr = 110, P = (q) => [cx - q[1] * sr, wl - q[2] * sr];   // from behind: +y (left) is on the left
-    let g = hullDefs + `<rect class="water" x="0" y="${wl}" width="${W_HV}" height="${140 - wl}"/><line class="wl" x1="0" x2="${W_HV}" y1="${wl}" y2="${wl}"/>`;
-    bs.forEach((x, k) => {
-      const [c, i] = at(x), deg = (c.heel[i] * 180) / Math.PI * 3;
+    const H = 190;
+    svg.setAttribute("viewBox", `0 0 ${W_HV} ${H}`);
+    const cx = 100, wl = 150, sr = 110, P = (q) => [cx - q[1] * sr, wl - q[2] * sr];   // from behind: +y (left) is on the left
+    let g = hullDefs + `<rect class="water" x="0" y="${wl}" width="${W_HV}" height="${H - wl}"/><line class="wl" x1="0" x2="${W_HV}" y1="${wl}" y2="${wl}"/>`;
+    const two = bs.length > 1 && !sameBoats();
+    bs.slice().reverse().forEach((x) => {
+      const k = bs.indexOf(x), [c, i] = at(x), deg = (c.heel[i] * 180) / Math.PI * 3;
+      // The paddle, in the paddler's hands.
+      const st = stateAt(results[x], ph), gp = P(st.P.at(0)), th = P(st.B.throat), tp = P(st.B.tip);
+      const paddle = `<line class="paddle-hv" stroke="${COL[x]}" stroke-width="3" x1="${gp[0]}" y1="${gp[1]}" x2="${th[0]}" y2="${th[1]}"/>` +
+        `<line stroke="${COL[x]}" stroke-width="7" stroke-linecap="round" opacity="${st.inDrive ? 1 : 0.5}" x1="${th[0]}" y1="${th[1]}" x2="${tp[0]}" y2="${tp[1]}"/>`;
       // + heel puts the paddle side (right, from behind) down: clockwise on the page.
-      g += `<g transform="rotate(${deg.toFixed(2)} ${cx} ${wl})"><path class="hull boat-${x}" d="${hullPath("end", P)}"/>` +
-        (k === 0 ? `<rect x="${cx - 11}" y="${wl - 0.72 * sr}" width="22" height="${0.6 * sr}" rx="9" class="paddler"/><circle cx="${cx}" cy="${wl - 0.81 * sr}" r="9" class="paddler"/>` : "") + `</g>`;
+      g += `<g transform="rotate(${deg.toFixed(2)} ${cx} ${wl})"${two && x === "b" ? ` opacity="0.8"` : ""}><path class="hull boat-${x}" d="${hullPath("end", P)}"/>` +
+        (k === 0 || two ? paddlerFig(P, x, ph, two) + paddle : "") + `</g>`;
       if (c.up[i] > 2) g += `<line x1="${cx + 70 + k * 14}" x2="${cx + 70 + k * 14}" y1="${wl + 34}" y2="${wl + 34 - Math.min(30, c.up[i] * 0.35)}" stroke="${COL[x]}" stroke-width="4" marker-end="url(#ha-${x})"/>`;
       const d = c.heel[i] * 180 / Math.PI;
       g += `<text x="205" y="${22 + k * 15}"><tspan class="strong" style="fill:${COL[x]}">${x.toUpperCase()}</tspan> ${Math.abs(d) < 0.05 ? "level" : `${fmtNum(Math.abs(d), 1)}° paddle side ${d > 0 ? "down" : "up"}`}</text>`;
     });
-    g += `<text x="205" y="${22 + bs.length * 15}">${bs.some((x) => results[x].params.hipRock) ? "with hip rock" : "if you held still"} · tilt ×3</text><text x="${cx + 92}" y="${wl + 24}">← blade lifts</text>`;
+    g += `<text x="205" y="${22 + bs.length * 15}">${bs.some((x) => results[x].params.hipRock) ? "with hip rock" : "if you held still"} · tilt ×3</text><text x="${cx + 92}" y="${wl + 30}">← blade lifts</text>`;
     svg.innerHTML = g;
   }
 }
@@ -2167,7 +2173,11 @@ const simOf = (p) => {
   if (!simCache.has(k)) { if (simCache.size > 40) simCache.clear(); simCache.set(k, S.simulate(p)); }
   return simCache.get(k);
 };
-const FIXABLE = { "Muscle not used": "more rotation, leg drive and hinge", "Body swing": "a quieter body", "Switching": "fewer switches", "Drop": "less drop at the catch", "Crab": "a straighter pull", "Speed swings, bob & pitch": "a smoother pull", "Heel": "" };
+// Technique rows, and how to win the time back.
+const FIXABLE = { "Muscle not used": "Use more rotation, leg drive and hinge", "Body swing": "Keep your body quieter",
+  "Switching": "Pull nearer the hull, or heel toward the paddle, to switch less", "Drop": "Drop less at the catch",
+  "Crab": "Pull straight back, not out to the side", "Surge, bob & pitch": "Smooth the pull: a longer drive, an even force", "Heel": "" };
+const FIX_MIN = 20;   // s: less than this isn't worth naming
 const span = (s) => { s = Math.abs(s); return s >= 3600 ? `${Math.floor(s / 3600)}:${String(Math.round((s % 3600) / 60)).padStart(2, "0")} h` : `${Math.floor(s / 60)}:${String(Math.round(s % 60) % 60).padStart(2, "0")}`; };
 function scheduleScore() {
   const gen = ++scoreGen;
@@ -2202,14 +2212,17 @@ async function runScore(gen) {
     if (p.heelDeg && !(await step("Heel", set("heelDeg", 0)))) return;
     if (!(await step("Switching", set("switchLossStrokes", 0)))) return;
     if (!(await step("Crab", intoHull("leeway")))) return;
-    if (!(await step("Speed swings, bob & pitch", intoHull(["surge", "bounce", "swing", "drop", "pitch"])))) return;
+    if (!(await step("Surge, bob & pitch", intoHull(["surge", "bounce", "swing", "drop", "pitch"])))) return;
     if (setup.map) rows.push(["Portages", race[`legs${x.toUpperCase()}`].filter((l) => l.kind === "portage").reduce((a, l) => a + l.t, 0)]);
     if (!(await step("Blade slip", intoHull("slip")))) return;
     out[x] = { t: t0, rows };
   }
   drawScoreCard(out, setup);
 }
+let lastScore = null;
+addEventListener("resize", () => { if (lastScore && $("score").dataset.ready === "1") drawScoreCard(...lastScore); });
 function drawScoreCard(out, setup) {
+  lastScore = [out, setup];
   const val = (x, k) => (out[x].rows.find((q) => q[0] === k) || [0, 0])[1];
   const fix = (x) => out[x].rows.filter(([k]) => k in FIXABLE).reduce((a, q) => a + (isFinite(q[1]) ? q[1] : 0), 0);
   $("score-status").textContent = `${setup.label}.`;
@@ -2227,7 +2240,8 @@ function drawScoreCard(out, setup) {
   const sorted = tech.filter((k) => BOATS.some((x) => Math.abs(val(x, k)) >= 0.5))   // what costs neither boat anything stays out
     .sort((p, q) => Math.max(val("a", q), val("b", q)) - Math.max(val("a", p), val("b", p)));
   const rows = [...sorted, ...(setup.map ? ["Portages"] : []), "Blade slip"];
-  const W = 360, l = 118, r = 56, rowH = 30, H = rows.length * rowH + 22;
+  // Drawn at the width it shows at, so the text stays its size on a wide screen.
+  const W = Math.max(300, Math.round($("score-bars").getBoundingClientRect().width) || 360), l = 132, r = 56, rowH = 30, H = rows.length * rowH + 22;
   const top = Math.max(1, ...sorted.flatMap((k) => BOATS.map((x) => Math.abs(val(x, k)) || 0))), step = niceStep(top, 2), max = Math.ceil(top / step) * step;
   const X = (s) => l + Math.min(1, Math.abs(s) / max) * (W - l - r);
   let g = `<text x="${l}" y="12">0</text><text x="${X(max)}" y="12" text-anchor="end">${span(max)}</text><line class="grid" x1="${l}" x2="${l}" y1="16" y2="${H}"/>`;
@@ -2244,8 +2258,10 @@ function drawScoreCard(out, setup) {
   $("score-bars").setAttribute("viewBox", `0 0 ${W} ${H + 6}`);
   $("score-bars").innerHTML = g;
   const win = (x) => { const best = sorted.filter((k2) => FIXABLE[k2]).sort((p, q) => val(x, q) - val(x, p))[0];
-    return best && val(x, best) >= 1 ? `<b>${NAME[x]}:</b> ${FIXABLE[best]}, about <b>${span(val(x, best))}</b>.` : `<b>${NAME[x]}:</b> nothing big left to fix.`; };
-  $("score-find").innerHTML = `Biggest win. ${BOATS.map(win).join(" ")}`;
+    if (!best || !(val(x, best) >= FIX_MIN)) return `<b>${NAME[x]}:</b> nothing big left to fix.`;
+    const stat = best === "Switching" ? ` (a switch every ${fmtNum(results[x].strokesPerSide, 1)} strokes)` : "";
+    return `<b>${NAME[x]}:</b> ${best.toLowerCase()} costs <b>${span(val(x, best))}</b>${stat}. ${FIXABLE[best]}.`; };
+  $("score-find").innerHTML = `Biggest fix. ${BOATS.map(win).join(" ")}`;
   $("score").dataset.ready = "1";
 }
 
