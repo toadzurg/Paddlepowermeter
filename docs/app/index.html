@@ -1,0 +1,747 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fcfcfb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1a1a19" media="(prefers-color-scheme: dark)">
+<title>Paddle Power</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface-0: #f3f2ee;
+    --surface-1: #fcfcfb;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --border: #e1e0d9;
+    --series-1: #2a78d6;
+    --history: #c3c2b7;
+    --good: #0ca30c;
+    --warning: #fab219;
+    --critical: #d03b3b;
+    --button: #0b0b0b;
+    --button-text: #fcfcfb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --surface-0: #111110;
+      --surface-1: #1a1a19;
+      --text-primary: #f0efec;
+      --text-secondary: #c3c2b7;
+      --muted: #898781;
+      --grid: #2c2c2a;
+      --axis: #383835;
+      --border: #2c2c2a;
+      --series-1: #3987e5;
+      --history: #52514e;
+      --button: #f0efec;
+      --button-text: #1a1a19;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--surface-0);
+    color: var(--text-primary);
+    font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-text-size-adjust: 100%;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+             env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 12px 16px 48px; }
+
+  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  header h1 { font-size: 20px; margin: 0; flex: 1; letter-spacing: -0.01em; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 999px; font-size: 14px;
+    background: var(--surface-1); border: 1px solid var(--border);
+    color: var(--text-secondary);
+  }
+  .pill i { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+  .pill[data-state="live"] i { background: var(--good); }
+  .pill[data-state="stale"] i { background: var(--warning); }
+  .pill[data-state="error"] i { background: var(--critical); }
+
+  button {
+    font: inherit; font-weight: 600; cursor: pointer;
+    border: 0; border-radius: 10px; padding: 10px 16px; min-height: 44px;
+    background: var(--button); color: var(--button-text);
+  }
+  button.secondary {
+    background: var(--surface-1); color: var(--text-primary);
+    border: 1px solid var(--border);
+  }
+  button:disabled { opacity: 0.4; cursor: default; }
+
+  nav { display: flex; gap: 4px; margin: 14px 0 12px; background: var(--surface-1);
+        border: 1px solid var(--border); border-radius: 12px; padding: 4px; }
+  nav button { flex: 1; background: transparent; color: var(--text-secondary);
+               min-height: 40px; padding: 6px; }
+  nav button[aria-selected="true"] { background: var(--surface-0); color: var(--text-primary); }
+
+  .card { background: var(--surface-1); border: 1px solid var(--border);
+          border-radius: 14px; padding: 14px 16px; }
+  .grid { display: grid; gap: 10px; }
+  .tiles { grid-template-columns: repeat(2, 1fr); }
+  @media (min-width: 560px) { .tiles { grid-template-columns: repeat(4, 1fr); } }
+
+  .label { font-size: 13px; color: var(--text-secondary); }
+  .value { font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+  .unit { font-size: 0.45em; font-weight: 500; color: var(--text-secondary); margin-left: 4px; letter-spacing: 0; }
+  .sub { font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+  .hero .value { font-size: clamp(72px, 22vw, 120px); line-height: 1; margin: 4px 0 2px; }
+  .tile .value { font-size: 34px; line-height: 1.1; margin-top: 2px; }
+
+  .chart-card { margin-top: 10px; position: relative; }
+  .chart-card h2 { font-size: 15px; margin: 0; }
+  svg.chart { display: block; width: 100%; height: auto; margin-top: 6px; touch-action: pan-y; }
+  svg.chart text { fill: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  svg.chart .grid line { stroke: var(--grid); stroke-width: 1; }
+  svg.chart .baseline { stroke: var(--axis); stroke-width: 1; }
+  svg.chart .history { fill: none; stroke: var(--history); stroke-width: 1.5;
+                       stroke-linejoin: round; stroke-linecap: round; }
+  svg.chart .latest { fill: none; stroke: var(--series-1); stroke-width: 2.5;
+                      stroke-linejoin: round; stroke-linecap: round; }
+  svg.chart .peak { fill: var(--series-1); stroke: var(--surface-1); stroke-width: 2; }
+  svg.chart text.peak-label { fill: var(--text-primary); font-weight: 600; }
+  svg.chart .cross { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+  .tooltip { position: absolute; pointer-events: none; background: var(--surface-1);
+             border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px;
+             font-size: 13px; font-variant-numeric: tabular-nums;
+             box-shadow: 0 2px 8px rgba(0,0,0,.15); display: none; white-space: nowrap; }
+  .empty { color: var(--text-secondary); font-size: 14px; padding: 36px 0; text-align: center; }
+
+  .live-row { grid-template-columns: repeat(3, 1fr); margin-top: 10px; }
+  @media (min-width: 560px) { .live-row { grid-template-columns: repeat(6, 1fr); } }
+  .live-row .value { font-size: 20px; }
+
+  details { margin-top: 8px; font-size: 14px; }
+  details table { border-collapse: collapse; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  details td, details th { padding: 2px 12px 2px 0; text-align: right; }
+
+  section.setup .card { margin-bottom: 10px; }
+  section.setup h2 { font-size: 16px; margin: 0 0 4px; }
+  section.setup p { margin: 0 0 10px; color: var(--text-secondary); font-size: 14px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  input {
+    font: inherit; padding: 9px 12px; min-height: 44px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--surface-0); color: var(--text-primary);
+    width: 9em;
+  }
+  #console { font: 13px/1.45 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap;
+             max-height: 260px; overflow-y: auto; background: var(--surface-0);
+             border-radius: 8px; padding: 8px 10px; margin: 8px 0; min-height: 3em; }
+  #console .sent { color: var(--text-secondary); }
+  #console .err { color: var(--critical); }
+
+  .notice { border-left: 4px solid var(--warning); }
+  .notice p { margin: 4px 0; }
+  [hidden] { display: none !important; }
+  footer { margin-top: 24px; font-size: 13px; color: var(--text-secondary); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Paddle Power</h1>
+    <span class="pill" id="pill" data-state="off"><i></i><span id="pill-text">Not connected</span></span>
+    <button id="connect">Connect</button>
+  </header>
+
+  <div class="card notice" id="unsupported" hidden>
+    <p><strong>This browser can't use Bluetooth.</strong></p>
+    <p>On an iPhone or iPad, open this page in the free <strong>Bluefy</strong> browser from the App Store.
+       Safari, Chrome and Edge on iPhone can't connect to Bluetooth devices.</p>
+    <p>On a laptop, use Chrome or Edge.</p>
+    <p>You can still look around: <button class="secondary" id="demo-2">Try demo</button></p>
+  </div>
+
+  <nav role="tablist">
+    <button role="tab" aria-selected="true" data-tab="paddle">Paddle</button>
+    <button role="tab" aria-selected="false" data-tab="setup">Setup</button>
+  </nav>
+
+  <!-- ===================================================== Paddle tab -->
+  <section id="tab-paddle">
+    <div class="grid tiles">
+      <div class="card hero" style="grid-column: 1 / -1">
+        <div class="label">Stroke power</div>
+        <div class="value" id="v-power">—<span class="unit">W</span></div>
+        <div class="sub" id="v-power-sub">Average appears after 2 strokes</div>
+      </div>
+      <div class="card tile">
+        <div class="label">Stroke rate</div>
+        <div class="value" id="v-rate">—<span class="unit">spm</span></div>
+      </div>
+      <div class="card tile">
+        <div class="label">Boat speed</div>
+        <div class="value" id="v-speed">—<span class="unit">km/h</span></div>
+        <div class="sub" id="v-speed-sub">&nbsp;</div>
+      </div>
+      <div class="card tile">
+        <div class="label">Efficiency</div>
+        <div class="value" id="v-eff">—<span class="unit">%</span></div>
+        <div class="sub" id="v-eff-sub">needs boat speed</div>
+      </div>
+      <div class="card tile">
+        <div class="label">Lever arm</div>
+        <div class="value" id="v-lever">—<span class="unit">m</span></div>
+        <div class="sub" id="v-lever-sub">&nbsp;</div>
+      </div>
+    </div>
+
+    <div class="card chart-card">
+      <h2>Force curve</h2>
+      <div class="sub">Latest stroke in blue, previous 4 in grey</div>
+      <div id="chart-empty" class="empty">Force curves appear here once you start paddling.</div>
+      <svg class="chart" id="chart" viewBox="0 0 360 220" role="img"
+           aria-label="Force against time for the latest strokes" hidden></svg>
+      <div class="tooltip" id="tooltip"></div>
+      <details>
+        <summary>Latest stroke as a table</summary>
+        <table id="curve-table"><thead><tr><th>Time (s)</th><th>Force (N)</th></tr></thead><tbody></tbody></table>
+      </details>
+    </div>
+
+    <div class="grid live-row">
+      <div class="card"><div class="label">Power now</div><div class="value" id="v-inst">—</div></div>
+      <div class="card"><div class="label">Force</div><div class="value" id="v-force">—</div></div>
+      <div class="card"><div class="label">Shaft rate</div><div class="value" id="v-omega">—</div></div>
+      <div class="card"><div class="label">Pivot</div><div class="value" id="v-pivot">—</div></div>
+      <div class="card"><div class="label">Battery</div><div class="value" id="v-batt">—</div></div>
+      <div class="card"><div class="label">SD log</div><div class="value" id="v-log">—</div></div>
+    </div>
+
+    <div class="row" style="margin-top:12px">
+      <button class="secondary" id="wake">Keep screen on</button>
+      <button class="secondary" id="demo">Try demo</button>
+    </div>
+  </section>
+
+  <!-- ===================================================== Setup tab -->
+  <section id="tab-setup" class="setup" hidden>
+    <div class="card">
+      <h2>Unlock</h2>
+      <p>Settings need the paddle's 6-digit PIN. Type <code>pin</code> in the
+         serial console to see it. This browser remembers it.</p>
+      <div class="row">
+        <input id="pin" inputmode="numeric" maxlength="6" placeholder="PIN" autocomplete="off">
+        <button id="unlock">Unlock</button>
+        <span class="sub" id="lock-state">Locked</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Force sensor</h2>
+      <p>Tare with the blade unloaded. To calibrate, clamp the shaft at the top
+         hand, rest a known weight on the centre of the power face, and enter its mass.</p>
+      <div class="row">
+        <button class="secondary needs-unlock" data-cmd="tare" data-confirm="Tare now? The blade must be unloaded.">Tare</button>
+        <input id="cal-kg" inputmode="decimal" placeholder="Mass (kg)">
+        <button class="secondary needs-unlock" id="calibrate">Calibrate</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Boat speed</h2>
+      <p>Pair away from other boats. To calibrate, start, paddle a measured
+         distance on still water, then enter the distance.</p>
+      <div class="row">
+        <button class="secondary needs-unlock" data-cmd="boat pair" data-confirm="Pair with the next boat node heard? Do this away from other boats.">Pair</button>
+        <button class="secondary needs-unlock" data-cmd="boat cal start">Start calibration</button>
+        <input id="cal-m" inputmode="decimal" placeholder="Distance (m)">
+        <button class="secondary needs-unlock" id="boat-cal">Finish</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>SD log</h2>
+      <div class="row">
+        <button class="secondary needs-unlock" data-cmd="log start">Start</button>
+        <button class="secondary needs-unlock" data-cmd="log stop" data-confirm="Stop logging?">Stop</button>
+        <button class="secondary needs-unlock" data-cmd="log">Status</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Console</h2>
+      <p>Replies from the paddle. Any serial command works here too.</p>
+      <div class="row">
+        <button class="secondary needs-unlock" data-cmd="status">Status</button>
+        <button class="secondary needs-unlock" data-cmd="imu">IMU</button>
+      </div>
+      <div id="console" aria-live="polite"></div>
+      <form class="row" id="cmd-form">
+        <input id="cmd" placeholder="command" style="flex:1" autocomplete="off" autocapitalize="off">
+        <button class="needs-unlock">Send</button>
+      </form>
+    </div>
+  </section>
+
+  <footer>Works with Chrome or Edge on a laptop, and Bluefy on iPhone. Your bike
+    computer can stay connected at the same time.</footer>
+</main>
+
+<script>
+"use strict";
+// Must match src/BleProtocol.h.
+const UUID = {
+  service: "7e1a0001-5c3b-4c2e-9a77-0f5d3e2b9c10",
+  live:    "7e1a0002-5c3b-4c2e-9a77-0f5d3e2b9c10",
+  stroke:  "7e1a0003-5c3b-4c2e-9a77-0f5d3e2b9c10",
+  command: "7e1a0004-5c3b-4c2e-9a77-0f5d3e2b9c10",
+  reply:   "7e1a0005-5c3b-4c2e-9a77-0f5d3e2b9c10",
+};
+const LIVE_IN_DRIVE = 1, LIVE_BOAT_FRESH = 2, LIVE_LOGGING = 4, STROKE_HAS_SPLIT = 1;
+
+function decodeLive(dv) {
+  const f = dv.getUint8(4);
+  return {
+    seq: dv.getUint16(0, true), tMs: dv.getUint16(2, true), flags: f,
+    inDrive: !!(f & LIVE_IN_DRIVE), boatFresh: !!(f & LIVE_BOAT_FRESH), logging: !!(f & LIVE_LOGGING),
+    force: dv.getInt16(5, true) / 10, omega: dv.getInt16(7, true) / 100,
+    instPower: dv.getInt16(9, true), boatSpeed: dv.getUint16(11, true) / 100,
+    pivot: dv.getInt16(13, true) / 1000, lever: dv.getInt16(15, true) / 1000,
+  };
+}
+function decodeStroke(dv) {
+  const f = dv.getUint8(14);
+  return {
+    count: dv.getUint16(0, true), power: dv.getInt16(2, true),
+    rate: dv.getUint16(4, true) / 100, energy: dv.getUint16(6, true) / 10,
+    useful: dv.getInt16(8, true), slip: dv.getInt16(10, true),
+    efficiency: dv.getUint16(12, true) / 1000, hasSplit: !!(f & STROKE_HAS_SPLIT),
+  };
+}
+
+// --------------------------------------------------------------- storage
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+
+// ----------------------------------------------------------------- state
+const $ = (id) => document.getElementById(id);
+const state = {
+  device: null, chars: {}, unlocked: false, demo: null,
+  lastLiveAt: 0, clockMs: 0, lastT: null,
+  strokes: [],            // recent stroke packets, newest first
+  curve: null,            // force curve being recorded
+  curves: [],             // finished curves, newest first
+  replyBuf: "",
+};
+
+function setPill(stateName, text) {
+  $("pill").dataset.state = stateName;
+  $("pill-text").textContent = text;
+}
+// Display formatting: a real minus sign, and units that never wrap away
+// from their number.
+const num = (v, digits = 0) => v.toFixed(digits).replace(/^-/, "\u2212");
+const nb = (v, unit) => `${v}\u00a0${unit}`;
+function setValue(id, text, unit) {
+  const el = $(id);
+  el.textContent = text;
+  if (unit) { const u = document.createElement("span"); u.className = "unit"; u.textContent = unit; el.append(u); }
+}
+
+// ----------------------------------------------------------------- live
+function onLive(p) {
+  state.lastLiveAt = performance.now();
+  // Unwrap the 16-bit device clock so curve timing ignores radio jitter.
+  const gapMs = state.lastT === null ? 0 : (p.tMs - state.lastT) & 0xffff;
+  state.clockMs += gapMs;
+  state.lastT = p.tMs;
+  const t = state.clockMs / 1000;
+  // Packets lost mid-drive (radio dropout) would draw a stretched, false
+  // curve: drop that stroke's curve instead.
+  if (gapMs > 300) state.curve = null;
+
+  if (p.inDrive) {
+    if (!state.curve) state.curve = { t0: t, pts: [] };
+    state.curve.pts.push([t - state.curve.t0, p.force]);
+  } else if (state.curve) {
+    if (state.curve.pts.length >= 3) state.curves.unshift(state.curve.pts);
+    state.curves.length = Math.min(state.curves.length, 5);
+    state.curve = null;
+  }
+
+  setValue("v-inst", num(p.instPower), "W");
+  setValue("v-force", num(p.force), "N");
+  setValue("v-omega", num(p.omega, 1), "rad/s");
+  setValue("v-pivot", num(p.pivot, 2), "m");
+  setValue("v-lever", num(p.lever, 2), "m");
+  $("v-lever-sub").textContent = "pivot to blade";
+  $("v-log").textContent = p.logging ? "● rec" : "off";
+  if (p.boatFresh) {
+    const kmh = p.boatSpeed * 3.6;
+    setValue("v-speed", kmh.toFixed(1), "km/h");
+    $("v-speed-sub").textContent = `${nb((p.boatSpeed * 2.23694).toFixed(1), "mph")} · ${nb(p.boatSpeed.toFixed(2), "m/s")}`;
+  } else {
+    setValue("v-speed", "—", "km/h");
+    $("v-speed-sub").textContent = "no impeller signal";
+  }
+  scheduleChart();
+}
+
+function onStroke(s) {
+  state.strokes.unshift(s);
+  state.strokes.length = Math.min(state.strokes.length, 5);
+  if (s.power > 0) {
+    setValue("v-power", `${s.power}`, "W");
+    const timed = state.strokes.filter((x) => x.power > 0);
+    const avg = timed.reduce((a, x) => a + x.power, 0) / timed.length;
+    $("v-power-sub").textContent = timed.length < 2 ? "Average appears after 2 strokes"
+      : `Average of the last ${timed.length} strokes: ${nb(Math.round(avg), "W")}`;
+  }
+  if (s.rate > 0) setValue("v-rate", s.rate.toFixed(0), "spm");
+  if (s.hasSplit) {
+    setValue("v-eff", (s.efficiency * 100).toFixed(0), "%");
+    $("v-eff-sub").textContent = `useful ${nb(num(s.useful), "W")} · slip ${nb(num(s.slip), "W")}`;
+  }
+}
+
+// Stale indicator: no live packet for a second.
+setInterval(() => {
+  if (!state.device && !state.demo) return;
+  const age = performance.now() - state.lastLiveAt;
+  if (age > 1000) setPill("stale", "No data");
+  else setPill("live", state.demo ? "Demo" : state.unlocked ? "Unlocked" : "Connected");
+}, 500);
+
+// ----------------------------------------------------------------- chart
+let chartPending = false;
+function scheduleChart() {
+  if (chartPending) return;
+  chartPending = true;
+  requestAnimationFrame(() => { chartPending = false; drawChart(); });
+}
+
+// The chart's coordinate space matches its on-screen size, so 12px text is
+// 12px on a phone and on a laptop.
+let W = 360, H = 220;
+const M = { l: 40, r: 12, t: 18, b: 28 };
+function niceStep(max, n) {
+  const raw = max / n, mag = 10 ** Math.floor(Math.log10(raw));
+  return [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw);
+}
+function drawChart() {
+  const latest = state.curve && state.curve.pts.length >= 2 ? state.curve.pts : state.curves[0];
+  const history = (state.curve ? state.curves : state.curves.slice(1)).slice(0, 4);
+  const svg = $("chart");
+  // `hidden` is an HTML property; on an <svg> only the attribute works.
+  svg.toggleAttribute("hidden", !latest);
+  $("chart-empty").hidden = !!latest;
+  if (!latest) return;
+  W = Math.max(280, Math.round(svg.getBoundingClientRect().width)) || 360;
+  H = Math.round(Math.min(260, Math.max(200, W * 0.5)));
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+
+  const all = [latest, ...history];
+  const maxT = Math.max(0.8, ...all.flatMap((c) => c.map((p) => p[0])));
+  const maxF = Math.max(50, ...all.flatMap((c) => c.map((p) => p[1])));
+  const yStep = niceStep(maxF, 4), yMax = Math.ceil(maxF / yStep) * yStep;
+  const xStep = niceStep(maxT, 4), xMax = Math.ceil(maxT / xStep) * xStep;
+  const x = (t) => M.l + (t / xMax) * (W - M.l - M.r);
+  const y = (f) => H - M.b - (Math.max(0, f) / yMax) * (H - M.t - M.b);
+  const path = (c) => c.map((p, i) => `${i ? "L" : "M"}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join("");
+
+  let g = '<g class="grid">';
+  for (let f = yStep; f <= yMax + 1e-9; f += yStep)
+    g += `<line x1="${M.l}" x2="${W - M.r}" y1="${y(f)}" y2="${y(f)}"/>`;
+  g += "</g>";
+  let labels = "";
+  for (let f = 0; f <= yMax + 1e-9; f += yStep)
+    labels += `<text x="${M.l - 8}" y="${y(f) + 4}" text-anchor="end">${Math.round(f)}</text>`;
+  for (let t = 0; t <= xMax + 1e-9; t += xStep)
+    labels += `<text x="${x(t)}" y="${H - M.b + 18}" text-anchor="middle">${+t.toFixed(2)}s</text>`;
+  labels += `<text x="${M.l - 8}" y="${M.t - 6}" text-anchor="end">N</text>`;
+
+  const peak = latest.reduce((a, p) => (p[1] > a[1] ? p : a), latest[0]);
+  const px = x(peak[0]), py = y(peak[1]);
+  const anchor = px > W - 100 ? "end" : "start";
+  svg.innerHTML = g + labels +
+    `<line class="baseline" x1="${M.l}" x2="${W - M.r}" y1="${y(0)}" y2="${y(0)}"/>` +
+    history.slice().reverse().map((c) => `<path class="history" d="${path(c)}"/>`).join("") +
+    `<path class="latest" d="${path(latest)}"/>` +
+    `<circle class="peak" cx="${px}" cy="${py}" r="5"/>` +
+    `<text class="peak-label" x="${px + (anchor === "start" ? 10 : -10)}" y="${Math.max(14, py - 8)}" text-anchor="${anchor}">peak ${Math.round(peak[1])} N</text>` +
+    `<line class="cross" id="cross" y1="${M.t}" y2="${H - M.b}" visibility="hidden"/>` +
+    `<rect x="${M.l}" y="${M.t}" width="${W - M.l - M.r}" height="${H - M.t - M.b}" fill="transparent" id="hit"/>`;
+  state.chartScale = { x, y, xMax, latest };
+
+  const tbody = $("curve-table").tBodies[0];
+  tbody.innerHTML = latest.map((p) => `<tr><td>${p[0].toFixed(2)}</td><td>${p[1].toFixed(0)}</td></tr>`).join("");
+}
+
+// Hover / tap readout for the latest curve.
+function showTip(ev) {
+  const sc = state.chartScale; if (!sc) return;
+  const svg = $("chart"), rect = svg.getBoundingClientRect();
+  const sx = ((ev.clientX - rect.left) / rect.width) * W;
+  const t = ((sx - M.l) / (W - M.l - M.r)) * sc.xMax;
+  const pt = sc.latest.reduce((a, p) => (Math.abs(p[0] - t) < Math.abs(a[0] - t) ? p : a), sc.latest[0]);
+  const cross = $("cross"); if (!cross) return;
+  cross.setAttribute("x1", sc.x(pt[0])); cross.setAttribute("x2", sc.x(pt[0]));
+  cross.setAttribute("visibility", "visible");
+  const tip = $("tooltip");
+  tip.textContent = `${pt[0].toFixed(2)} s · ${Math.round(pt[1])} N`;
+  tip.style.display = "block";
+  const card = svg.parentElement.getBoundingClientRect();
+  const left = (sc.x(pt[0]) / W) * rect.width + (rect.left - card.left);
+  tip.style.left = `${Math.min(card.width - tip.offsetWidth - 8, Math.max(8, left - tip.offsetWidth / 2))}px`;
+  // Above the point, unless that would leave the plot; then below it.
+  const pointTop = (sc.y(pt[1]) / H) * rect.height + (rect.top - card.top);
+  const above = pointTop - tip.offsetHeight - 10;
+  tip.style.top = `${above >= rect.top - card.top ? above : pointTop + 14}px`;
+}
+function hideTip() {
+  $("tooltip").style.display = "none";
+  const cross = $("cross"); if (cross) cross.setAttribute("visibility", "hidden");
+}
+$("chart").addEventListener("pointermove", showTip);
+$("chart").addEventListener("pointerdown", showTip);
+$("chart").addEventListener("pointerleave", hideTip);
+
+// ------------------------------------------------------------- console
+function log(text, cls) {
+  const el = document.createElement("div");
+  if (cls) el.className = cls;
+  el.textContent = text;
+  const c = $("console");
+  c.append(el);
+  while (c.childNodes.length > 200) c.firstChild.remove();
+  c.scrollTop = c.scrollHeight;
+}
+function onReplyChunk(text) {
+  state.replyBuf += text;
+  let i;
+  while ((i = state.replyBuf.indexOf("\n")) >= 0) {
+    const line = state.replyBuf.slice(0, i).trimEnd();
+    state.replyBuf = state.replyBuf.slice(i + 1);
+    if (line === "ok") continue;  // end-of-reply marker
+    if (line.startsWith("ok: unlocked")) setUnlocked(true);
+    if (line.startsWith("error: locked") || line.startsWith("error: wrong PIN")) setUnlocked(false);
+    if (line.startsWith("pin: changed")) setUnlocked(false);
+    log(line, line.startsWith("error") ? "err" : "");
+  }
+}
+function setUnlocked(on) {
+  state.unlocked = on;
+  $("lock-state").textContent = on ? "Unlocked" : "Locked";
+}
+
+// ------------------------------------------------------------ bluetooth
+const enc = new TextEncoder(), dec = new TextDecoder();
+
+async function sendCommand(text) {
+  log(`> ${text.startsWith("auth ") ? "auth ••••••" : text}`, "sent");
+  if (state.demo) { state.demo.command(text); return; }
+  const c = state.chars.command;
+  if (!c) { log("error: not connected", "err"); return; }
+  try {
+    const data = enc.encode(text);
+    if (c.writeValueWithResponse) await c.writeValueWithResponse(data);
+    else await c.writeValue(data);
+  } catch (e) { log(`error: ${e.message}`, "err"); }
+}
+
+async function connect() {
+  if (!navigator.bluetooth) { $("unsupported").hidden = false; return; }
+  try {
+    setPill("off", "Choosing…");
+    const device = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: "PaddlePower" }],
+      optionalServices: [UUID.service, "battery_service"],
+    });
+    stopDemo();
+    state.device = device;
+    device.addEventListener("gattserverdisconnected", onDisconnected);
+    await openGatt();
+  } catch (e) {
+    if (e.name !== "NotFoundError") { setPill("error", "Connect failed"); log(`error: ${e.message}`, "err"); }
+    else setPill("off", "Not connected");
+  }
+}
+
+async function openGatt() {
+  setPill("off", "Connecting…");
+  const server = await state.device.gatt.connect();
+  const svc = await server.getPrimaryService(UUID.service);
+  const get = (u) => svc.getCharacteristic(u);
+  const [live, stroke, command, reply] = await Promise.all(
+    [UUID.live, UUID.stroke, UUID.command, UUID.reply].map(get));
+  state.chars = { live, stroke, command, reply };
+  live.addEventListener("characteristicvaluechanged", (e) => onLive(decodeLive(e.target.value)));
+  stroke.addEventListener("characteristicvaluechanged", (e) => onStroke(decodeStroke(e.target.value)));
+  reply.addEventListener("characteristicvaluechanged", (e) => onReplyChunk(dec.decode(e.target.value)));
+  await reply.startNotifications();
+  await stroke.startNotifications();
+  await live.startNotifications();
+  try {
+    const bas = await server.getPrimaryService("battery_service");
+    const level = await bas.getCharacteristic("battery_level");
+    const show = (dv) => setValue("v-batt", `${dv.getUint8(0)}`, "%");
+    show(await level.readValue());
+    level.addEventListener("characteristicvaluechanged", (e) => show(e.target.value));
+    await level.startNotifications();
+  } catch {}
+  $("connect").textContent = "Disconnect";
+  setPill("live", "Connected");
+  setUnlocked(false);
+  const pin = store.get("ppm.pin");
+  if (pin) sendCommand(`auth ${pin}`);
+}
+
+async function onDisconnected() {
+  state.chars = {};
+  setUnlocked(false);
+  if (!state.device) return;  // user disconnected
+  setPill("stale", "Reconnecting…");
+  for (let i = 0; i < 5 && state.device; i++) {
+    try { await openGatt(); return; } catch { await new Promise((r) => setTimeout(r, 1000 * (i + 1))); }
+  }
+  setPill("error", "Disconnected");
+  $("connect").textContent = "Connect";
+  state.device = null;
+}
+
+$("connect").addEventListener("click", () => {
+  if (state.device) {
+    const d = state.device; state.device = null;
+    d.gatt.disconnect();
+    $("connect").textContent = "Connect";
+    setPill("off", "Not connected");
+  } else if (state.demo) {
+    stopDemo();
+  } else {
+    connect();
+  }
+});
+
+// ----------------------------------------------------------- setup tab
+document.querySelectorAll("[data-cmd]").forEach((b) => b.addEventListener("click", () => {
+  if (b.dataset.confirm && !confirm(b.dataset.confirm)) return;
+  sendCommand(b.dataset.cmd);
+}));
+$("unlock").addEventListener("click", () => {
+  const pin = $("pin").value.trim();
+  if (!/^\d{6}$/.test(pin)) { log("error: the PIN is 6 digits", "err"); return; }
+  store.set("ppm.pin", pin);
+  sendCommand(`auth ${pin}`);
+});
+$("calibrate").addEventListener("click", () => {
+  const kg = parseFloat($("cal-kg").value);
+  if (!(kg > 0)) { log("error: enter the mass in kg", "err"); return; }
+  const n = (kg * 9.80665).toFixed(2);
+  if (confirm(`Calibrate with ${kg} kg (${n} N) resting on the power face?`)) sendCommand(`cal ${n}`);
+});
+$("boat-cal").addEventListener("click", () => {
+  const m = parseFloat($("cal-m").value);
+  if (!(m > 0)) { log("error: enter the distance in metres", "err"); return; }
+  if (confirm(`Finish impeller calibration over ${m} m?`)) sendCommand(`boat cal ${m}`);
+});
+$("cmd-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const t = $("cmd").value.trim();
+  if (t) { sendCommand(t); $("cmd").value = ""; }
+});
+const savedPin = store.get("ppm.pin"); if (savedPin) $("pin").value = savedPin;
+
+document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll("nav button").forEach((x) => x.setAttribute("aria-selected", x === b));
+  $("tab-paddle").hidden = b.dataset.tab !== "paddle";
+  $("tab-setup").hidden = b.dataset.tab !== "setup";
+}));
+
+// ------------------------------------------------------------ wake lock
+let wakeLock = null;
+$("wake").addEventListener("click", async () => {
+  if (wakeLock) { wakeLock.release(); wakeLock = null; $("wake").textContent = "Keep screen on"; return; }
+  try {
+    wakeLock = await navigator.wakeLock.request("screen");
+    $("wake").textContent = "Screen stays on";
+    wakeLock.addEventListener("release", () => { wakeLock = null; $("wake").textContent = "Keep screen on"; });
+  } catch { log("error: this browser can't keep the screen on; change auto-lock in Settings", "err"); }
+});
+
+// ------------------------------------------------------------------ demo
+// Synthesises packets in the firmware's byte format, so the demo exercises
+// the same decoders as a real paddle.
+function encodeLive(p) {
+  const dv = new DataView(new ArrayBuffer(17));
+  dv.setUint16(0, p.seq, true); dv.setUint16(2, p.tMs & 0xffff, true); dv.setUint8(4, p.flags);
+  dv.setInt16(5, Math.round(p.force * 10), true); dv.setInt16(7, Math.round(p.omega * 100), true);
+  dv.setInt16(9, Math.round(p.instPower), true); dv.setUint16(11, Math.round(p.boatSpeed * 100), true);
+  dv.setInt16(13, Math.round(p.pivot * 1000), true); dv.setInt16(15, Math.round(p.lever * 1000), true);
+  return dv;
+}
+function encodeStroke(s) {
+  const dv = new DataView(new ArrayBuffer(15));
+  dv.setUint16(0, s.count, true); dv.setInt16(2, s.power, true); dv.setUint16(4, Math.round(s.rate * 100), true);
+  dv.setUint16(6, Math.round(s.energy * 10), true); dv.setInt16(8, s.useful, true); dv.setInt16(10, s.slip, true);
+  dv.setUint16(12, Math.round(s.efficiency * 1000), true); dv.setUint8(14, STROKE_HAS_SPLIT);
+  return dv;
+}
+function startDemo() {
+  if (state.device) return;
+  stopDemo();
+  let seq = 0, t = 0, count = 0, energy = 0, wasDrive = false;
+  const drive = 0.6, cycle = 1.2;
+  const timer = setInterval(() => {
+    t += 0.05;
+    const k = Math.floor(t / cycle), tau = t - k * cycle;
+    const vary = 1 + 0.08 * Math.sin(k * 1.7);
+    const inDrive = tau < drive;
+    const force = inDrive ? 210 * vary * Math.sin(Math.PI * tau / drive) ** 1.3 + 4 * Math.random() : 1.5 * Math.random();
+    const omega = inDrive ? 3.1 * Math.sin(Math.PI * tau / drive) : -2.4 * Math.sin(Math.PI * (tau - drive) / (cycle - drive));
+    const instPower = Math.max(0, force * omega * 1.1);
+    if (inDrive) energy += instPower * 0.05;
+    if (wasDrive && !inDrive) {
+      count++;
+      const power = Math.round(energy / cycle);
+      const useful = Math.round(power * 0.82);
+      onStroke(decodeStroke(encodeStroke({ count, power: count > 1 ? power : 0, rate: count > 1 ? 50 : 0,
+        energy, useful, slip: power - useful, efficiency: useful / power })));
+      energy = 0;
+    }
+    wasDrive = inDrive;
+    onLive(decodeLive(encodeLive({ seq: seq++, tMs: Math.round(t * 1000), flags: (inDrive ? LIVE_IN_DRIVE : 0) | LIVE_BOAT_FRESH,
+      force, omega, instPower, boatSpeed: 2.3 + 0.12 * Math.sin(2 * Math.PI * t / cycle), pivot: -0.14, lever: 1.09 })));
+  }, 50);
+  state.demo = {
+    timer,
+    command(text) {
+      const replies = text.startsWith("auth ") ? ["ok: unlocked"]
+        : !state.unlocked ? ["error: locked, send auth <pin>"]
+        : [`demo: "${text}" would be sent to the paddle`];
+      setTimeout(() => replies.concat("ok").forEach((r) => onReplyChunk(r + "\n")), 150);
+    },
+  };
+  setValue("v-batt", "87", "%");
+  $("connect").textContent = "Stop demo";
+  setPill("live", "Demo");
+}
+function stopDemo() {
+  if (!state.demo) return;
+  clearInterval(state.demo.timer);
+  state.demo = null;
+  $("connect").textContent = "Connect";
+  setPill("off", "Not connected");
+}
+$("demo").addEventListener("click", startDemo);
+$("demo-2").addEventListener("click", startDemo);
+
+if (!navigator.bluetooth) $("unsupported").hidden = false;
+
+// Exposed for tests.
+window.ppm = { decodeLive, decodeStroke, onLive, onStroke, onReplyChunk, state };
+</script>
+</body>
+</html>

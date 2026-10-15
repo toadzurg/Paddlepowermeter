@@ -22,6 +22,9 @@
 //   boat cal start   then paddle a measured distance on still water ...
 //   boat cal <m>     ... and enter it, e.g. boat cal 500
 //   log start | log stop | log   raw sensor log on the microSD card
+//   pin [<6 digits>]   show or set the PIN that unlocks app commands
+//
+// The web app (docs/app) sends the same commands over Bluetooth.
 
 namespace {
 PowerModel model;
@@ -37,6 +40,10 @@ float forceN = 0;
 uint8_t imuMask = 0;
 bool debug = false;
 String line;
+// Where command replies go: the serial console, or the app's reply channel
+// while an app command runs.
+Print *out = &Serial;
+char blePin[7] = "";  // unlocks app commands; see the "pin" command
 
 int32_t zeroOffset = 0;
 float countsPerN = cfg::DEFAULT_COUNTS_PER_N;
@@ -83,9 +90,9 @@ void restartLogIfRunning() {
 void printLogStatus() {
   LoggerStats l = loggerStats();
   if (!loggerCardPresent()) {
-    Serial.println("log: no SD card");
+    out->println("log: no SD card");
   } else {
-    Serial.printf("log: %s %s, %lu records, %lu dropped, %lu KB%s\n",
+    out->printf("log: %s %s, %lu records, %lu dropped, %lu KB%s\n",
                   l.active ? "recording" : "stopped", l.path,
                   (unsigned long)l.records, (unsigned long)l.dropped,
                   (unsigned long)(l.bytesWritten / 1024),
@@ -99,18 +106,19 @@ void saveCalibration() {
 }
 
 void printStatus() {
-  Serial.printf("IMU1 %s, IMU2 %s\n", imuMask & 1 ? "ok" : "MISSING",
+  out->printf("IMU1 %s, IMU2 %s\n", imuMask & 1 ? "ok" : "MISSING",
                 imuMask & 2 ? "ok" : "MISSING");
-  Serial.printf("zero offset %ld, %.3f counts/N%s\n", (long)zeroOffset,
+  out->printf("zero offset %ld, %.3f counts/N%s\n", (long)zeroOffset,
                 countsPerN, prefs.isKey("cal") ? "" : " (UNCALIBRATED default)");
-  Serial.printf("pivot %.3f m, lever arm %.3f m, battery %u%%\n",
+  out->printf("pivot %.3f m, lever arm %.3f m, battery %u%%\n",
                 model.pivotPosition(), model.leverArm(), getBatteryLevel());
   BoatSpeed b = readBoatSpeed(pulsesPerM);
-  Serial.printf("boat node %s, %s, %.2f pulses/m%s\n",
+  out->printf("boat node %s, %s, %.2f pulses/m%s\n",
                 boatLinkPaired() ? "paired" : "NOT PAIRED",
                 b.fresh ? "receiving" : "no signal", pulsesPerM,
                 pulsesPerM > 0 ? "" : " (UNCALIBRATED)");
   printLogStatus();
+  if (out == &Serial) out->printf("app PIN %s\n", blePin);
 }
 
 // For checking the axis maps on the bench (docs/BENCH_TEST.md). Gyro bias
@@ -120,14 +128,14 @@ void printImu() {
   readIMU(p, raw);
   for (int i = 0; i < 2; i++) {
     if (!p[i].valid) {
-      Serial.printf("IMU%d missing\n", i + 1);
+      out->printf("IMU%d missing\n", i + 1);
       continue;
     }
-    Serial.printf("IMU%d paddle  accel x %6.2f y %6.2f z %6.2f m/s2   "
+    out->printf("IMU%d paddle  accel x %6.2f y %6.2f z %6.2f m/s2   "
                   "gyro x %6.3f y %6.3f z %6.3f rad/s\n", i + 1,
                   p[i].accel[0], p[i].accel[1], p[i].accel[2],
                   p[i].gyro[0], p[i].gyro[1], p[i].gyro[2]);
-    Serial.printf("IMU%d chip    accel x %6.2f y %6.2f z %6.2f m/s2   "
+    out->printf("IMU%d chip    accel x %6.2f y %6.2f z %6.2f m/s2   "
                   "gyro x %6.3f y %6.3f z %6.3f rad/s\n", i + 1,
                   raw[i].accel[0], raw[i].accel[1], raw[i].accel[2],
                   raw[i].gyro[0], raw[i].gyro[1], raw[i].gyro[2]);
@@ -137,33 +145,33 @@ void printImu() {
 void handleBoatCommand(const String &arg) {
   if (arg == "pair") {
     startBoatPairing();
-    Serial.println("pairing: waiting for a boat node...");
+    out->println("pairing: waiting for a boat node...");
     return;
   }
   BoatSpeed b = readBoatSpeed(pulsesPerM);
   if (arg == "cal start") {
     if (!b.fresh) {
-      Serial.println("no signal from boat node");
+      out->println("no signal from boat node");
       return;
     }
     boatCalRunning = true;
     boatCalStartCount = b.pulseCount;
-    Serial.println("paddle the measured distance, then: boat cal <metres>");
+    out->println("paddle the measured distance, then: boat cal <metres>");
   } else if (arg.startsWith("cal ")) {
     float metres = arg.substring(4).toFloat();
     uint32_t pulses = b.pulseCount - boatCalStartCount;
     if (!boatCalRunning || !b.fresh || metres <= 0 || pulses == 0) {
-      Serial.println("usage: boat cal start, paddle, then boat cal <metres>");
+      out->println("usage: boat cal start, paddle, then boat cal <metres>");
       return;
     }
     boatCalRunning = false;
     pulsesPerM = pulses / metres;
     prefs.putFloat("ppm", pulsesPerM);
     restartLogIfRunning();
-    Serial.printf("impeller: %lu pulses over %.1f m = %.3f pulses/m\n",
+    out->printf("impeller: %lu pulses over %.1f m = %.3f pulses/m\n",
                   (unsigned long)pulses, metres, pulsesPerM);
   } else {
-    Serial.println("boat commands: pair | cal start | cal <metres>");
+    out->println("boat commands: pair | cal start | cal <metres>");
   }
 }
 
@@ -172,17 +180,17 @@ void handleCommand(const String &cmd) {
     zeroOffset = tareScale();
     saveCalibration();
     restartLogIfRunning();
-    Serial.printf("tared: zero offset %ld\n", (long)zeroOffset);
+    out->printf("tared: zero offset %ld\n", (long)zeroOffset);
   } else if (cmd.startsWith("cal ")) {
     float n = cmd.substring(4).toFloat();
     if (n <= 0) {
-      Serial.println("usage: cal <newtons>");
+      out->println("usage: cal <newtons>");
       return;
     }
     countsPerN = calibrateScale(n);
     saveCalibration();
     restartLogIfRunning();
-    Serial.printf("calibrated: %.3f counts/N\n", countsPerN);
+    out->printf("calibrated: %.3f counts/N\n", countsPerN);
   } else if (cmd == "debug") {
     debug = !debug;
   } else if (cmd == "status") {
@@ -190,20 +198,38 @@ void handleCommand(const String &cmd) {
   } else if (cmd == "imu") {
     printImu();
   } else if (cmd == "log start") {
-    if (logging()) Serial.println("log: already recording");
-    else if (!startLog(makeLogHeader())) Serial.println("log: no SD card");
+    if (logging()) out->println("log: already recording");
+    else if (!startLog(makeLogHeader())) out->println("log: no SD card");
+    else out->println("log: starting");
   } else if (cmd == "log stop") {
     stopLog();
     logRestartPending = false;
-    Serial.println("log: stopped");
+    out->println("log: stopped");
   } else if (cmd == "log") {
     printLogStatus();
+  } else if (cmd == "pin") {
+    // Replies reach every connected device, so never show it over Bluetooth.
+    if (out == &Serial) out->printf("app PIN %s\n", blePin);
+    else out->println("pin: shown on the serial console only");
+  } else if (cmd.startsWith("pin ")) {
+    String p = cmd.substring(4);
+    p.trim();
+    bool ok = p.length() == 6;
+    for (unsigned i = 0; ok && i < p.length(); i++) ok = isDigit(p[i]);
+    if (!ok) {
+      out->println("usage: pin <6 digits>");
+      return;
+    }
+    strncpy(blePin, p.c_str(), sizeof blePin - 1);
+    prefs.putString("blepin", blePin);
+    setBlePin(blePin);
+    out->println("pin: changed; connected apps must unlock again");
   } else if (cmd.startsWith("boat")) {
     String arg = cmd.substring(4);
     arg.trim();
     handleBoatCommand(arg);
   } else if (cmd.length()) {
-    Serial.println("commands: tare | cal <newtons> | debug | status | imu | boat ... | log ...");
+    out->println("commands: tare | cal <newtons> | debug | status | imu | boat ... | log ... | pin");
   }
 }
 
@@ -217,6 +243,64 @@ void pollSerial() {
     } else if (line.length() < 32) {
       line += c;
     }
+  }
+}
+
+// A random PIN on first boot, kept in flash.
+void loadPin() {
+  String p = prefs.getString("blepin", "");
+  if (p.length() != 6) {
+    snprintf(blePin, sizeof blePin, "%06lu", (unsigned long)(esp_random() % 1000000));
+    prefs.putString("blepin", blePin);
+  } else {
+    strncpy(blePin, p.c_str(), sizeof blePin - 1);
+  }
+}
+
+void runBleCommands() {
+  String cmd;
+  while (takeBleCommand(cmd)) {
+    out = &bleReply();
+    handleCommand(cmd);
+    out->println("ok");  // marks the end of the reply for the app
+    out = &Serial;
+  }
+}
+
+uint32_t lastLiveMs = 0;
+uint16_t liveSeq = 0;
+uint16_t lastStrokeSent = 0;
+
+void sendAppPackets(uint32_t nowMs, const BoatSpeed &b) {
+  if (nowMs - lastLiveMs >= ble::LIVE_INTERVAL_MS) {
+    lastLiveMs = nowMs;
+    ble::LivePacket p;
+    p.seq = liveSeq++;
+    p.tMs = (uint16_t)nowMs;
+    p.flags = (model.inDrive() ? ble::LIVE_IN_DRIVE : 0) |
+              (b.fresh ? ble::LIVE_BOAT_FRESH : 0) |
+              (logging() ? ble::LIVE_LOGGING : 0);
+    p.forceDeciN = ble::toI16(forceN * 10);
+    p.omegaCrad = ble::toI16(model.angularVelocity() * 100);
+    p.instPowerW = ble::toI16(model.instantaneousPower());
+    p.boatSpeedCms = ble::toU16(b.speedMps * 100);
+    p.pivotMm = ble::toI16(model.pivotPosition() * 1000);
+    p.leverMm = ble::toI16(model.leverArm() * 1000);
+    sendLive(p);
+  }
+  if (model.strokeCount() != lastStrokeSent) {
+    lastStrokeSent = model.strokeCount();
+    ble::StrokePacket p;
+    p.count = model.strokeCount();
+    p.powerW = ble::toI16(model.strokePower());
+    p.rateCentiSpm = ble::toU16(model.strokeRate() * 100);
+    p.energyDeciJ = ble::toU16(model.strokeEnergy() * 10);
+    bool split = model.hasPowerSplit();
+    p.usefulW = split ? ble::toI16(model.usefulPower()) : 0;
+    p.slipW = split ? ble::toI16(model.slipPower()) : 0;
+    p.efficiencyPermille = split ? ble::toU16(model.efficiency() * 1000) : 0;
+    p.flags = split ? ble::STROKE_HAS_SPLIT : 0;
+    sendStroke(p);
   }
 }
 
@@ -261,13 +345,14 @@ void setup() {
   pulsesPerM = prefs.getFloat("ppm", 0);
   uint8_t boatMac[6];
   bool haveBoatMac = prefs.getBytes("boatmac", boatMac, 6) == 6;
+  loadPin();
 
   if (!initScale(zeroOffset, countsPerN)) Serial.println("NAU7802 not found");
   imuMask = initIMU();
   if (!(imuMask & 1)) Serial.println("IMU1 not found");
   if (!(imuMask & 2)) Serial.println("IMU2 not found (running on IMU1 only)");
   if (!initBattery()) Serial.println("MAX17048 not found");
-  initBLE();
+  initBLE(blePin);
   if (!initBoatLink(haveBoatMac ? boatMac : nullptr))
     Serial.println("ESP-NOW init failed: no boat speed");
 
@@ -293,6 +378,7 @@ void setup() {
 
 void loop() {
   pollSerial();
+  runBleCommands();
 
   // Fixed-rate sampling: the filters are tuned for SAMPLE_HZ and use the
   // measured dt, so jitter is tolerated but the loop must not run slow.
@@ -314,11 +400,14 @@ void loop() {
   uint8_t mac[6];
   if (takeNewPairing(mac)) {
     prefs.putBytes("boatmac", mac, 6);
-    Serial.printf("paired with boat node %02X:%02X:%02X:%02X:%02X:%02X\n",
-                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    // Pairing may have been started from the app, so tell both.
+    for (Print *p : {(Print *)&Serial, &bleReply()})
+      p->printf("paired with boat node %02X:%02X:%02X:%02X:%02X:%02X\n",
+                mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   }
 
   uint32_t nowMs = millis();
+  sendAppPackets(nowMs, readBoatSpeed(pulsesPerM));
   if (nowMs - lastNotifyMs >= cfg::BLE_NOTIFY_MS) {
     lastNotifyMs = nowMs;
     sendPowerMeasurement((int16_t)lroundf(model.strokePower()),

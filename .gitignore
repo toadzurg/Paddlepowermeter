@@ -13,3 +13,6 @@ build/
 # PlatformIO / host tests
 .pio/
 test/host/build/
+
+# Web app test output
+test/web/build/
