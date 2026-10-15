@@ -143,6 +143,18 @@ console.log("\nStroke simulator physics");
   check("race positions: finish at the distance", Math.abs(ob.posA(ob.tA) - 2000) < 1e-6 && ob.posA(ob.tA / 4) < 1000);
   const strong = S.race(clean, clean, 10000, 300, 100, { current: -2.6 });
   check("race: only the stronger paddler makes headway", isFinite(strong.tA) && !isFinite(strong.tB) && strong.timeGap === Infinity);
+  // The hull through one stroke.
+  const def = S.simulate({}), cyc = def.cycleAt(150), e150 = def.at(150);
+  const span = (a) => Math.max(...a) - Math.min(...a), avg = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+  check("hull: the default paddle is a 51 in ZRE (17 × 8 in blade)", Math.abs(S.DEFAULTS.paddleLenM - 1.295) < 1e-9 && Math.abs(S.PADDLE.bladeLen - 0.432) < 1e-9);
+  check("hull: speed swing over a stroke = the engine's surge", Math.abs(span(cyc.speed) / e150.waterSpeed - e150.surgeSwing) < 0.005,
+        `${(span(cyc.speed) / e150.waterSpeed).toFixed(4)} vs ${e150.surgeSwing.toFixed(4)}`);
+  check("hull: bob = the engine's bounce", Math.abs(span(cyc.heave) / 2 * 1000 - e150.bounceMm) < 0.15 * e150.bounceMm, `${(span(cyc.heave) * 500).toFixed(2)} vs ${e150.bounceMm.toFixed(2)} mm`);
+  check("hull: push balances drag over a stroke; the gap averages zero", Math.abs(avg(cyc.push) / avg(cyc.drag) - 1) < 0.1 && Math.abs(avg(cyc.ahead)) < 1e-6,
+        `${avg(cyc.push).toFixed(1)} vs ${avg(cyc.drag).toFixed(1)} N`);
+  check("hull: the blade lifts the paddle side; hips shift toward it to balance", Math.min(...cyc.roll) < -10 && cyc.rollMean < 0 && cyc.hipShift > 0 &&
+        Math.abs(avg(cyc.heel)) < 1e-6 && cyc.GM > 0.1);
+  check("hull: a wider blade slips less", S.simulate({ bladeWidthM: 0.24 }).at(150).shares.slip < e150.shares.slip);
   // A real course, section by section.
   const rivEnv = { current: 0.7, depth: 3, river: { width: 40, bendsDegPerKm: 180, lineA: "best", lineB: 0 } };
   const one = S.race(clean, sweep, 0, 150, 150, { sections: [{ len: 10000, kind: "river", current: 0.7, depth: 3, width: 40, bendsDegPerKm: 180, section: 0 }], lines: { A: "best", B: 0 } });
@@ -710,6 +722,20 @@ console.log("\nStroke simulator physics");
     check(`${tag}: real course: a bad file says so`, /^Couldn't read nope\.gpx: /.test(await text("#cb-info")), await text("#cb-info"));
     await page.click("#water >> text=Open water");
     check(`${tag}: back from the real course`, (await page.isVisible("#dist")) && (await page.isVisible("#race-view")) && !(await page.isVisible("#builder")));
+    // On the hull: charts for the boat picked, both boats' power, shallow water.
+    check(`${tag}: hull: stroke chart and power for both boats`, (await page.$$("#hull-chart path.ln")).length === 2 &&
+          /^Boat Amoves the boat: \d+%Boat Bmoves the boat: \d+%/.test(await text("#hull-power")) &&
+          /^Speed swings [\d.]+–[\d.]+ km\/h, costing [\d.]+% of your power/.test(await text("#hull-surge-read")), await text("#hull-power"));
+    check(`${tag}: hull: roll and its balance`, /lifts the paddle side by up to \d+ N·m.*hips \d+ mm toward the paddle side.*Held still: ±[\d.]+° each stroke/.test(await text("#hull-roll-read")), await text("#hull-roll-read"));
+    const surge1 = await text("#hull-surge"); await page.waitForTimeout(300);
+    check(`${tag}: hull: the drawings move with the stroke`, (await text("#hull-surge")) !== surge1);
+    const head0 = await text("#hull-heading-read");
+    await page.click("#hull-boat >> text=Boat B");
+    check(`${tag}: hull: switch to boat B`, JSON.stringify(await pressed("#hull-boat")) === '["b"]' && (await text("#hull-heading-read")) !== head0);
+    await page.click("#hull-boat >> text=Boat A");
+    await slide("#depth", 0.9);
+    check(`${tag}: hull: shallow race water shows on the heat map`, /0\.9 m deep: \+\d+%/.test(await text("#hull-shallow")) && (await page.$$("#hull-shallow circle")).length === 2);
+    await slide("#depth", 5);
     check(`${tag}: no page errors`, errors.length === 0, errors.join("; "));
     // A stale, cached engine: the page asks for a reload instead of breaking.
     if (scheme === "light") {
