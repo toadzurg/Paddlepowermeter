@@ -206,7 +206,13 @@ between them.
   forward push is the stroke's impulse). Hover for values; a table view is
   included.
 - **Stroke views:** side, end and top, animated, shown split (A beside B),
-  overlaid, or one boat only.
+  overlaid, or one boat only. With both boats set the same, the overlay
+  and the force curve blend the two colours.
+- **Switching sides:** switch by heading (when the boat is a set angle off
+  course), or take a fixed number of strokes per side and let the heading
+  wander. Fewer strokes per side lose more time switching; more make a
+  wider zigzag, which costs progress along the course (about ψ²/6 for a
+  ±ψ swing). So each stroke has a best count.
 - **Race:** A against B at each paddler's effort.
   - Course: point to point or there and back, over a chosen distance.
   - Conditions: water depth, wind speed and direction, and current.

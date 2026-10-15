@@ -165,6 +165,11 @@
   svg.view .push { stroke-width: 1.5; opacity: 0.45; }
   svg.view .push.a { stroke: var(--series-1); } svg.view .push.b { stroke: var(--series-2); }
   svg.view .overlay-b { opacity: 0.8; }
+  /* Same settings in overlay: B dashed over A, so the paddle is both colours. */
+  svg.view .blend-b .paddle, svg.view .blend-b .path, svg.view .blend-b .push { stroke-dasharray: 8 8; stroke-linecap: butt; }
+  svg.view .blend-b .path { stroke-dasharray: 6 6; opacity: 0.8; }
+  svg.view .blend-b .pivot { fill: none; stroke: var(--series-2); stroke-width: 2.5; }
+  svg.view .blend-b .force, svg.view .blend-b .force-head { display: none; }
 
   /* Controls */
   .ctl { margin: 10px 0; }
@@ -488,8 +493,11 @@ const CONTROLS = [
     help: "A longer drive moves more water more gently: lower peak force, less slip." },
   { group: "ctl-paddler", key: "massKg", label: "Paddler + boat weight", min: 50, max: 150, step: 1, unit: " kg",
     help: "Heavier sits deeper, so more drag." },
+  { group: "ctl-switch", key: "switchStrokes", label: "Strokes per side", min: 0, max: 20, step: 1, unit: "",
+    fmt: (v) => v === 0 ? "auto, by heading" : `${v} stroke${v === 1 ? "" : "s"}`,
+    help: "Set how many strokes you take before switching; the boat then wanders off course as far as it must. Fewer means more time lost switching, more means a wider zigzag. Auto switches by heading instead." },
   { group: "ctl-switch", key: "switchHeadingDeg", label: "Switch when off course by", min: 1, max: 10, step: 0.5, unit: "°",
-    fmt: (v) => `±${v}°`, help: "How far you let the boat turn before switching sides." },
+    fmt: (v) => `±${v}°`, help: "How far you let the boat turn before switching sides (auto)." },
   { group: "ctl-switch", key: "switchLossStrokes", label: "Time lost per switch", min: 0, max: 1, step: 0.05, unit: "",
     fmt: (v) => `${v.toFixed(2)} of a stroke`, help: "No propulsion while the paddle changes sides." },
 ];
@@ -511,6 +519,10 @@ const showValue = (c) => {
 };
 function syncControls() {
   for (const c of CONTROLS) { $(`c-${c.key}`).value = boats[editing][c.key]; showValue(c); }
+  // A fixed stroke count replaces switching by heading.
+  const fixed = boats[editing].switchStrokes > 0;
+  $("c-switchHeadingDeg").disabled = fixed;
+  if (fixed) $("o-switchHeadingDeg").textContent = "off (fixed count)";
   $("controls").classList.toggle("editing-b", editing === "b");
   $("editing-name").textContent = NAME[editing];
   $("presets").classList.toggle("b", editing === "b");
@@ -565,7 +577,7 @@ function summary(r) {
   const at = r.at(effortW);
   return {
     eff: r.efficiency * 100, speed: at.speed, fwd: r.forceShare.forward * 100,
-    side: r.strokesPerSide, yaw: Math.abs(r.yawAt(effortW)),
+    side: r.strokesPerSide, wander: r.headingWanderDeg, yaw: Math.abs(r.yawAt(effortW)),
     peak: r.peakForce * Math.pow(effortW / Math.max(1e-9, r.paddlerPower), 2 / 3), at,
   };
 }
@@ -575,22 +587,33 @@ const ROWS = [
   ["Speed", "speed", "m/s", 2, true],
   ["Forward push", "fwd", "%", 0, true],
   ["Switch every", "side", "strokes", 1, true],
+  ["Off course", "wander", "°", 1, false],
   ["Turning", "yaw", "N·m", 0, false],
-  ["Peak force", "peak", "N", 0, false],
+  // Neither higher nor lower peak force is better in itself (a short hard
+  // drive and a long smooth one can match), so no winner: just who pulls harder.
+  ["Peak force", "peak", "N", 0, null],
 ];
 function showEfficiency() {
   const A = summary(results.a), B = summary(results.b);
   $("o-effortW").textContent = `${effortW} W`;
   const cell = (s, k, unit, d, cls) => {
     const v = s[k];
-    const t = k === "side" && v >= S.MAX_STROKES_PER_SIDE - 0.05 ? `${S.MAX_STROKES_PER_SIDE}+` : fmtNum(v, d);
+    const t = k === "side" && v >= S.MAX_STROKES_PER_SIDE - 0.05 ? `${S.MAX_STROKES_PER_SIDE}+` :
+      k === "wander" ? `±${fmtNum(v, d)}` : fmtNum(v, d);
     return `<td class="v ${cls}">${t}<small>${unit}</small></td>`;
   };
   $("cmp").tBodies[0].innerHTML = ROWS.map(([label, k, unit, d, hi, cls]) => {
-    const diff = A[k] - B[k], tiny = Math.abs(diff) < Math.pow(10, -d) / 2;
-    const win = tiny ? "even" : (diff > 0) === hi ? "A" : "B";
+    // The difference of the numbers as shown, so it adds up on screen.
+    const shown = (v) => +v.toFixed(d), diff = shown(A[k]) - shown(B[k]), tiny = Math.abs(diff) < Math.pow(10, -d) / 2;
     const u = unit === "%" ? " pts" : ` ${unit}`;
-    const better = tiny ? "even" : `<span class="${win.toLowerCase()}-dot"></span>${win} by ${fmtNum(Math.abs(diff), d)}${u}`;
+    let win, better;
+    if (hi === null) {
+      win = "even";
+      better = tiny ? "same" : `${diff > 0 ? "A" : "B"} pulls ${fmtNum(Math.abs(diff), d)}${u} harder`;
+    } else {
+      win = tiny ? "even" : (diff > 0) === hi ? "A" : "B";
+      better = tiny ? "even" : `<span class="${win.toLowerCase()}-dot"></span>${win} by ${fmtNum(Math.abs(diff), d)}${u}`;
+    }
     return `<tr class="${cls || ""}" data-row="${k}"><td>${label}</td>` +
       `${cell(A, k, unit, d, win === "A" ? "win a" : "")}${cell(B, k, unit, d, win === "B" ? "win b" : "")}<td class="d">${better}</td></tr>`;
   }).join("");
@@ -738,7 +761,8 @@ function why(r, at) {
   const yaw = r.yawAt(effortW), sh = at.shares, lift = at.meanLift;
   const turn = Math.abs(yaw) < 1 ? "Practically no turning, so no need to switch sides to steer." :
     `Turns the bow ${yaw > 0 ? "away from" : "toward"} the paddle side (${fmtNum(Math.abs(yaw))} N·m), so you switch about ` +
-    `every ${fmtNum(r.strokesPerSide, 1)} strokes and lose ${fmtNum((1 - r.switchDuty) * 100, 1)}% of your paddling time to switches.`;
+    `every ${fmtNum(r.strokesPerSide, 1)} strokes and lose ${fmtNum((1 - r.switchDuty) * 100, 1)}% of your paddling time to switches. ` +
+    `The boat wanders ±${fmtNum(r.headingWanderDeg, 1)}° off course, costing ${fmtNum((1 - r.courseFactor) * 100, 2)}% of its progress.`;
   const vert = Math.abs(lift) < 0.5 ? "Up and down push about cancels." :
     `${lift > 0 ? "Lifts the boat" : "Pulls the boat down"} by ${fmtNum(Math.abs(lift), 0)} N on average ` +
     `(${fmtNum(Math.abs(at.sinkMm), 1)} mm), ${lift > 0 ? "saving" : "costing"} ${fmtNum(Math.abs(sh.sink) * 100, 2)}% in hull drag.`;
@@ -1058,6 +1082,8 @@ function drawBoat(name, P, x, ph, maxF) {
   }
   return g;
 }
+// Both boats on the same settings.
+const sameBoats = () => Object.keys(S.DEFAULTS).every((k) => boats.a[k] === boats.b[k]);
 function drawView(svg, name, ph) {
   const v = VIEWS[name], vp = viewport(svg, v), P = vp.P;
   const bs = svg.dataset.boats.split("");
@@ -1075,10 +1101,16 @@ function drawView(svg, name, ph) {
     const c0 = P([1.6, 0, 0]), c1 = P([-1.6, 0, 0]);
     g += `<line class="centre" x1="${c0[0]}" y1="${c0[1]}" x2="${c1[0]}" y2="${c1[1]}"/>`;
   }
-  for (const x of bs) g += `<g class="${bs.length > 1 && x === "b" ? "overlay-b" : ""}">${drawBoat(name, P, x, ph, maxF)}</g>`;
+  // Overlay: B under A, or, when both boats are set the same, B dashed over
+  // A so the one paddle shows both colours.
+  const same = bs.length > 1 && sameBoats();
+  const order = same ? ["a", "b"] : bs;
+  for (const x of order)
+    g += `<g class="${bs.length > 1 && x === "b" ? (same ? "blend-b" : "overlay-b") : ""}">${drawBoat(name, P, x, ph, maxF)}</g>`;
   const label = { side: "bow →", end: "paddle side →", top: "↑ bow" }[name];
   g += `<text x="${vp.W - 8}" y="16" text-anchor="end">${label}</text>`;
-  g += bs.slice().sort().map((x, i) => `<text class="tag ${x}" x="${8 + i * 18}" y="17">${x.toUpperCase()}</text>`).join("");
+  g += same ? `<text class="tag a" x="8" y="17">A</text><text x="21" y="17">=</text><text class="tag b" x="31" y="17">B</text>`
+    : bs.slice().sort().map((x, i) => `<text class="tag ${x}" x="${8 + i * 18}" y="17">${x.toUpperCase()}</text>`).join("");
   svg.innerHTML = g;
 }
 
