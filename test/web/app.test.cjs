@@ -193,6 +193,32 @@ function liveHex(seq, tMs, inDrive, force) {
     if (shotDir) await page.screenshot({ path: path.join(shotDir, `dashboard-${scheme}.png`), fullPage: true });
     await page.mouse.move(0, 0);
 
+    // ------------------------------------------------ live / held curve
+    const push = (inDrive, f) => page.evaluate((h) => window.__mock.pushLive(h), liveHex(seq++, (t += 50), inDrive, f));
+    const pressedLive = () => page.$eval("#curve-live", (e) => e.getAttribute("aria-pressed"));
+    check("force curve is live by default", (await pressedLive()) === "true" &&
+          (await page.textContent("#curve-sub")).startsWith("Live"));
+    for (let k = 0; k <= 5; k++) await push(true, 240 * Math.sin(Math.PI * k / 12));
+    await page.waitForTimeout(100);
+    check("live: the stroke in progress draws, with a now dot", (await page.$$("#now-dot")).length === 1 &&
+          (await page.textContent("#now-label")) === `now ${Math.round(240 * Math.sin(Math.PI * 5 / 12))} N`,
+          await page.textContent("#now-label"));
+    await page.click("#curve-live");
+    await page.waitForTimeout(50);
+    check("held: shows the last completed stroke, no now dot", (await pressedLive()) === "false" &&
+          (await page.$$("#now-dot")).length === 0 && (await page.textContent("#chart text.peak-label")) === "peak 200 N" &&
+          (await page.textContent("#curve-sub")).startsWith("Held"));
+    for (let k = 6; k <= 12; k++) await push(true, 240 * Math.sin(Math.PI * k / 12));
+    await page.waitForTimeout(100);
+    check("held: doesn't move while you paddle", (await page.textContent("#chart text.peak-label")) === "peak 200 N");
+    await push(false, 1);
+    await page.waitForTimeout(100);
+    check("held: updates when the stroke completes", (await page.textContent("#chart text.peak-label")) === "peak 240 N",
+          await page.textContent("#chart text.peak-label"));
+    check("held choice remembered", (await page.evaluate(() => localStorage.getItem("ppm.curveLive"))) === "0");
+    await page.click("#curve-live");
+    check("back to live", (await pressedLive()) === "true" && (await page.evaluate(() => localStorage.getItem("ppm.curveLive"))) === "1");
+
     // ------------------------------------------------------ setup / commands
     await page.click('nav button[data-tab="setup"]');
     await page.click('button[data-cmd="tare"]');

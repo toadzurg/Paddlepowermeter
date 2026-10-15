@@ -106,6 +106,12 @@
 
   .chart-card { margin-top: 10px; position: relative; }
   .chart-card h2 { font-size: 15px; margin: 0; }
+  .chart-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  /* On/off toggle: outlined, with a tick and tint when on. */
+  button.toggle { min-height: 36px; padding: 6px 12px; font-size: 14px; }
+  button.toggle[aria-pressed="true"] { border: 2px solid var(--series-1); padding: 5px 11px;
+    background: color-mix(in srgb, var(--series-1) 16%, var(--surface-1)); }
+  button.toggle[aria-pressed="true"]::before { content: "✓ "; color: var(--series-1); }
   svg.chart { display: block; width: 100%; height: auto; margin-top: 6px; touch-action: pan-y; }
   svg.chart text { fill: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
   svg.chart .grid line { stroke: var(--grid); stroke-width: 1; }
@@ -115,6 +121,8 @@
   svg.chart .latest { fill: none; stroke: var(--series-1); stroke-width: 2.5;
                       stroke-linejoin: round; stroke-linecap: round; }
   svg.chart .peak { fill: var(--series-1); stroke: var(--surface-1); stroke-width: 2; }
+  svg.chart .now { fill: var(--series-1); stroke: var(--surface-1); stroke-width: 2.5; }
+  svg.chart text.now-label { fill: var(--text-primary); font-weight: 600; }
   svg.chart text.peak-label { fill: var(--text-primary); font-weight: 600; }
   svg.chart .cross { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
   svg.stroke-view { display: block; width: 100%; height: auto; margin-top: 6px; }
@@ -241,8 +249,11 @@
     </div>
 
     <div class="card chart-card">
-      <h2>Force curve</h2>
-      <div class="sub">Latest stroke in blue, previous 4 in grey</div>
+      <div class="chart-head">
+        <h2>Force curve</h2>
+        <button class="secondary toggle" id="curve-live" aria-pressed="true">Live</button>
+      </div>
+      <div class="sub" id="curve-sub">Latest stroke in blue, previous 4 in grey</div>
       <div id="chart-empty" class="empty">Force curves appear here once you start paddling.</div>
       <svg class="chart" id="chart" viewBox="0 0 360 220" role="img"
            aria-label="Force against time for the latest strokes" hidden></svg>
@@ -372,7 +383,7 @@
 // scripts into the page, and shared global names would break one or both.
 (() => {
 "use strict";
-const APP_VERSION = "2026-10-15.7";
+const APP_VERSION = "2026-10-15.8";
 // Must match src/BleProtocol.h.
 const UUID = {
   service: "7e1a0001-5c3b-4c2e-9a77-0f5d3e2b9c10",
@@ -422,6 +433,7 @@ const $ = (id) => document.getElementById(id);
 const state = {
   device: null, chars: {}, unlocked: false, demo: null,
   lastLiveAt: 0, clockMs: 0, lastT: null,
+  curveLive: store.get("ppm.curveLive") !== "0",   // force curve draws as you paddle
   strokes: [],            // recent stroke packets, newest first
   curve: null,            // force curve being recorded
   curves: [],             // finished curves, newest first
@@ -454,12 +466,13 @@ function onLive(p) {
   // Packets lost mid-drive (radio dropout) would draw a stretched, false
   // curve: drop that stroke's curve instead.
   if (gapMs > 300) state.curve = null;
+  let completed = false;   // a stroke's curve finished with this packet
 
   if (p.inDrive) {
     if (!state.curve) state.curve = { t0: t, pts: [] };
     state.curve.pts.push([t - state.curve.t0, p.force]);
   } else if (state.curve) {
-    if (state.curve.pts.length >= 3) state.curves.unshift(state.curve.pts);
+    if (state.curve.pts.length >= 3) { state.curves.unshift(state.curve.pts); completed = true; }
     state.curves.length = Math.min(state.curves.length, 5);
     state.curve = null;
   }
@@ -482,7 +495,9 @@ function onLive(p) {
     setValue("v-speed", "—", "km/h");
     $("v-speed-sub").textContent = "no impeller signal";
   }
-  scheduleChart();
+  // Held (Live off): redraw only when a stroke completes, so the curve
+  // stays still to read and hover.
+  if (state.curveLive || completed) scheduleChart();
 }
 
 function onStroke(s) {
@@ -531,14 +546,20 @@ function scheduleChart() {
 // The chart's coordinate space matches its on-screen size, so 12px text is
 // 12px on a phone and on a laptop.
 let W = 360, H = 220;
-const M = { l: 40, r: 12, t: 18, b: 28 };
+const M = { l: 52, r: 12, t: 18, b: 28 };
 function niceStep(max, n) {
   const raw = max / n, mag = 10 ** Math.floor(Math.log10(raw));
   return [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw);
 }
 function drawChart() {
-  const latest = state.curve && state.curve.pts.length >= 2 ? state.curve.pts : state.curves[0];
-  const history = (state.curve ? state.curves : state.curves.slice(1)).slice(0, 4);
+  // Live: the stroke in progress draws as it happens. Held: completed
+  // strokes only.
+  const drawing = state.curveLive && state.curve && state.curve.pts.length >= 2;
+  const latest = drawing ? state.curve.pts : state.curves[0];
+  const history = (drawing ? state.curves : state.curves.slice(1)).slice(0, 4);
+  $("curve-sub").textContent = state.curveLive
+    ? "Live: the stroke draws as you paddle. Latest in blue, previous 4 in grey"
+    : "Held: the last completed stroke in blue, previous 4 in grey";
   const svg = $("chart");
   // `hidden` is an HTML property; on an <svg> only the attribute works.
   svg.toggleAttribute("hidden", !latest);
@@ -562,21 +583,24 @@ function drawChart() {
     g += `<line x1="${M.l}" x2="${W - M.r}" y1="${y(f)}" y2="${y(f)}"/>`;
   g += "</g>";
   let labels = "";
+  // The unit rides on the top tick.
   for (let f = 0; f <= yMax + 1e-9; f += yStep)
-    labels += `<text x="${M.l - 8}" y="${y(f) + 4}" text-anchor="end">${Math.round(f)}</text>`;
+    labels += `<text x="${M.l - 8}" y="${y(f) + 4}" text-anchor="end">${Math.round(f)}${f + yStep > yMax + 1e-9 ? " N" : ""}</text>`;
   for (let t = 0; t <= xMax + 1e-9; t += xStep)
     labels += `<text x="${x(t)}" y="${H - M.b + 18}" text-anchor="middle">${+t.toFixed(2)}s</text>`;
-  labels += `<text x="${M.l - 8}" y="${M.t - 6}" text-anchor="end">N</text>`;
 
   const peak = latest.reduce((a, p) => (p[1] > a[1] ? p : a), latest[0]);
+  // While the force is still rising the peak isn't known yet: just the now dot.
+  const showPeak = !drawing || peak !== latest[latest.length - 1];
   const px = x(peak[0]), py = y(peak[1]);
   const anchor = px > W - 100 ? "end" : "start";
   svg.innerHTML = g + labels +
     `<line class="baseline" x1="${M.l}" x2="${W - M.r}" y1="${y(0)}" y2="${y(0)}"/>` +
     history.slice().reverse().map((c) => `<path class="history" d="${path(c)}"/>`).join("") +
     `<path class="latest" d="${path(latest)}"/>` +
-    `<circle class="peak" cx="${px}" cy="${py}" r="5"/>` +
-    `<text class="peak-label" x="${px + (anchor === "start" ? 10 : -10)}" y="${Math.max(14, py - 8)}" text-anchor="${anchor}">peak ${Math.round(peak[1])} N</text>` +
+    (showPeak ? `<circle class="peak" cx="${px}" cy="${py}" r="5"/>` +
+      `<text class="peak-label" x="${px + (anchor === "start" ? 10 : -10)}" y="${Math.max(14, py - 8)}" text-anchor="${anchor}">peak ${Math.round(peak[1])} N</text>` : "") +
+    (drawing ? nowMark(latest[latest.length - 1], x, y) : "") +
     `<line class="cross" id="cross" y1="${M.t}" y2="${H - M.b}" visibility="hidden"/>` +
     `<rect x="${M.l}" y="${M.t}" width="${W - M.l - M.r}" height="${H - M.t - M.b}" fill="transparent" id="hit"/>`;
   state.chartScale = { x, y, xMax, latest };
@@ -584,6 +608,21 @@ function drawChart() {
   const tbody = $("curve-table").tBodies[0];
   tbody.innerHTML = latest.map((p) => `<tr><td>${p[0].toFixed(2)}</td><td>${p[1].toFixed(0)}</td></tr>`).join("");
 }
+
+// Where the blade's force is right now, while a stroke is drawing.
+function nowMark(p, x, y) {
+  const cx = x(p[0]), cy = y(p[1]);
+  return `<circle class="now" id="now-dot" cx="${cx}" cy="${cy}" r="6"/>` +
+    `<text class="now-label" id="now-label" x="${W - M.r}" y="${M.t + 4}" text-anchor="end">now ${Math.round(p[1])} N</text>`;
+}
+function setCurveLive(on) {
+  state.curveLive = on;
+  store.set("ppm.curveLive", on ? "1" : "0");
+  $("curve-live").setAttribute("aria-pressed", String(on));
+  drawChart();
+}
+$("curve-live").addEventListener("click", () => setCurveLive(!state.curveLive));
+$("curve-live").setAttribute("aria-pressed", String(state.curveLive));
 
 // Hover / tap readout for the latest curve.
 function showTip(ev) {
