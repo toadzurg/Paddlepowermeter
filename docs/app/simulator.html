@@ -136,6 +136,7 @@
   details { font-size: 14px; color: var(--text-secondary); margin-top: 10px; }
   details summary { cursor: pointer; font-weight: 600; color: var(--text-primary); }
   details p { margin: 6px 0; }
+  details ul { margin: 6px 0; padding-left: 18px; } details li { margin: 4px 0; }
 
   /* Views */
   .views { display: grid; gap: 14px; margin-top: 10px; }
@@ -326,8 +327,7 @@
       <!-- ----------------------------------------------------- race -->
       <section class="card" id="race-card">
         <h2>Race</h2>
-        <div class="sub">Boat A against Boat B in the same conditions, each holding a steady speed at its
-          paddler's effort (starts and turns aren't timed).</div>
+        <div class="sub">A against B in the same conditions, at steady speed. Starts and turns aren't timed.</div>
         <div class="race-cols">
           <section>
             <h3>Paddlers</h3>
@@ -340,9 +340,7 @@
                 <div class="row chips" id="line-a" role="group" aria-label="Boat A line" style="margin-top:6px"></div></div>
               <div class="ctl"><div class="top"><span><span class="b-dot"></span>Boat B line</span></div>
                 <div class="row chips b" id="line-b" role="group" aria-label="Boat B line" style="margin-top:6px"></div></div>
-              <div class="help">Middle: deep, fast water. Edges: along the banks and the inside of bends,
-                where the current is slack and the path shorter, but the water is shallow. Best: the fastest
-                line for each leg.</div>
+              <div class="help">Middle: deep, fast water. Edges: slack current and shorter bends, but shallow. Best: fastest line each leg.</div>
             </div>
           </section>
           <section>
@@ -356,13 +354,11 @@
                 <input type="range" id="width" min="20" max="200" step="5" value="60" aria-label="River width"></div>
               <div class="ctl"><label class="top"><span>Bends</span><output id="o-bends"></output></label>
                 <input type="range" id="bends" min="0" max="720" step="45" value="180" aria-label="Bends per km">
-                <div class="help">How much the river turns. The inside of a bend is shorter but shallow and slack;
-                  the outside is deep and fast.</div></div>
+                <div class="help">Inside of a bend: shorter but shallow and slack. Outside: deep and fast.</div></div>
             </div>
             <div class="ctl"><label class="top"><span id="l-depth">Water depth</span><output id="o-depth"></output></label>
               <input type="range" id="depth" min="0.3" max="5" step="0.1" value="5" aria-label="Water depth">
-              <div class="help">Below about half the hull's length the boat's wave slows and drags it back;
-                under 2 ft it gets much harder.</div></div>
+              <div class="help">Under about 2.8 m the boat starts to drag more; under 2 ft, much more.</div></div>
           </section>
           <section>
             <h3>Wind and current</h3>
@@ -370,8 +366,7 @@
               <input type="range" id="wind" min="0" max="40" step="1" value="0" aria-label="Wind speed"></div>
             <div class="ctl"><label class="top"><span>Wind from</span><output id="o-windDir"></output></label>
               <input type="range" id="windDir" min="0" max="180" step="15" value="0" aria-label="Wind direction">
-              <div class="help">A crosswind makes the boat crab and turn into the wind, so you take more
-                strokes on the windward side.</div></div>
+              <div class="help">A crosswind turns the bow into the wind: more strokes on the windward side.</div></div>
             <div class="ctl"><label class="top"><span id="l-current">Current</span><output id="o-current"></output></label>
               <input type="range" id="current" min="-10" max="10" step="0.5" value="0" aria-label="Current"></div>
           </section>
@@ -384,6 +379,9 @@
               <div class="sub" id="s-b"></div><div class="cond" id="c-b"></div></div>
           </div>
           <div class="verdict" id="verdict"></div>
+          <details id="race-curve-d"><summary id="race-curve-sum"></summary>
+            <svg class="curve" id="race-curve" role="img" aria-label="Force per stroke for each boat at its race effort"></svg>
+          </details>
           <svg class="race river-only" id="river-map" role="img" aria-label="River map with each boat's line" hidden></svg>
           <svg class="race" id="race-view" role="img" aria-label="Race between boat A and boat B"></svg>
           <div class="row" style="margin-top:8px"><button class="primary" id="race-start">Start race</button></div>
@@ -406,45 +404,28 @@
       <details class="group" open><summary>Paddle</summary><div id="ctl-paddle"></div>
         <div class="ctl"><div class="top"><span>Blade force</span></div>
           <div class="row chips" id="lift-mode" role="group" aria-label="Blade force model" style="margin-top:6px"></div>
-          <div class="help">With lift: a flat blade's force stays square to its face even when the water meets it at
-            an angle (the plate's sine law), so a blade slicing sideways still pushes hard. Drag only counts just the
-            water coming straight at the face, a stricter bound.</div></div>
+          <div class="help">With lift: the blade still pushes hard when the water hits it at an angle. Drag only ignores that.</div></div>
       </details>
       <details class="group"><summary>Paddler</summary><div id="ctl-paddler"></div></details>
       <details class="group"><summary>Switching sides</summary><div id="ctl-switch"></div></details>
       <details>
-        <summary>How this is calculated</summary>
-        <p>The paddle swings about a pivot point on the shaft. Your top hand rises or drops so
-          the blade stays buried to the throat through the drive, as good technique does, so
-          strokes differ by direction and placement rather than by blade depth.</p>
-        <p>Water pushes on the blade face with a force that grows with the square of the blade's speed
-          through the water. Because the boat moves too, the water meets the blade at an angle; a flat
-          blade's force stays square to its face, and at an angle it is the plate's sine law (Hoerner), so
-          part of it is lift. Turning the blade (pitch) changes that angle. "Drag only" counts just the
-          water coming straight at the face. The boat settles where the average forward push equals hull drag. The
-          hull is a C1 marathon canoe, calibrated from Shawn Burke's coast-down measurement of a
-          USCA C-1 (The Science of Paddling, Part 14) plus wave drag at race pace.</p>
-        <p>Pushing off the boat's centreline turns it: paddling on the right turns the bow left.
-          You correct by switching sides when the boat is off by the set heading; each switch loses
-          part of a stroke. A stroke that turns the boat more means more switches.</p>
-        <p>Sideways push slows you too: the hull resists it by crabbing slightly, like a keel,
-          which creates drag. The push comes in pulses, so the boat surges; drag grows with the
-          square of speed, so uneven speed costs more, and more at slower rates.</p>
-        <p>Up and down push: a blade angled forward at the catch lifts the boat; angled back at
-          the exit it pulls the boat down. The bent shaft shifts that balance toward the exit. The
-          average changes how deep the boat sits, and the swing bounces it, making waves.</p>
-        <p>River (Burke, Parts 18 and 20): current and depth are greatest mid-channel and fall to
-          the banks; in a bend the outside is deep and fast and the inside a shallow, slack bar. A
-          line along the edges meets less current and cuts the inside of bends, but in shallower
-          water, and crosses the river between bends. Upstream that usually wins; downstream the
-          middle does.</p>
-        <p>Race conditions: air drag changes with the air speed past you; a crosswind's side push
-          makes the hull crab and turns the bow into the wind, so switching becomes lopsided;
-          current adds to your speed over the ground; shallow water slows the boat's own wave so it
-          drags harder (Burke, Part 4).</p>
-        <p>This is a simplified model for comparing techniques. It doesn't model waves, the
-          blade's lift, or your body moving in the boat. Absolute speeds are approximate;
-          differences between strokes are the useful part.</p>
+        <summary>How this works</summary>
+        <ul>
+          <li><b>Blade:</b> pivots on the shaft and stays buried to the throat. Its force grows with
+            the square of its speed through the water. The water hits it at an angle, so part of the
+            force is lift.</li>
+          <li><b>Boat:</b> a C1 marathon hull, calibrated from a coast-down test. Speed settles where
+            the average forward push equals drag.</li>
+          <li><b>Steering:</b> off-centre pushes turn the boat. Switching sides fixes it but costs part
+            of a stroke each time, and the zigzag costs distance.</li>
+          <li><b>Other losses:</b> sideways push makes the hull crab, speed surges through each stroke,
+            and the blade pushes the boat up or down.</li>
+          <li><b>Race:</b> wind, current, shallow water, and in a river the current across the channel
+            and the inside of bends.</li>
+        </ul>
+        <p>A simplified model for comparing strokes. It treats the flow as steady and ignores chop,
+          wakes, your body moving and your strength in each position. Absolute speeds are rough; the
+          differences are what count.</p>
       </details>
     </aside>
   </div>
@@ -502,13 +483,13 @@ const CONTROLS = [
     help: "Which way and how far the blade is angled off the shaft." },
   { group: "ctl-paddle", key: "pitchDeg", label: "Blade pitch", min: -30, max: 30, step: 1, unit: "°",
     fmt: (v) => v === 0 ? "square" : `${Math.abs(v)}° face turned ${v > 0 ? "out" : "in, toward the hull"}`,
-    help: "The blade turned about the shaft. Square pushes straight back; turned, the blade slices through the water and uses lift." },
+    help: "Square pushes straight back. Turned, the blade slices and uses lift." },
   { group: "ctl-paddler", key: "handOutM", label: "Top hand from centreline", min: 0.15, max: 0.9, step: 0.01, unit: " m",
     help: "The gunwale is about 0.36 m out on a C1." },
   { group: "ctl-paddler", key: "handTravelM", label: "Hand travel during the drive", min: 0, max: 0.4, step: 0.01, unit: " m",
     help: "How far the pivot moves aft as you pull." },
   { group: "ctl-paddler", key: "rateSpm", label: "Stroke rate", min: 30, max: 90, step: 1, unit: " spm",
-    help: "At the same effort, a slower rate means bigger, further-apart pulls, so the boat surges more." },
+    help: "Same effort at a slower rate: bigger pulls, more surge." },
   { group: "ctl-paddler", key: "driveFraction", label: "Time in the drive", min: 0.3, max: 0.7, step: 0.05, unit: "",
     fmt: (v) => `${Math.round(v * 100)}% of each stroke`,
     help: "A longer drive moves more water more gently: lower peak force, less slip." },
@@ -516,7 +497,7 @@ const CONTROLS = [
     help: "Heavier sits deeper, so more drag." },
   { group: "ctl-switch", key: "switchStrokes", label: "Strokes per side", min: 0, max: 20, step: 1, unit: "",
     fmt: (v) => v === 0 ? "auto, by heading" : `${v} stroke${v === 1 ? "" : "s"}`,
-    help: "Set how many strokes you take before switching; the boat then wanders off course as far as it must. Fewer means more time lost switching, more means a wider zigzag. In a crosswind (race) this is the average: you take more on the windward side to hold course. Auto switches by heading instead." },
+    help: "Fewer: more time lost switching. More: a wider zigzag. In a crosswind it's the average; you take more on the windward side. 0 switches by heading." },
   { group: "ctl-switch", key: "switchHeadingDeg", label: "Switch when off course by", min: 1, max: 10, step: 0.5, unit: "°",
     fmt: (v) => `±${v}°`, help: "How far you let the boat turn before switching sides (auto)." },
   { group: "ctl-switch", key: "switchLossStrokes", label: "Time lost per switch", min: 0, max: 1, step: 0.05, unit: "",
@@ -705,8 +686,8 @@ function renderCurveModes() {
     $("curve-mode").append(b);
   }
 }
-function curveOf(r) {
-  const scale = Math.pow(effortW / Math.max(1e-9, r.paddlerPower), 2 / 3);
+function curveOf(r, watts = effortW) {
+  const scale = Math.pow(watts / Math.max(1e-9, r.paddlerPower), 2 / 3);
   const Td = (60 / r.params.rateSpm) * r.params.driveFraction, Td0 = r.samples[r.samples.length - 1].t || 1;
   const pts = r.samples.map((q) => ({ t: (q.t / Td0) * Td, force: q.F * scale, forward: Math.max(0, q.thrust[0]) * scale }));
   let impulse = 0;
@@ -933,6 +914,7 @@ function updateRace() {
   $("c-a").textContent = legNote(race.legsA[0], outback && race.legsA[0].river ? race.legsA : null);
   $("c-b").textContent = legNote(race.legsB[0], outback && race.legsB[0].river ? race.legsB : null);
   if (riverOn) drawRiver(width, bends, current);
+  drawRaceCurve(effA, effB);
   const gap = Math.abs(race.timeGap), dist = Math.abs(race.distanceGap);
   const winner = race.timeGap > 0 ? "A" : "B";
   $("verdict").textContent =
@@ -952,6 +934,34 @@ const raceEnd = () => {
   const done = [race.tA, race.tB].filter(isFinite);
   return done.length ? Math.max(...done) : 3600;
 };
+// Force per stroke at each boat's race effort (the Force curve card uses the
+// one comparison effort). Folded away by default; a summary line says the peaks.
+function drawRaceCurve(effA, effB) {
+  const C = { a: curveOf(results.a, effA), b: curveOf(results.b, effB) };
+  $("race-curve-sum").textContent =
+    `Force per stroke · peak A ${fmtNum(C.a.peakForce, 0)} N, B ${fmtNum(C.b.peakForce, 0)} N`;
+  const svg = $("race-curve");
+  if (!$("race-curve-d").open) return;
+  const same = C.a.pts.length === C.b.pts.length && Math.abs(C.a.Td - C.b.Td) < 1e-9 &&
+    C.a.pts.every((p, i) => Math.abs(p.force - C.b.pts[i].force) < 0.5);
+  svg.classList.toggle("same", same);
+  const W = Math.max(280, Math.round(svg.getBoundingClientRect().width)) || 320, H = 130;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const m = { l: 52, r: 12, t: 10, b: 24 }, pw = W - m.l - m.r, ph = H - m.t - m.b;
+  const tMax = Math.max(C.a.Td, C.b.Td), fMax = Math.max(1, C.a.peakForce, C.b.peakForce) * 1.08;
+  const ys = niceStep(fMax, 2), yTop = Math.ceil(fMax / ys) * ys;
+  const X = (t) => m.l + (t / tMax) * pw, Y = (f) => m.t + ph - (f / yTop) * ph;
+  let g = "";
+  for (let f = 0; f <= yTop + 1e-9; f += ys)
+    g += `<line class="${f === 0 ? "axis" : "grid"}" x1="${m.l}" x2="${W - m.r}" y1="${Y(f)}" y2="${Y(f)}"/>` +
+      `<text x="${m.l - 6}" y="${Y(f) + 4}" text-anchor="end">${fmtNum(f, 0)}${f + ys > yTop + 1e-9 ? " N" : ""}</text>`;
+  g += `<text x="${m.l}" y="${H - 6}">0</text><text x="${W - m.r}" y="${H - 6}" text-anchor="end">${fmtNum(tMax, 2)} s</text>`;
+  for (const x of ["a", "b"])
+    g += `<path class="ln ${x}" d="${C[x].pts.map((p, i) => `${i ? "L" : "M"}${X(p.t).toFixed(1)},${Y(p.force).toFixed(1)}`).join(" ")}"/>`;
+  svg.innerHTML = g;
+}
+$("race-curve-d").addEventListener("toggle", () => updateRace());
+
 // Top-down river map: a stretch of the river (two S-bends when it bends),
 // flowing per the current, with each boat's line on the first leg.
 function drawRiver(width, bends, current) {

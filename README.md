@@ -153,9 +153,8 @@ Efficiency is not capped at 100%. A reading above 100% means a calibration
 
 ### Impulse per stroke
 
-Every stroke also gets its forward impulse, the push along the boat's
-direction of travel added up over the drive (Burke, *The Science of
-Paddling*, Parts 25 and 33). It needs no impeller:
+Every stroke also gets its forward impulse: the push along the boat's
+direction of travel, added up over the drive. It needs no impeller:
 
 ```
 impulse    = ∫ F · cos(θ − β) dt   over the drive, N·s
@@ -163,11 +162,9 @@ duty       = drive time / stroke time
 mean push  = impulse / stroke time  (= the boat's drag at steady speed)
 ```
 
-Impulse is what changes the boat's momentum, so for the same stroke rate
-more impulse means more speed. Two strokes with the same power can differ:
-a long, gentle drive puts more impulse into the water than a short, hard
-one. `debug` prints impulse, drive time, duty and mean push. The app shows
-them, and `replay` adds them as CSV columns.
+At the same stroke rate, more impulse means more speed. A long, gentle
+drive can carry more impulse than a short, hard one at the same power.
+`debug`, the app and `replay` all show these.
 
 ## Web app
 
@@ -194,65 +191,24 @@ time (up to three devices).
   estimate does, and power follows the changing lever arm.
 
 **Stroke simulator** (`docs/app/simulator.html`, linked from the app)
-compares two strokes, Boat A and Boat B. Pick which boat the sliders edit,
-start from a preset (the one in use is highlighted), and copy or swap
-between them.
-- **Sliders:** pivot point, reach and exit angles, shaft lean, stroke
-  direction, sweep, top-hand position, hand travel, bend, rate, time in the
-  drive, weight and switching.
-- **Efficiency:** an A-vs-B table at a chosen effort, covering efficiency,
-  speed, forward push, strokes per side, turning moment and peak force. Two
-  breakdowns show where the power goes (moving the boat, slip, sideways
-  drag, surge and bounce) and which way the blade pushes.
-- **Force curve:** A and B through the drive at the comparison effort and
-  each boat's stroke rate, as blade force or forward push (the area under
-  forward push is the stroke's impulse). Hover for values; a table view is
-  included. **Live** traces each curve in step with the animated paddles.
-- **Blade lift:** the water meets the blade at an angle because the boat is
-  moving, and a flat blade's force stays square to its face (the plate's
-  sine law, Hoerner), so part of it is lift. Blade pitch turns the face
-  about the shaft. "Drag only" is a stricter bound for comparison. With
-  lift, a sweep that slices the blade sideways gains much more than a clean
-  vertical stroke; the model doesn't charge for strength in that position,
-  ventilation near the surface, or unsteady flow, so read that with care.
-- **Stroke views:** side, end and top, animated, shown split (A beside B),
-  overlaid, or one boat only. With both boats set the same, the overlay
-  and the force curve blend the two colours.
-- **Switching sides:** switch by heading (when the boat is a set angle off
-  course), or take a fixed number of strokes per side and let the heading
-  wander. Fewer strokes per side lose more time switching; more make a
-  wider zigzag, which costs progress along the course (about ψ²/6 for a
-  ±ψ swing). So each stroke has a best count.
-- **Race:** A against B at each paddler's effort.
-  - Course: point to point or there and back, over a chosen distance.
-  - Conditions: water depth, wind speed and direction, and current.
-  - Shallow water raises the hull's wave drag. A crosswind makes the boat
-    crab and turn into the wind, so you take more strokes on the windward
-    side (a strong one can out-turn the stroke).
-  - River: current and depth fall from mid-channel to the banks, and bends
-    have a deep, fast outside and a shallow, slack inside. Each boat picks a
-    line (middle, between, edges, or the best line for each leg), and a map
-    shows both. Edges meet less current and cut the corners, but in shallow
-    water and with crossings between bends.
+compares two strokes, Boat A and Boat B. Pick a boat, start from a preset,
+and move the sliders.
+- **Efficiency:** an A-vs-B table, where the power goes, and which way the
+  blade pushes.
+- **Force curve:** both boats through the drive. Hover for values, or turn
+  on Live to trace it with the animation.
+- **Stroke views:** side, end and top, split or overlaid.
+- **Blade:** bend, pitch, and lift on or off. With lift, a sweeping blade
+  gains a lot; that's untested on the water, so treat it with care.
+- **Switching sides:** by heading, or a fixed number of strokes per side.
+  Too few loses time switching; too many zigzags.
+- **Race:** A against B, point to point or there and back, with wind,
+  current, shallow water, or a river with bends. It also shows each boat's
+  force per stroke at its race effort.
 
-The physics: blade drag square to its motion, hull drag, hit-and-switch
-yaw, leeway drag from the sideways push, surge through each stroke, and the
-up and down push changing how deep the boat sits and bouncing it.
-
-Several pieces are checked against Shawn Burke's
-[The Science of Paddling](https://thescienceofpaddling.net/index):
-- the hull drag is calibrated from his coast-down of a USCA C-1 (Part 14);
-- the best bend for Caplan's measured stroke comes out at 12°, as he found (Part 11);
-- surge grows at slower rates for the same power (Parts 25 and 33);
-- there-and-back times with current match his formula (Part 7);
-- shallow water follows his wave-speed picture (Part 4), applied as
-  Schlichting's intermediate speed;
-- the river's current across the channel and corner cutting follow
-  Parts 18 and 20.
-
-It is a simplified drag model, good for comparing techniques rather than
-predicting exact speeds. The switching assumptions (how far off course
-before you switch, time lost per switch) are adjustable on the page.
+Hull drag comes from a coast-down test of a USCA C-1. The rest follows
+standard hydrodynamics. It's a simplified model: use it to compare
+strokes, not to predict exact times.
 
 **Opening it:**
 - iPhone: open the link in the free **Bluefy** browser. Safari, Chrome and
