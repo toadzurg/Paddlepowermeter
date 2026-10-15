@@ -21,4 +21,7 @@ status=0
 # 30 s at 100 Hz = 3000 records
 python3 ../../tools/log2csv.py build/test_log.bin -o build/test_log.csv \
   2>/dev/null && python3 check_csv.py build/test_log.csv 3000 || status=1
+python3 ../../tools/log2csv.py build/test_log.bin.v1 -o build/test_log_v1.csv 2>/dev/null \
+  && [ "$(wc -l < build/test_log_v1.csv)" -eq 6 ] && echo "  [ ok ] log2csv reads a version-1 log" \
+  || { echo "  [FAIL] log2csv reads a version-1 log"; status=1; }
 exit $status

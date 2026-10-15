@@ -76,6 +76,8 @@ logfmt::LogHeader makeLogHeader() {
   h.pulsesPerM = pulsesPerM;
   h.startMillis = millis();
   strncpy(h.firmware, __DATE__, sizeof h.firmware - 1);
+  h.bladeBendDeg = cfg::BLADE_BEND_DEG;
+  h.shaftBendPosM = cfg::SHAFT_BEND_POS_M;
   return h;
 }
 
@@ -286,6 +288,7 @@ void sendAppPackets(uint32_t nowMs, const BoatSpeed &b) {
     p.boatSpeedCms = ble::toU16(b.speedMps * 100);
     p.pivotMm = ble::toI16(model.pivotPosition() * 1000);
     p.leverMm = ble::toI16(model.leverArm() * 1000);
+    p.shaftAngleMrad = ble::toI16(model.shaftAngle() * 1000);
     sendLive(p);
   }
   if (model.strokeCount() != lastStrokeSent) {

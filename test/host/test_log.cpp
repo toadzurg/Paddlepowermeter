@@ -41,6 +41,8 @@ int main(int argc, char **argv) {
   h.sampleHz = cfg::SAMPLE_HZ;
   h.imu2PosM = cfg::IMU2_POS_M;
   h.bladeCopPosM = cfg::BLADE_COP_POS_M;
+  h.bladeBendDeg = cfg::BLADE_BEND_DEG;
+  h.shaftBendPosM = cfg::SHAFT_BEND_POS_M;
   h.pivotPriorPosM = cfg::PIVOT_PRIOR_POS_M;
   const uint8_t axis[2][3] = {{1, 0, 2}, {2, 0, 1}};
   const int8_t sign[2][3] = {{-1, 1, 1}, {1, -1, 1}};
@@ -169,6 +171,28 @@ int main(int argc, char **argv) {
   CHECK_NEAR("replay stroke power vs truth (W)", replayMean, truePower,
              0.05 * truePower);
   CHECK_NEAR("power split from logged impeller", replaySplit, 1, 0);
+
+  // --- A version-1 log (before bent shafts) still opens, as straight ----
+  {
+    std::string v1 = std::string(path) + ".v1";
+    logfmt::LogHeader old = h;
+    old.version = 1;
+    old.headerSize = logfmt::V1_HEADER_SIZE;
+    std::FILE *g = std::fopen(v1.c_str(), "wb");
+    std::fwrite(&old, logfmt::V1_HEADER_SIZE, 1, g);
+    logfmt::LogRecord rr = {};
+    rr.flags = logfmt::F_IMU1_VALID;
+    for (int i = 0; i < 5; i++) std::fwrite(&rr, sizeof rr, 1, g);
+    std::fclose(g);
+    LogReader v1reader;
+    std::string e;
+    bool ok = v1reader.open(v1.c_str(), e);
+    CHECK_NEAR("version-1 log opens", ok, 1, 0);
+    CHECK_NEAR("version-1 log reads as straight paddle", v1reader.header().bladeBendDeg, 0, 0);
+    int nrec = 0;
+    while (ok && v1reader.next(rr)) nrec++;
+    CHECK_NEAR("version-1 records aligned after shorter header", nrec, 5, 0);
+  }
 
   std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "PASSED",
               failures, failures == 1 ? "" : "s");

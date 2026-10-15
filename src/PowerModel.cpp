@@ -7,6 +7,21 @@ namespace {
 constexpr float INST_P_SMOOTH = 0.2f;   // EMA weight for displayed inst. power
 constexpr float MAX_DT = 0.1f;          // larger gaps reset the filters
 constexpr float MIN_LEVER_M = 0.1f;
+constexpr float DEG2RAD = 0.017453292f;
+
+// Unit normal of the power face in the paddle frame (X shaft, Y power face).
+// A blade bent by β toward the bow runs along (cos β, −sin β); its power
+// face normal is (sin β, cos β).
+struct BladeNormal { float x, y; };
+BladeNormal bladeNormal() {
+  const float b = cfg::BLADE_BEND_DEG * DEG2RAD;
+  return {sinf(b), cosf(b)};
+}
+}
+
+float PowerModel::leverArmFor(float pivot) {
+  const float b = cfg::BLADE_BEND_DEG * DEG2RAD;
+  return cfg::BLADE_COP_FROM_BEND_M + (cfg::SHAFT_BEND_POS_M - pivot) * cosf(b);
 }
 
 PowerModel::PowerModel()
@@ -15,7 +30,7 @@ PowerModel::PowerModel()
              cfg::PIVOT_PRIOR_SIGMA_M * cfg::PIVOT_PRIOR_SIGMA_M,
              cfg::PIVOT_DRIFT_M2_S),
     ahrs_(cfg::AHRS_BETA),
-    leverArm_(cfg::BLADE_COP_POS_M - cfg::PIVOT_PRIOR_POS_M),
+    leverArm_(leverArmFor(cfg::PIVOT_PRIOR_POS_M)),
     smInstP_(0), prevForceN_(0),
     inDrive_(false), driveStartMs_(0), driveEnergy_(0),
     havePrev_(false), prevDriveStartMs_(0),
@@ -92,7 +107,7 @@ void PowerModel::update(const PaddleSample &s) {
   if (s.forceN > cfg::STROKE_START_N) updatePivot(s, omega, rateKf_.accel());
   pivotKf_.clamp(cfg::PIVOT_MIN_POS_M, cfg::PIVOT_MAX_POS_M);
 
-  leverArm_ = cfg::BLADE_COP_POS_M - pivotKf_.value();
+  leverArm_ = leverArmFor(pivotKf_.value());
   if (leverArm_ < MIN_LEVER_M) leverArm_ = MIN_LEVER_M;
 
   // --- Power ---------------------------------------------------------------
@@ -101,18 +116,29 @@ void PowerModel::update(const PaddleSample &s) {
   smInstP_ += INST_P_SMOOTH * (instP - smInstP_);
 
   // Useful (propulsive) power is the forward component of the blade force
-  // times boat speed. The power face moves along +Y, so the force's
-  // horizontal fraction is cosθ = √(1 − up_y²). This assumes the blade moves
-  // straight aft; sweep or steering strokes slightly overstate it.
+  // times boat speed. The force acts along the power face normal n, so its
+  // horizontal fraction is √(1 − (n·up)²): cos(θ − β) for a shaft at θ with
+  // a blade bent by β. This assumes the blade moves straight aft; sweep or
+  // steering strokes slightly overstate it.
   float usefulP = 0;
   if (s.boatSpeedValid) {
     float ux, uy, uz;
     ahrs_.upVector(ux, uy, uz);
-    float cosTheta = sqrtf(fmaxf(0.0f, 1.0f - uy * uy));
-    usefulP = s.forceN * cosTheta * s.boatSpeedMps;
+    const BladeNormal n = bladeNormal();
+    float vertical = n.x * ux + n.y * uy;
+    float horizontal = sqrtf(fmaxf(0.0f, 1.0f - vertical * vertical));
+    usefulP = s.forceN * horizontal * s.boatSpeedMps;
   }
 
   updateStrokes(s, instP, usefulP, dt);
+}
+
+float PowerModel::shaftAngle() const {
+  // Paddle-frame "up" is (−cosθ, sinθ, ·) for a shaft at θ from vertical
+  // in the stroke plane (X toward blade, Y power face).
+  float ux, uy, uz;
+  ahrs_.upVector(ux, uy, uz);
+  return atan2f(uy, -ux);
 }
 
 void PowerModel::updatePivot(const PaddleSample &s, const float omega[3],

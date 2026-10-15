@@ -19,13 +19,22 @@ like a cycling power meter.
 ## How power is computed
 
 ```
-P = F · v_blade        v_blade = ω · L        L = x_blade − x_pivot
+P = F · ω · L        L = d + (x_throat − x_pivot) · cos β
 ```
 
-* **F**: force at the blade's centre of pressure, from the strain gauge.
+* **F**: force at the blade's centre of pressure, normal to the blade face,
+  from the strain gauge.
 * **ω**: shaft angular velocity about the stroke axis.
-* **L**: distance from the pivot (the point on the shaft that stays still
-  relative to the boat, usually near the top hand) to the blade.
+* **L**: distance from the pivot to the line the blade force acts along.
+  The pivot is the point on the shaft that stays still relative to the boat,
+  usually near the top hand. On a bent shaft (bend β, blade centre d past the
+  throat) that line is turned by β, so L is shorter than the distance to the
+  blade itself: about 1.7% at 12°. For a straight paddle (β = 0) it is simply
+  pivot to blade centre.
+
+The forward share of the blade force is likewise taken from the blade's
+angle, not the shaft's: `cos(θ − β)`. That is the point of a bent shaft: the
+blade is vertical while the shaft leans aft by β.
 
 Per stroke, `∫P dt` over the drive is the stroke energy. **Stroke power** is
 that energy divided by the full cycle time (drive + recovery), which is
@@ -62,7 +71,9 @@ accelerometer-difference α measurement and some pivot accuracy.
 1. Measure the geometry and set it in `src/Config.h`. Positions are metres
    along the shaft from IMU1, positive toward the blade:
    * `IMU2_POS_M`
-   * `BLADE_COP_POS_M` (roughly the middle of the blade)
+   * `SHAFT_BEND_POS_M` (the throat, where the blade leaves the shaft)
+   * `BLADE_COP_FROM_BEND_M` (throat to the middle of the blade, along the blade)
+   * `BLADE_BEND_DEG` (bent-shaft angle, e.g. 12; 0 for a straight paddle)
    * `PIVOT_PRIOR_POS_M` (where your top hand usually is)
 2. Check the IMU axes. With the identity map, each chip's X axis points at
    the blade and its Y axis points the way the power face moves. If yours
@@ -149,13 +160,27 @@ time (up to three devices).
 - **Paddle tab:**
   - stroke power, with a 5-stroke average
   - stroke rate, boat speed, efficiency (useful vs slip) and lever arm
+  - a stroke view: an animated side view of the paddle with the live pivot,
+    lever arm and blade force, drawn from the shaft angle the paddle sends
   - a live force curve: the latest stroke, with the previous four behind it
   - power, force, shaft rate, pivot, battery and SD-log status right now
 - **Setup tab:** buttons for tare, force calibration (enter the mass in kg),
   boat pairing and calibration, and SD logging, plus a console for any
   serial command.
 - **Try demo** shows the whole interface with simulated strokes, no paddle
-  needed.
+  needed. The demo's pivot wanders between strokes the way the paddle's
+  estimate does, and power follows the changing lever arm.
+
+**Stroke simulator** (`docs/app/simulator.html`, linked from the app): sliders
+for the pivot point, reach and exit angles, shaft lean, stroke direction,
+sweep, top-hand position, hand travel, bend and rate, with animated side,
+end and top views. It works out stroke efficiency (the share of your power
+that moves the boat) and splits the rest into slip and the cost of steering
+out the turn an off-centre stroke creates. It also gives boat speed at a
+chosen effort and the turning moment. Save a stroke to compare against it.
+
+It is a simplified drag model, good for comparing techniques rather than
+predicting exact speeds. Its steering assumptions are adjustable on the page.
 
 **Opening it:**
 - iPhone: open the link in the free **Bluefy** browser. Safari, Chrome and
@@ -270,6 +295,7 @@ lib/                     vendored sensor libraries
 tools/log2csv.py         log → CSV
 tools/replay/            re-run the power model over a log
 docs/app/index.html      web app (Bluetooth dashboard and setup)
+docs/app/simulator.html  stroke simulator (physics in stroke-sim.js)
 docs/BENCH_TEST.md       hardware bench test checklist
 test/host/               PC simulation tests
 test/web/                browser test of the web app (simulated paddle)

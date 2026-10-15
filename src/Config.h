@@ -19,12 +19,23 @@ namespace cfg {
 constexpr float SAMPLE_HZ = 100.0f;
 
 // --- Geometry (measure these on your paddle) -------------------------------
+// Defaults are roughly a 52" (1.32 m) marathon bent-shaft paddle with a 20"
+// blade and IMU1 about 22 cm below the grip.
 constexpr float IMU2_POS_M          = 0.30f;  // IMU2 position (must be != 0)
-constexpr float BLADE_COP_POS_M     = 0.95f;  // blade centre of pressure
+constexpr float SHAFT_BEND_POS_M    = 0.60f;  // throat: where the blade leaves the shaft
+constexpr float BLADE_COP_FROM_BEND_M = 0.25f;// along the blade, throat to its centre of pressure
+// Bent-shaft angle. Positive: blade angled toward the bow when the power
+// face faces you (the usual way to hold a bent shaft). 0 = straight paddle.
+constexpr float BLADE_BEND_DEG      = 12.0f;
 constexpr float PIVOT_PRIOR_POS_M   = -0.10f; // initial guess: about the top hand
 constexpr float PIVOT_PRIOR_SIGMA_M = 0.30f;
 constexpr float PIVOT_MIN_POS_M     = -0.60f; // physically plausible range
-constexpr float PIVOT_MAX_POS_M     = 0.60f;
+constexpr float PIVOT_MAX_POS_M     = 0.45f;
+
+// Blade centre of pressure measured along the paddle (shaft + blade), for
+// logs and display. The lever arm is NOT simply this minus the pivot when
+// the shaft is bent; see PowerModel::leverArmFor().
+constexpr float BLADE_COP_POS_M = SHAFT_BEND_POS_M + BLADE_COP_FROM_BEND_M;
 
 // --- Sensor axis → paddle axis mapping -------------------------------------
 // paddle[i] = sign[i] * sensor[axis[i]]. Identity means the chip's X points

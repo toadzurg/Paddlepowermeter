@@ -28,7 +28,8 @@ static void hex(std::FILE *f, const void *p, size_t n) {
 // Same conversions as sendAppPackets() in PaddlePowerMeter.ino.
 static ble::LivePacket live(uint16_t seq, uint16_t tMs, uint8_t flags,
                             float force, float omega, float power,
-                            float speed, float pivot, float lever) {
+                            float speed, float pivot, float lever,
+                            float angle) {
   ble::LivePacket p;
   p.seq = seq;
   p.tMs = tMs;
@@ -39,6 +40,7 @@ static ble::LivePacket live(uint16_t seq, uint16_t tMs, uint8_t flags,
   p.boatSpeedCms = ble::toU16(speed * 100);
   p.pivotMm = ble::toI16(pivot * 1000);
   p.leverMm = ble::toI16(lever * 1000);
+  p.shaftAngleMrad = ble::toI16(angle * 1000);
   return p;
 }
 
@@ -59,9 +61,10 @@ int main(int argc, char **argv) {
   // Expected values are what the app must show after decoding: the input
   // rounded to the packet's resolution, or the saturation limit.
   ble::LivePacket l1 = live(7, 65530, ble::LIVE_IN_DRIVE | ble::LIVE_BOAT_FRESH,
-                            187.34f, 3.14159f, 612.4f, 2.456f, -0.137f, 1.087f);
+                            187.34f, 3.14159f, 612.4f, 2.456f, -0.137f, 1.087f,
+                            -0.5236f);
   ble::LivePacket l2 = live(8, 15, ble::LIVE_LOGGING, -5000.0f, -2.5f, -40.0f,
-                            -1.0f, 0.25f, 0.7f);
+                            -1.0f, 0.25f, 0.7f, 0.61f);
   ble::StrokePacket s;
   s.count = 42;
   s.powerW = ble::toI16(173.4f);
@@ -77,12 +80,12 @@ int main(int argc, char **argv) {
   std::fprintf(f, ", \"expect\": {\"seq\": 7, \"tMs\": 65530, \"inDrive\": true, "
                   "\"boatFresh\": true, \"logging\": false, \"force\": 187.3, "
                   "\"omega\": 3.14, \"instPower\": 612, \"boatSpeed\": 2.46, "
-                  "\"pivot\": -0.137, \"lever\": 1.087}},\n    {\"hex\": ");
+                  "\"pivot\": -0.137, \"lever\": 1.087, \"shaftAngle\": -0.524}},\n    {\"hex\": ");
   hex(f, &l2, sizeof l2);
   std::fprintf(f, ", \"expect\": {\"seq\": 8, \"tMs\": 15, \"inDrive\": false, "
                   "\"boatFresh\": false, \"logging\": true, \"force\": -3276.8, "
                   "\"omega\": -2.5, \"instPower\": -40, \"boatSpeed\": 0, "
-                  "\"pivot\": 0.25, \"lever\": 0.7}}\n  ],\n  \"stroke\": [\n    {\"hex\": ");
+                  "\"pivot\": 0.25, \"lever\": 0.7, \"shaftAngle\": 0.61}}\n  ],\n  \"stroke\": [\n    {\"hex\": ");
   hex(f, &s, sizeof s);
   std::fprintf(f, ", \"expect\": {\"count\": 42, \"power\": 173, \"rate\": 50.04, "
                   "\"energy\": 207.5, \"useful\": 149, \"slip\": 25, "

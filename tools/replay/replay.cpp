@@ -58,10 +58,13 @@ int main(int argc, char **argv) {
   // settings, since their results won't match the paddle's.
   if (std::fabs(h.imu2PosM - cfg::IMU2_POS_M) > 1e-4f ||
       std::fabs(h.bladeCopPosM - cfg::BLADE_COP_POS_M) > 1e-4f ||
-      std::fabs(h.pivotPriorPosM - cfg::PIVOT_PRIOR_POS_M) > 1e-4f)
+      std::fabs(h.pivotPriorPosM - cfg::PIVOT_PRIOR_POS_M) > 1e-4f ||
+      std::fabs(h.bladeBendDeg - cfg::BLADE_BEND_DEG) > 1e-3f ||
+      std::fabs(h.shaftBendPosM - cfg::SHAFT_BEND_POS_M) > 1e-4f)
     std::fprintf(stderr, "note: log geometry differs from src/Config.h "
-                         "(log: IMU2 %.3f, blade %.3f, pivot prior %.3f m)\n",
-                 h.imu2PosM, h.bladeCopPosM, h.pivotPriorPosM);
+                 "(log: IMU2 %.3f, throat %.3f, blade %.3f, pivot prior %.3f m, "
+                 "bend %.1f deg)\n", h.imu2PosM, h.shaftBendPosM, h.bladeCopPosM,
+                 h.pivotPriorPosM, h.bladeBendDeg);
 
   SampleBuilder builder(h);
   builder.setForceCalibration(haveZero ? (int32_t)zero : h.forceZeroOffset,

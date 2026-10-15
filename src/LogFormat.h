@@ -15,7 +15,9 @@
 namespace logfmt {
 
 constexpr uint32_t MAGIC = 0x474C5050;  // "PPLG"
-constexpr uint16_t VERSION = 1;
+// Version 2 appended bladeBendDeg and shaftBendPosM. Version-1 logs are
+// still read, as straight paddles.
+constexpr uint16_t VERSION = 2;
 
 // LogRecord.flags
 constexpr uint8_t F_IMU1_VALID  = 1 << 0;
@@ -41,6 +43,9 @@ struct __attribute__((packed)) LogHeader {
   float pulsesPerM;         // impeller, 0 = uncalibrated
   uint32_t startMillis;     // millis() when the log started
   char firmware[16];        // build date
+  // --- version 2 ---
+  float bladeBendDeg;       // 0 = straight paddle
+  float shaftBendPosM;      // throat position along the shaft
 };
 
 struct __attribute__((packed)) LogRecord {
@@ -55,7 +60,8 @@ struct __attribute__((packed)) LogRecord {
   float forceN, omega, pivotPosM, instPowerW;
 };
 
-static_assert(sizeof(LogHeader) == 94, "LogHeader layout changed");
+static_assert(sizeof(LogHeader) == 102, "LogHeader layout changed");
+constexpr uint16_t V1_HEADER_SIZE = 94;
 static_assert(sizeof(LogRecord) == 81, "LogRecord layout changed");
 
 }  // namespace logfmt

@@ -17,11 +17,12 @@ import struct
 import sys
 
 MAGIC = 0x474C5050
-VERSION = 1
+VERSIONS = (1, 2)  # 2 appended blade_bend_deg and shaft_bend_pos_m
 
-HEADER = struct.Struct("<IHHHf3f6B6b6fiffI16s")
+HEADER = struct.Struct("<IHHHf3f6B6b6fiffI16s")   # version 1 fields
+HEADER_V2 = struct.Struct("<2f")                  # appended in version 2
 RECORD = struct.Struct("<IiB6f6ffI4f")
-assert HEADER.size == 94 and RECORD.size == 81  # matches LogFormat.h
+assert HEADER.size == 94 and HEADER_V2.size == 8 and RECORD.size == 81  # LogFormat.h
 
 F_IMU1, F_IMU2, F_FORCE, F_BOAT = 1, 2, 4, 8
 
@@ -44,11 +45,17 @@ def read_header(f):
     }
     if h["magic"] != MAGIC:
         sys.exit("not a paddle log (bad magic)")
-    if h["version"] != VERSION:
+    if h["version"] not in VERSIONS:
         sys.exit(f"unsupported log version {h['version']}")
     if h["record_size"] != RECORD.size:
         sys.exit("record size mismatch")
-    f.read(h["header_size"] - HEADER.size)  # skip newer header fields
+    extra = h["header_size"] - HEADER.size
+    if h["version"] >= 2:
+        h["blade_bend_deg"], h["shaft_bend_pos_m"] = HEADER_V2.unpack(f.read(HEADER_V2.size))
+        extra -= HEADER_V2.size
+    else:  # version 1 predates bent shafts
+        h["blade_bend_deg"], h["shaft_bend_pos_m"] = 0.0, h["blade_cop_pos_m"]
+    f.read(extra)  # skip fields from newer versions
     return h
 
 
