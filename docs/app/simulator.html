@@ -227,7 +227,9 @@
   .tip b { font-weight: 600; }
   table.data { border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; margin-top: 6px; }
   table.data th, table.data td { padding: 2px 10px 2px 0; text-align: right; }
-  svg.race { display: block; width: 100%; height: auto; margin-top: 6px; }
+  svg.race { display: block; width: 100%; height: auto; margin-top: 6px; touch-action: pan-y; }   /* pinch zooms the view, not the page */
+  #race-zoom { justify-content: flex-end; margin-top: 6px; }
+  #race-zoom button:not(.info) { min-width: 40px; text-align: center; }
   svg.race text { fill: var(--text-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
   svg.race text.strong { fill: var(--text-primary); font-weight: 600; }
   svg.race .lane { fill: var(--water); }
@@ -404,6 +406,9 @@
               <div class="sub" id="s-b"></div><div class="cond" id="c-b"></div></div>
           </div>
           <div class="verdict" id="verdict"></div>
+          <div class="row chips" id="race-zoom" role="group" aria-label="Zoom">
+            <button type="button" id="zoom-out" aria-label="Zoom out">−</button><button type="button" id="zoom-in" aria-label="Zoom in">+</button><button type="button" id="zoom-fit">Fit</button><button type="button" class="info" data-tip="Zoom the race view. Fit shows the finishing gap. Pinch works too (Ctrl + scroll on a computer)." aria-label="What is this?">?</button>
+          </div>
           <svg class="race river-only" id="river-map" role="img" aria-label="The river from above: each boat on its line" hidden></svg>
           <svg class="race" id="race-view" role="img" aria-label="Race between boat A and boat B"></svg>
           <div class="scrub">
@@ -1023,6 +1028,19 @@ function finalGap() {
   const g = Math.abs(st.A.d - st.B.d);
   return isFinite(g) ? g : 0;
 }
+// Zoom: 1 is Fit (the scale above); each step halves or doubles the view.
+// The view stays between minSpan metres and the whole course.
+let raceZoom = 1;
+function zoomSpan(fit, minSpan, L) {
+  raceZoom = Math.min(fit / minSpan, Math.max(fit / L, raceZoom));
+  const span = Math.min(L, Math.max(minSpan, fit / raceZoom));
+  $("zoom-in").disabled = span <= minSpan * 1.001;
+  $("zoom-out").disabled = span >= L * 0.999;
+  $("zoom-fit").disabled = Math.abs(raceZoom - 1) < 1e-9;
+  return span;
+}
+// A distance marker, with enough decimals that neighbours differ.
+const distLabel = (d, step) => d >= 1000 ? `${+(d / 1000).toFixed(step < 10 ? 3 : 2)} km` : `${Math.round(d)} m`;
 // A canoe with its nose at (x, y), pointing along deg.
 const boatIcon = (x, y, deg, cls) =>
   `<path class="${cls}" transform="translate(${x.toFixed(1)},${y.toFixed(1)}) rotate(${deg.toFixed(1)})" d="M0,0 Q-13,-7 -26,0 Q-13,7 0,0 Z"/>`;
@@ -1039,13 +1057,16 @@ function drawRiverRace(dA, dB) {
   const centres = race.profileA.filter((g) => g.kind === "bend").map((g) => (g.d0 + g.d1) / 2);
   const unit = centres.length > 1 ? centres[1] - centres[0] : Infinity;
   const lead = Math.max(dA, dB);
-  const S = Math.min(L, Math.max(isFinite(unit) ? unit : 150, finalGap() * 2.5, 150));
+  const S = zoomSpan(Math.min(L, Math.max(isFinite(unit) ? unit : 150, finalGap() * 2.5, 150)), 50, L);
   const start = Math.max(0, Math.min(L - S, lead - 0.75 * S));
   const X = (d) => left + ((d - start) / S) * (right - left);
-  const amp = isFinite(unit) ? Math.min(26, 8 + (right - left) / (S / unit) / 10) : 0;
+  // Zoomed far out the bends are too tight to draw: a straight band with the
+  // boats on it instead.
+  const overview = isFinite(unit) && (unit / S) * (right - left) < 48;
+  const amp = isFinite(unit) && !overview ? Math.min(26, 8 + (right - left) / (S / unit) / 10) : 0;
   // Centreline offset (−1…1) at d: ±1 at each bend, alternating, cosine between.
   const shape = (d) => {
-    if (!centres.length) return 0;
+    if (!centres.length || overview) return 0;
     let i = centres.findIndex((c) => c > d);
     if (i === -1) i = centres.length;
     const c0 = i > 0 ? centres[i - 1] : centres[0] - unit, c1 = i < centres.length ? centres[i] : centres[centres.length - 1] + unit;
@@ -1054,7 +1075,7 @@ function drawRiverRace(dA, dB) {
   };
   const cy = (d) => mid + amp * shape(d);
   const pts = (off, d0 = start, d1 = start + S) => {
-    const out = [], n = 120;
+    const out = [], n = Math.max(120, Math.ceil(((d1 - d0) / unit) * 24) || 0);
     for (let i = 0; i <= n; i++) {
       const d = d0 + ((d1 - d0) * i) / n, e = 1;
       const dy = (cy(d + e) - cy(d - e)) / (X(d + e) - X(d - e)), nn = Math.hypot(1, dy);
@@ -1066,26 +1087,30 @@ function drawRiverRace(dA, dB) {
   const path = (p) => p.map((q, i) => `${i ? "L" : "M"}${q[0].toFixed(1)},${q[1].toFixed(1)}`).join(" ");
   const edge = half - 4;
   // Toward the inside of a bend is against the centreline's swing.
-  const lineOff = (x) => (d) => {
+  const lineOff = (x) => overview ? () => (x === "A" ? -9 : 9) : (d) => {
     const g = segAt(race[`profile${x}`], Math.min(Math.max(0, d), L - 1e-6)), u = g.line || 0;
     return isFinite(unit) ? -u * edge * shape(d) : -u * edge;
   };
   let g = `<rect class="bank" x="0" y="0" width="${W}" height="${top + band + 4}"/>` +
     `<path class="river" d="${path(pts(() => -half))} ${path(pts(() => half).reverse()).replace(/^M/, "L")} Z"/>`;
-  g += `<path class="line-b" d="${path(pts(lineOff("B")))}"/><path class="line-a" d="${path(pts(lineOff("A")))}"/>`;
+  if (!overview) g += `<path class="line-b" d="${path(pts(lineOff("B")))}"/><path class="line-a" d="${path(pts(lineOff("A")))}"/>`;
   // Distance markers and the finish line.
   const raw = S / 4, mag = Math.pow(10, Math.floor(Math.log10(raw)));
   const step = [1, 2, 5, 10].map((m) => m * mag).find((v) => v >= raw);
   for (let d = Math.ceil(start / step) * step; d <= start + S + 1e-9; d += step)
-    g += `<text x="${X(d)}" y="${top + band + 20}" text-anchor="middle">${d >= 1000 ? `${+(d / 1000).toFixed(2)} km` : `${Math.round(d)} m`}</text>`;
+    g += `<text x="${X(d)}" y="${top + band + 20}" text-anchor="middle">${distLabel(d, step)}</text>`;
   if (L <= start + S + 1e-9) g += `<line class="finish" x1="${X(L)}" x2="${X(L)}" y1="${top - 6}" y2="${top + band + 4}"/>`;
   if (race.legsA.length > 1 && L / 2 >= start && L / 2 <= start + S)
     g += `<line class="turn" x1="${X(L / 2)}" x2="${X(L / 2)}" y1="${top - 6}" y2="${top + band + 4}"/><text x="${X(L / 2) + 4}" y="${top - 8}">turn</text>`;
-  // Boats on their lines, pointing along them.
+  // Boats on their lines, pointing along them; one behind the view shows how far back.
   for (const [x, d] of [["B", dB], ["A", dA]]) {
+    if (X(d) < left) {
+      g += `<text class="strong" x="${left}" y="${top + band - 4 - (x === "A" ? 16 : 0)}">◀ ${x} ${fmtNum(lead - d, 0)} m</text>`;
+      continue;
+    }
     const tail = pts(lineOff(x), d - S / 100, d), q = tail[tail.length - 1], p = tail[tail.length - 2];
     g += boatIcon(q[0], q[1], (Math.atan2(q[1] - p[1], q[0] - p[0]) * 180) / Math.PI, `boat-${x.toLowerCase()}`) +
-      `<text class="strong" x="${q[0].toFixed(1)}" y="${(q[1] - 10).toFixed(1)}" text-anchor="middle">${x}</text>`;
+      `<text class="strong" x="${q[0].toFixed(1)}" y="${(q[1] + (overview && x === "B" ? 18 : -10)).toFixed(1)}" text-anchor="middle">${x}</text>`;
   }
   // Flow relative to the racing direction: it reverses after the turn.
   const back = segAt(race.profileA, Math.min(lead, L - 1e-6)).leg === 1;
@@ -1094,7 +1119,8 @@ function drawRiverRace(dA, dB) {
     `<path class="flow" d="M${fx - 14 * dir},${fy - 4} L${fx + 14 * dir},${fy - 4} M${fx + 8 * dir},${fy - 8} L${fx + 14 * dir},${fy - 4} L${fx + 8 * dir},${fy}"/>` +
     `<text x="${fx - 22}" y="${fy}" text-anchor="end">current</text>`;
   g += `<text x="8" y="${fy}">racing →</text>` +
-    `<text class="strong" x="8" y="14"><tspan fill="var(--series-1)">A</tspan> solid · <tspan fill="var(--series-2)">B</tspan> dashed</text>`;
+    `<text class="strong" x="8" y="14">${overview ? "Zoomed out: bends not drawn" :
+      `<tspan fill="var(--series-1)">A</tspan> solid · <tspan fill="var(--series-2)">B</tspan> dashed`}</text>`;
   svg.innerHTML = g;
 }
 // Follow the leader with a fixed window wide enough to show the finishing gap.
@@ -1103,22 +1129,26 @@ function drawRace(dA, dB, elapsed) {
   const W = Math.max(280, Math.round(svg.getBoundingClientRect().width)) || 320, H = 112;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   const L = race.metres, lead = Math.max(dA, dB);
-  const span = Math.min(L, Math.max(40, finalGap() * 2.5));
+  const span = zoomSpan(Math.min(L, Math.max(40, finalGap() * 2.5)), 10, L);
+  // The leader sits 80% across; zoomed out to the whole course, start to finish.
+  const s0 = span >= L * 0.999 ? 0 : lead - span * 0.8;
   const left = 36, right = W - 14;
-  const x = (d) => left + ((d - (lead - span * 0.8)) / span) * (right - left);
+  const x = (d) => left + ((d - s0) / span) * (right - left);
   let g = "";
   const laneY = [30, 72];
   for (const y of laneY) g += `<rect class="lane" x="${left}" y="${y - 16}" width="${right - left}" height="32" rx="6"/>`;
   const raw = span / 4, mag = Math.pow(10, Math.floor(Math.log10(raw)));
   const step = [1, 2, 5, 10].map((m) => m * mag).find((v) => v >= raw);
-  for (let d = Math.ceil((lead - span * 0.8) / step) * step; d <= lead + span * 0.2; d += step) {
+  for (let d = Math.ceil(s0 / step) * step; d <= s0 + span + 1e-9; d += step) {
     if (d < 0 || d > L) continue;
     const xx = x(d);
     g += `<line class="tick" x1="${xx}" x2="${xx}" y1="12" y2="90"/>` +
-      `<text x="${xx}" y="104" text-anchor="middle">${d >= 1000 ? `${+(d / 1000).toFixed(2)} km` : `${Math.round(d)} m`}</text>`;
+      `<text x="${xx}" y="104" text-anchor="middle">${distLabel(d, step)}</text>`;
   }
   if (x(L) <= right + 1) g += `<line class="finish" x1="${x(L)}" x2="${x(L)}" y1="8" y2="94"/>`;
-  const canoe = (d, y, cls) => boatIcon(Math.min(right, x(d)), y, 0, cls);
+  // A boat behind the view shows how far back it is.
+  const canoe = (d, y, cls) => x(d) < left ? `<text class="strong" x="${left + 6}" y="${y + 4}">◀ ${fmtNum(lead - d, 0)} m</text>` :
+    boatIcon(Math.min(right, Math.max(left + 26, x(d))), y, 0, cls);
   g += canoe(dA, laneY[0], "boat-a") + canoe(dB, laneY[1], "boat-b") +
     `<text class="strong" x="8" y="${laneY[0] + 4}">A</text><text class="strong" x="8" y="${laneY[1] + 4}">B</text>`;
   svg.innerHTML = g;
@@ -1160,7 +1190,9 @@ const whereText = (g) => {
                  crossing: "crossing the river", bend: mid ? "mid-channel bend" : "inside of a bend" }[g.kind];
   return [kind, leg].filter(Boolean).join(", ");
 };
+let shownT = 0;   // the moment on screen, to redraw it after a zoom
 function showAt(t) {
+  shownT = t;
   const st = stateAtT(t), L = race.metres;
   // River: the course from above. Open water: straight lanes.
   if (water === "river") drawRiverRace(st.A.d, st.B.d); else drawRace(st.A.d, st.B.d, t);
@@ -1326,6 +1358,32 @@ function scrubTo(frac) {
 $("scrub").addEventListener("input", (e) => { dragging = true; scrubTo(+e.target.value / 1000); dragging = false; });
 $("scrub-back").addEventListener("click", () => scrubTo(+$("scrub").value / 1000 - 0.01));
 $("scrub-fwd").addEventListener("click", () => scrubTo(+$("scrub").value / 1000 + 0.01));
+// Zoom buttons, pinch on touch screens, Ctrl + scroll (and trackpad pinch) on computers.
+function setZoom(z) { raceZoom = z; if (race) showAt(shownT); }
+$("zoom-in").addEventListener("click", () => setZoom(raceZoom * 2));
+$("zoom-out").addEventListener("click", () => setZoom(raceZoom / 2));
+$("zoom-fit").addEventListener("click", () => setZoom(1));
+for (const id of ["race-view", "river-map"]) {
+  const el = $(id), touches = new Map();
+  let pinch = null;
+  const spread = () => { const [a, b] = [...touches.values()]; return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); };
+  el.addEventListener("pointerdown", (e) => {
+    touches.set(e.pointerId, e);
+    if (touches.size === 2) pinch = { d: Math.max(1, spread()), z: raceZoom };
+  });
+  el.addEventListener("pointermove", (e) => {
+    if (!touches.has(e.pointerId)) return;
+    touches.set(e.pointerId, e);
+    if (pinch && touches.size === 2) setZoom((pinch.z * spread()) / pinch.d);
+  });
+  for (const ev of ["pointerup", "pointercancel", "pointerleave"])
+    el.addEventListener(ev, (e) => { touches.delete(e.pointerId); if (touches.size < 2) pinch = null; });
+  el.addEventListener("wheel", (e) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    setZoom(raceZoom * Math.exp(-e.deltaY / 200));
+  }, { passive: false });
+}
 for (const id of ["effA", "effB", "dist", "depth", "wind", "windDir", "current", "width", "bends"]) $(id).addEventListener("input", updateRace);
 renderCourse();
 
