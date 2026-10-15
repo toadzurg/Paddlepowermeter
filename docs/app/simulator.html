@@ -617,14 +617,14 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of stroke-sim.js (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. -->
-<script src="stroke-sim.js?v=75e0a30c28"></script>
+<script src="stroke-sim.js?v=87555f28da"></script>
 <script>
 (() => {
 "use strict";
 const $ = (id) => document.getElementById(id);
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 30;
+const NEEDS_API = 31;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -702,6 +702,8 @@ const CONTROLS = [
     help: "The power you could hold for an hour using your whole body." },
   { group: "ctl-paddler", key: "rotation", label: "Trunk rotation", min: 0, max: 1, step: 0.05, unit: "", eff: true,
     fmt: (v) => (v ? `${Math.round(v * 100)}%` : "none"), help: "Turn your shoulders into the catch and unwind through the drive." },
+  { group: "ctl-paddler", key: "hinge", label: "Hinge from the waist", min: 0, max: 1, step: 0.05, unit: "", eff: true,
+    fmt: (v) => (v ? `${Math.round(v * 100)}%` : "none"), help: "Lean forward to the catch and sit up through the drive." },
   { group: "ctl-paddler", key: "legDrive", label: "Leg drive", min: 0, max: 1, step: 0.05, unit: "", eff: true,
     fmt: (v) => (v ? `${Math.round(v * 100)}%` : "none"), help: "Drive from the foot or knee on the paddle side through the drive." },
   { group: "ctl-paddler", key: "dropM", label: "Drop onto the paddle at the catch", min: 0, max: 0.1, step: 0.005, unit: "", eff: true,
@@ -763,8 +765,11 @@ function showBodyEffects() {
   const peak = (rr) => { const sm = rr.samples, Td = sm[sm.length - 1].t; let m = 0, t = 0; for (const q of sm) if (q.thrust[0] > m) { m = q.thrust[0]; t = q.t; } return Math.round((t / Td) * 100); };
   const flat = peak(simOf(Object.assign({}, p, { legDrive: 0, dropM: 0 })));
   $("e-dropM").innerHTML = p.dropM ? `Loads the blade early: force peaks at <b>${peak(r)}%</b> of the drive (from ${flat}%). Bob <b>±${fmtNum(e.bounceMm, 1)} mm</b> (from ±${fmtNum(e.bounceStillMm, 1)}), costing ${fmtNum(e.shares.drop * 100, 1)}%` : "";
-  $("e-rotation").innerHTML = p.rotation ? `Reach <b>+${fmtNum(15 * p.rotation, 1)}°</b>, hand travel <b>+${fmtNum(12 * p.rotation, 1)} cm</b>. Uses more muscle: <b>+${fmtNum(0.15 * p.fitnessW * p.rotation, 0)} W</b> you can hold` : "";
-  $("e-legDrive").innerHTML = p.legDrive ? `Force holds later: it peaks at <b>${peak(r)}%</b> of the drive (from ${flat}%). <b>+${fmtNum(0.15 * p.fitnessW * p.legDrive, 0)} W</b> you can hold` : "";
+  $("e-rotation").innerHTML = p.rotation ? `Reach <b>+${fmtNum(15 * p.rotation, 1)}°</b>, hand travel <b>+${fmtNum(12 * p.rotation, 1)} cm</b>. Uses more muscle: <b>+${fmtNum(0.12 * p.fitnessW * p.rotation, 0)} W</b> you can hold` : "";
+  $("e-legDrive").innerHTML = p.legDrive ? `Force holds later: it peaks at <b>${peak(r)}%</b> of the drive (from ${flat}%). <b>+${fmtNum(0.1 * p.fitnessW * p.legDrive, 0)} W</b> you can hold` : "";
+  const hingeSwing = p.hinge ? e.shares.swing - simOf(Object.assign({}, p, { hinge: 0 })).at(effortW).shares.swing : 0;
+  $("e-hinge").innerHTML = p.hinge ? `Reach <b>+${fmtNum(8 * p.hinge, 1)}°</b>, hand travel <b>+${fmtNum(15 * p.hinge, 1)} cm</b>. Your body swings <b>±${fmtNum(6 * p.hinge, 1)} cm</b>, costing ${fmtNum(hingeSwing * 100, 1)}%. ` +
+    `Hips and back: <b>+${fmtNum(0.08 * p.fitnessW * p.hinge, 0)} W</b> you can hold` : "";
   const hours = raceHours[editing] || 1;
   $("engine-box").innerHTML = `<div class="help">What ${NAME[editing]} can hold</div><div class="big">${fmtNum(S.capacity(p), 0)} W <small>for an hour</small></div>` +
     `<div class="help">This race (${fmtNum(hours, hours < 10 ? 1 : 0)} h): <b>${fmtNum(S.capacity(p, hours), 0)} W</b>, as power fades over a long race (${fmtNum(Math.pow(Math.max(1, hours), -0.07) * 100, 0)}%).</div>` +
@@ -775,7 +780,7 @@ function showBodyEffects() {
   $("e-heelDeg").innerHTML = p.heelDeg ? `Switch every <b>${fmtNum(r.strokesPerSide, 1)}</b> strokes (from ${fmtNum(r0.strokesPerSide, 1)}), ` +
     `<b>${fmtNum(Math.abs(r0.switchDuty - r.switchDuty) * 100, 1)}%</b> ${r.switchDuty >= r0.switchDuty ? "less" : "more"} time lost switching` : "";
   $("e-hipRock").innerHTML = p.hipRock ? `Heel <b>±${fmtNum(Math.max(...c.heel.map(Math.abs)) * 180 / Math.PI, 1)}°</b> instead of ±${fmtNum(c.heelStill * 180 / Math.PI, 1)}°, hips moving up to <b>${fmtNum(c.hipMax * 1000, 0)} mm</b>` : "";
-  for (const k of ["swingM", "dropM", "heelDeg", "hipRock", "rotation", "legDrive"]) $(`e-${k}`).hidden = !p[k];
+  for (const k of ["swingM", "dropM", "heelDeg", "hipRock", "rotation", "legDrive", "hinge"]) $(`e-${k}`).hidden = !p[k];
 }
 const showValue = (c) => {
   const v = boats[editing][c.key];
@@ -2022,7 +2027,7 @@ function drawSurgeChart() {
       const c = hullCyc[x];
       g += `<path class="ln push" style="stroke:${COL[x]}" d="${path(c.push, Y)}"/><path class="ln drag" style="stroke:${COL[x]}" d="${path(c.drag, Y)}"/>` +
         `<path class="ln speed" style="stroke:${COL[x]}" d="${path(c.speed, YV)}"/>` +
-        (results[x].params.swingM ? `<path class="ln still" style="stroke:${COL[x]}" d="${path(c.speedStill, YV)}"/>` : "");
+        (results[x].params.swingM || results[x].params.hinge ? `<path class="ln still" style="stroke:${COL[x]}" d="${path(c.speedStill, YV)}"/>` : "");
     }
     g += `<line class="hull-cursor" data-x0="${m.l}" data-w="${pw}" x1="${m.l}" x2="${m.l}" y1="${m.t}" y2="${m.t + ph}" stroke="var(--text-primary)" opacity=".35"/>` +
       bs.map((x, i) => `<text class="strong" x="${W - m.r - 6 - (bs.length - 1 - i) * 14}" y="${m.t + 12}" text-anchor="end" style="fill:${COL[x]}">${x.toUpperCase()}</text>`).join("");
@@ -2141,7 +2146,7 @@ const simOf = (p) => {
   if (!simCache.has(k)) { if (simCache.size > 40) simCache.clear(); simCache.set(k, S.simulate(p)); }
   return simCache.get(k);
 };
-const FIXABLE = { "Muscle not used": "more rotation and leg drive", "Body swing": "a quieter body", "Switching": "fewer switches", "Drop": "less drop at the catch", "Crab": "a straighter pull", "Speed swings & bob": "a smoother pull", "Heel": "" };
+const FIXABLE = { "Muscle not used": "more rotation, leg drive and hinge", "Body swing": "a quieter body", "Switching": "fewer switches", "Drop": "less drop at the catch", "Crab": "a straighter pull", "Speed swings & bob": "a smoother pull", "Heel": "" };
 const span = (s) => { s = Math.abs(s); return s >= 3600 ? `${Math.floor(s / 3600)}:${String(Math.round((s % 3600) / 60)).padStart(2, "0")} h` : `${Math.floor(s / 60)}:${String(Math.round(s % 60) % 60).padStart(2, "0")}`; };
 function scheduleScore() {
   const gen = ++scoreGen;
@@ -2170,7 +2175,7 @@ async function runScore(gen) {
     };
     const set = (k, v) => () => { p = Object.assign({}, p, { [k]: v }); };
     const intoHull = (key) => () => { const sh = simOf(p).at(W).shares; W *= (sh.hull + [].concat(key).reduce((a, k) => a + sh[k], 0)) / sh.hull; };
-    if (effortMode === "hold" && !(await step("Muscle not used", () => { p = Object.assign({}, p, { rotation: 1, legDrive: 1 }); W = S.capacity(p, hours); }))) return;
+    if (effortMode === "hold" && !(await step("Muscle not used", () => { p = Object.assign({}, p, { rotation: 1, legDrive: 1, hinge: 1 }); W = S.capacity(p, hours); }))) return;
     if (p.swingM && !(await step("Body swing", set("swingM", 0)))) return;
     if (p.dropM && !(await step("Drop", set("dropM", 0)))) return;
     if (p.heelDeg && !(await step("Heel", set("heelDeg", 0)))) return;

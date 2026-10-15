@@ -74,7 +74,7 @@ console.log("\nStroke simulator physics");
   check("paddling on the right turns the bow left", clean.yawMoment > 0);
   check("no J-stroke model left", !("steeringPower" in base) && !("steerLD" in S.DEFAULTS));
   // Paddler engine: what each can hold, and how body use shapes the drive.
-  const holdArms = S.capacity({}), holdAll = S.capacity({ rotation: 1, legDrive: 1 }), holdLong = S.capacity({ rotation: 1, legDrive: 1 }, 16);
+  const holdArms = S.capacity({}), holdAll = S.capacity({ rotation: 1, legDrive: 1, hinge: 1 }), holdLong = S.capacity({ rotation: 1, legDrive: 1, hinge: 1 }, 16);
   check("capacity: arms only 70%, whole body 100%, fading over a long race", Math.round(holdArms) === 140 && Math.round(holdAll) === 200 && Math.round(holdLong) === 165,
         `${holdArms} ${holdAll} ${holdLong}`);
   const peakPct = (rr) => { const sm = rr.samples, Td = sm[sm.length - 1].t; let m = 0, t = 0; for (const q of sm) if (q.thrust[0] > m) { m = q.thrust[0]; t = q.t; } return t / Td; };
@@ -84,6 +84,12 @@ console.log("\nStroke simulator physics");
   const rotSim = S.simulate({ rotation: 1 });
   check("rotation reaches further; settings left as set", rotSim.geom.catchDeg === rotSim.params.catchDeg + 15 && rotSim.params.rotation === 1 &&
         Math.abs(S.simulate({}).efficiency - base.efficiency) < 1e-9);
+  const hingeSim = S.simulate({ hinge: 1 });
+  check("hinge: reach, hand travel, and a body swing that costs power", hingeSim.geom.catchDeg === base.params.catchDeg + 8 &&
+        Math.abs(hingeSim.geom.handTravelM - base.params.handTravelM - 0.15) < 1e-9 && hingeSim.at(150).shares.swing > 0.005 && base.at(150).shares.swing === 0,
+        pct(hingeSim.at(150).shares.swing));
+  const tHold = (q) => { const rr = S.simulate(q), w = S.capacity(q); return S.race(rr, null, 10000, w, w, {}).tA; };
+  check("hinge: the extra muscle outweighs the swing", tHold({ hinge: 1 }) < tHold({}));
   check("clean stroke: about 8 strokes per side", clean.strokesPerSide > 6 && clean.strokesPerSide < 10,
         clean.strokesPerSide.toFixed(1));
   check("sweep forces more frequent switches", sweep.strokesPerSide < clean.strokesPerSide / 3,
@@ -813,8 +819,12 @@ console.log("\nStroke simulator physics");
     await page.$eval("#ctl-paddler", (e) => e.closest("details").open = true);
     check(`${tag}: engine box: arms only by default`, /What Boat A can hold140 W for an hour/.test(await text("#engine-box")), await text("#engine-box"));
     await slide("#c-rotation", 0.8); await page.waitForTimeout(400);
-    check(`${tag}: rotation: reach and muscle`, /^Reach \+12\.0°, hand travel \+9\.6 cm\. Uses more muscle: \+24 W you can hold$/.test(await text("#e-rotation")) &&
-          /164 W/.test(await text("#engine-box")), await text("#e-rotation"));
+    check(`${tag}: rotation: reach and muscle`, /^Reach \+12\.0°, hand travel \+9\.6 cm\. Uses more muscle: \+19 W you can hold$/.test(await text("#e-rotation")) &&
+          /159 W/.test(await text("#engine-box")), await text("#e-rotation"));
+    await slide("#c-hinge", 0.5); await page.waitForTimeout(400);
+    check(`${tag}: hinge: reach, swing and muscle`, /^Reach \+4\.0°, hand travel \+7\.5 cm\. Your body swings ±3\.0 cm, costing [\d.]+%\. Hips and back: \+8 W you can hold$/.test(await text("#e-hinge")) &&
+          (await page.$$("#hp-chart path.ln.still")).length >= 1, await text("#e-hinge"));
+    await slide("#c-hinge", 0);
     await page.click("#effort-mode >> text=What each can hold"); await page.waitForTimeout(300);
     await scoreReady();
     check(`${tag}: effort: what each can hold`, (await page.isDisabled("#effA")) && (await page.isDisabled("#effB")) &&

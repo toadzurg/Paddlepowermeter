@@ -147,6 +147,7 @@
     fitnessW: 200,             // power you could hold for an hour using your whole body
     rotation: 0,               // trunk rotation, 0–1: more reach and hand travel, more muscle
     legDrive: 0,               // leg drive, 0–1: force held later in the drive, more muscle
+    hinge: 0,                  // hinge from the waist, 0–1: lean to the catch, sit up through the drive
   };
 
   const rad = (d) => (d * Math.PI) / 180;
@@ -360,6 +361,14 @@
   function bodySwingVel(A, timing, Tc, Td) {
     return (t) => timing * (t < Td ? (-A * Math.PI / Td) * Math.sin(Math.PI * t / Td) : (A * Math.PI / (Tc - Td)) * Math.sin(Math.PI * (t - Td) / (Tc - Td)));
   }
+  // A full hinge swings the torso about ±20° from the hips: head, arms and
+  // trunk (about 60% of you) move about ±10 cm, ±6 cm for the whole body,
+  // aft through the drive. It adds to any body swing set by hand.
+  const HINGE_SWING_M = 0.06;
+  function swingVel(p, Tc, Td) {
+    const a = bodySwingVel(p.swingM || 0, p.swingTiming, Tc, Td), b = bodySwingVel(HINGE_SWING_M * (p.hinge || 0), 1, Tc, Td);
+    return (t) => a(t) + b(t);
+  }
   function bodyDropAcc(d, Tc, Td) {
     const t1 = 0.4 * Td;
     return (t) => (t < t1 ? (-d / 2) * Math.pow(Math.PI / t1, 2) * Math.cos(Math.PI * t / t1) :
@@ -378,10 +387,12 @@
     const p = Object.assign({}, DEFAULTS, params);
     // Heeling the boat toward the paddle brings the hands (about 0.9 m up)
     // nearer the keel line: the stroke works as if the top hand were further in.
-    // Trunk rotation reaches further at the catch and carries the hands further.
+    // Trunk rotation and a hinge from the waist reach further at the catch and
+    // carry the hands further.
     const pg = Object.assign({}, p, {
       handOutM: Math.max(0.1, p.handOutM - 0.9 * Math.sin(rad(p.heelDeg || 0))),
-      catchDeg: p.catchDeg + 15 * (p.rotation || 0), handTravelM: p.handTravelM + 0.12 * (p.rotation || 0),
+      catchDeg: p.catchDeg + 15 * (p.rotation || 0) + 8 * (p.hinge || 0),
+      handTravelM: p.handTravelM + 0.12 * (p.rotation || 0) + 0.15 * (p.hinge || 0),
     });
     const k = HULL_K * Math.pow(p.massKg / MASS_REF, 2 / 3);  // drag ∝ wetted area
     // Boat speed: mean thrust falls as the boat speeds up (less slip), so
@@ -427,7 +438,7 @@
       const h = heave(fz, Tc1, p.massKg);
       const sg = surge(replay(samples, Td0, Td1, scale * sw.duty, 0), Tc1, Vw, p.massKg, k);
       // The body's motion: the swing shakes the hull's speed, the drop pushes it up and down.
-      const swingPower = p.swingM ? hullCubic(k, Vw, sg.series, sg.dt, bodySwingVel(p.swingM, p.swingTiming, Tc1, Td1), mp / p.massKg) - sg.power : 0;
+      const swingPower = p.swingM || p.hinge ? hullCubic(k, Vw, sg.series, sg.dt, swingVel(p, Tc1, Td1), mp / p.massKg) - sg.power : 0;
       const dropAcc = bodyDropAcc(p.dropM, Tc1, Td1);
       const hd = p.dropM ? heave((t) => fz(t) - mp * dropAcc(t), Tc1, p.massKg) : h;
       const weight = p.massKg * G;
@@ -492,7 +503,7 @@
       const sg = periodic(push, ms, 2 * k * V, 0);
       const vAvg = sg.vs.reduce((a, x) => a + x, 0) / n;
       const still = sg.vs.map((x) => V + x - vAvg);
-      const uB = bodySwingVel(p.swingM, p.swingTiming, Tc1, Td1), aB = bodyDropAcc(p.dropM, Tc1, Td1);
+      const uB = swingVel(p, Tc1, Td1), aB = bodyDropAcc(p.dropM, Tc1, Td1);
       const speed = still.map((v, i) => v - (mp / p.massKg) * uB(i * dt));
       let ahead = 0;
       const gap = speed.map((v) => (ahead += (v - V) * dt));
@@ -547,12 +558,13 @@
   }
 
   // The power a paddler can hold: fitness is whole-body power for an hour.
-  // Arms alone manage about 70% of it; trunk rotation and leg drive add
-  // about 15% each (kayak studies: blocking the legs costs ~16% of power).
+  // Arms alone manage about 70% of it; trunk rotation adds about 12%, leg
+  // drive 10% (kayak studies: blocking the legs costs ~10–16% of power) and
+  // a hinge from the waist, the hips and back, 8%.
   // Over a longer race it fades as hours^-0.07 (82% for 16 h).
   function capacity(p, hours = 1) {
     const q = Object.assign({}, DEFAULTS, p);
-    return q.fitnessW * (0.7 + 0.15 * q.rotation + 0.15 * q.legDrive) * Math.pow(Math.max(1, hours), -0.07);
+    return q.fitnessW * (0.7 + 0.12 * q.rotation + 0.1 * q.legDrive + 0.08 * q.hinge) * Math.pow(Math.max(1, hours), -0.07);
   }
 
   // Shallow water (The Science of Paddling, Part 4): the boat's own wave, wavelength
@@ -887,7 +899,7 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 30;
+  const API_LEVEL = 31;
   const PADDLE = paddleOf(DEFAULTS);
   const api = { API_LEVEL, simulate, race, capacity, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
