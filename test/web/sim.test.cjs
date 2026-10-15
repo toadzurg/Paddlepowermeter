@@ -658,6 +658,44 @@ console.log("\nStroke simulator physics");
     for (let i = 0; i < 12 && !(await page.$eval("#zoom-out", (e) => e.disabled)); i++) await page.click("#zoom-out");
     check(`${tag}: real course: zoomed out, the whole course`, /Whole course/.test(await text("#course-view")));
     await page.click("#zoom-fit");
+    // Current from USGS gauges (replies mocked): two on the course, one up a tributary.
+    const pts = await page.evaluate(() => [window.COURSES.ausable.points[200], window.COURSES.ausable.points[2000]]);
+    const series = (id, name, p, cfs, stat = "00000") => ({ name: `USGS:${id}:00060:${stat}`, sourceInfo: { siteName: name, siteCode: [{ value: id }],
+      geoLocation: { geogLocation: { latitude: p[0], longitude: p[1] } } }, values: [{ value: [{ value: String(cfs), dateTime: "2023-07-29T00:00:00.000" }] }] });
+    const asked = [];
+    await page.route("https://waterservices.usgs.gov/**", (route) => {
+      const url = route.request().url(); asked.push(url);
+      const past = url.includes("/dv/");
+      const ts = past ? [series("0001", "UP RIVER AT ONE, MI", pts[0], 200, "00003"), series("0002", "DOWN RIVER AT TWO, MI", pts[1], 900, "00003")]
+        : [series("0001", "UP RIVER AT ONE, MI", pts[0], 300), series("0002", "DOWN RIVER AT TWO, MI", pts[1], 1000),
+           series("0003", "SIDE CREEK, MI", [pts[0][0] + 0.05, pts[0][1]], 50)];
+      route.fulfill({ status: 200, contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: JSON.stringify({ value: { timeSeries: ts } }) });
+    });
+    const row1 = () => page.$eval("#cb-secs tbody tr:nth-child(1) td:nth-child(4)", (e) => e.textContent);
+    const gaugeInfo = () => text("#cb-gauge-info");
+    await page.click("#cb-secs tbody tr:nth-child(1)");
+    await page.click("#cb-gauges");
+    await page.waitForFunction(() => /gauge/.test(document.getElementById("cb-gauge-info").textContent) && !/Asking/.test(document.getElementById("cb-gauge-info").textContent));
+    // 300 ft³/s in 30 m × 1.2 m: u = 15Q / (8WD) = 0.44 m/s = 1.6 km/h.
+    check(`${tag}: gauges: two on the course, the creek left out`, /^2 gauges on the course, latest reading\./.test(await gaugeInfo()) &&
+          (await page.$$("#cb-gauge-list tbody tr")).length === 2 && (await row1()) === "1.6" &&
+          /^Current from Up River at One, MI: 300 ft³\/s/.test(await text("#cb-sec-gauge")), `${await gaugeInfo()} | ${await row1()} | ${await text("#cb-sec-gauge")}`);
+    await page.click('#cb-gauge-list input[data-g="0"]');
+    check(`${tag}: gauges: untick one, the next nearest feeds it`, (await row1()) === "5.3", await row1());
+    await page.click('#cb-gauge-list input[data-g="0"]');
+    await slide("#cb-current", 2);
+    check(`${tag}: gauges: a hand-set current stays`, (await row1()) === "2.0" && (await text("#cb-sec-gauge")) === "Current set by hand");
+    await page.fill("#cb-gauge-date", "2023-07-29");
+    await page.click("#cb-gauges");
+    await page.waitForFunction(() => /daily mean/.test(document.getElementById("cb-gauge-info").textContent));
+    check(`${tag}: gauges: a past day uses its daily mean`, (await row1()) === "1.1" && asked.some((u) => u.includes("/dv/") && u.includes("startDT=2023-07-29")),
+          `${await row1()} | ${asked.slice(-1)}`);
+    await page.unroute("https://waterservices.usgs.gov/**");
+    await page.route("https://waterservices.usgs.gov/**", (route) => route.abort());
+    await page.click("#cb-gauges");
+    await page.waitForFunction(() => /Couldn't reach USGS/.test(document.getElementById("cb-gauge-info").textContent));
+    check(`${tag}: gauges: no connection says so`, true);
+    await page.unroute("https://waterservices.usgs.gov/**");
     // Your own GPX: a 3 km straight with a dam halfway.
     const trk = Array.from({ length: 61 }, (_, i) => `<trkpt lat="44.0" lon="${(-84 + (i / 60) * 0.03745).toFixed(6)}"></trkpt>`).join("");
     const gpx = `<?xml version="1.0"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><wpt lat="44.0003" lon="-83.98127"><name>TEST DAM</name></wpt>` +
