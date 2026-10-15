@@ -587,7 +587,7 @@ console.log("\nStroke simulator physics");
     check(`${tag}: zoomed in: a boat behind the view shows how far back`, /◀ \d+ m/.test(await ticks()) &&
           (await page.$$("#race-view path.boat-a, #race-view path.boat-b")).length === 1, await ticks());
     await page.click("#zoom-fit");
-    const zbox = await page.$eval("#race-view", (e) => { const r = e.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
+    const zbox = await page.$eval("#race-view", (e) => { e.scrollIntoView({ block: "center" }); const r = e.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
     await page.mouse.move(...zbox); await page.keyboard.down("Control"); await page.mouse.wheel(0, -300); await page.keyboard.up("Control");
     check(`${tag}: Ctrl + scroll zooms`, !(await dis("#zoom-fit")));
     await page.click("#zoom-fit");
@@ -676,6 +676,15 @@ console.log("\nStroke simulator physics");
     check(`${tag}: replay after a run with a power change shows avg power`, (await labels()).includes("Avg power"));
     await slide("#effB", 150);
     check(`${tag}: changing settings after a run goes back to the prediction`, !(await labels()).includes("Avg power"));
+    // A whole race: it stops at the last boat's finish, both times listed, matching the prediction.
+    await page.click("#race-start");
+    await page.waitForFunction(() => !window.sim.run, null, { timeout: 8000 });
+    const fin = await text("#race-status"), timeCells = await page.$$eval("#race-stats tbody tr:first-child td.v", (ts) => ts.map((t) => t.textContent));
+    const gapCells = await page.$$eval("#race-stats tbody tr:last-child td.v", (ts) => ts.map((t) => t.textContent));
+    check(`${tag}: race stops at the last finish, both times listed and as predicted`,
+          fin === `Finished: A ${await text("#t-a")}, B ${await text("#t-b")}.` + (/ by /.test(fin) ? fin.slice(fin.indexOf(". ") + 1) : "") &&
+          timeCells.every((c) => / ✓$/.test(c)) && (await page.$eval("#scrub", (e) => +e.value)) === 1000 &&
+          (gapCells.every((c) => c === "level") || gapCells.some((c) => /^\+\d+:\d\d$/.test(c))), `${fin} | ${timeCells} | ${gapCells}`);
     await page.evaluate(() => { window.sim.raceWallS = 12; });
 
     await page.click("#race-start");
@@ -880,6 +889,13 @@ console.log("\nStroke simulator physics");
       const still = await barKm();
       await mob.tap("#race-start"); await mob.waitForTimeout(700);
       const moving = await barKm();
+      // Zooming in during the race works, and slows the replay to match; Fit goes back to full speed.
+      for (let i = 0; i < 4; i++) await mob.tap("#zoom-in");
+      await mob.waitForTimeout(200);
+      const zoomed = await barKm(), slowMsg = await mob.textContent("#race-status");
+      await mob.tap("#zoom-fit"); await mob.waitForTimeout(200);
+      check(`${tag}: phone: zoom works mid-race and slows the replay`, zoomed < moving / 8 && /^Zoomed in, so slowed: 1 s here is /.test(slowMsg) &&
+            (await barKm()) === moving && (await mob.textContent("#race-status")) === "", `${moving} → ${zoomed} km | ${slowMsg}`);
       await mob.tap("#race-pause"); await mob.waitForTimeout(150);
       const pausedSvg = await mob.$eval("#course-view", (e) => e.innerHTML);
       await mob.waitForTimeout(300);
