@@ -2028,11 +2028,12 @@ function drawHullLive(ph) {
       // + heel puts the paddle side (right, from behind) down: clockwise on the page.
       g += `<g transform="rotate(${deg.toFixed(2)} ${cx} ${wl})"${two && x === "b" ? ` opacity="0.8"` : ""}><path class="hull boat-${x}" d="${hullPath("end", P)}"/>` +
         (k === 0 || two ? paddlerFig(P, x, ph, two) + paddle : "") + `</g>`;
-      if (c.up[i] > 2) g += `<line x1="${cx + 70 + k * 14}" x2="${cx + 70 + k * 14}" y1="${wl + 34}" y2="${wl + 34 - Math.min(30, c.up[i] * 0.35)}" stroke="${COL[x]}" stroke-width="4" marker-end="url(#ha-${x})"/>`;
+      // The blade's lift, in clear water to the right of the blade.
+      if (c.up[i] > 2) g += `<line x1="${cx + 152 + k * 14}" x2="${cx + 152 + k * 14}" y1="${wl + 34}" y2="${wl + 34 - Math.min(28, 8 + c.up[i] * 0.6)}" stroke="${COL[x]}" stroke-width="4" marker-end="url(#ha-${x})"/>`;
       const d = c.heel[i] * 180 / Math.PI;
       g += `<text x="205" y="${22 + k * 15}"><tspan class="strong" style="fill:${COL[x]}">${x.toUpperCase()}</tspan> ${Math.abs(d) < 0.05 ? "level" : `${fmtNum(Math.abs(d), 1)}° paddle side ${d > 0 ? "down" : "up"}`}</text>`;
     });
-    g += `<text x="205" y="${22 + bs.length * 15}">${bs.some((x) => results[x].params.hipRock) ? "with hip rock" : "if you held still"} · tilt ×3</text><text x="${cx + 92}" y="${wl + 30}">← blade lifts</text>`;
+    g += `<text x="205" y="${22 + bs.length * 15}">${bs.some((x) => results[x].params.hipRock) ? "with hip rock" : "if you held still"} · tilt ×3</text><text x="${cx + 152 + bs.length * 14}" y="${wl + 26}">blade lift</text>`;
     svg.innerHTML = g;
   }
 }
