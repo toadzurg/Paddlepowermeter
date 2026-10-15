@@ -2004,7 +2004,7 @@ function drawHullLive(ph) {
     bs.forEach((x, k) => {
       const [c, i] = at(x), deg = c.pitch[i] * 180 / Math.PI;
       g += `<g transform="rotate(${(-deg * 20).toFixed(2)} ${cx} ${wl})"><path class="hull boat-${x}" d="${hullPath("side", sideP(cx, wl, ps))}"/>` +
-        (k === 0 ? paddlerFig(sideP(cx, wl, ps), x, ph) : "") + `</g>`;
+        (k === 0 || !sameBoats() ? paddlerFig(sideP(cx, wl, ps), x, ph, bs.length > 1 && !sameBoats()) : "") + `</g>`;
       g += `<text x="8" y="${16 + k * 15}"><tspan class="strong" style="fill:${COL[x]}">${x.toUpperCase()}</tspan> bow ${c.pitch[i] >= 0 ? "up" : "down"} ${fmtNum(Math.abs(c.pitch[i]) * 2.8 * 1000, 1)} mm</text>`;
     });
     g += `<text x="${W_HV - 8}" y="16" text-anchor="end">tilt ×20</text>`;
@@ -2619,7 +2619,8 @@ function stateAt(r, ph) {
 // body motion (bodyX, bodyZ), shoulders turned by rotation, hands on the
 // paddle. Boat coordinates in metres, x forward, y to the off side, z up.
 const HIP = [-0.5, 0, 0.1], TORSO = 0.55, LEAN0 = 15;
-function paddlerFig(P, x, ph) {
+// tint: in the boat's colour, for telling two paddlers apart.
+function paddlerFig(P, x, ph, tint = false) {
   const r = results[x], c = hullCyc[x], p = r.params, st = stateAt(r, ph), df = p.driveFraction;
   const i = c ? Math.min(c.t.length - 1, Math.floor(ph * c.t.length)) : 0;
   const bx = c ? c.bodyX[i] : 0, bz = c ? c.bodyZ[i] : 0;
@@ -2641,11 +2642,12 @@ function paddlerFig(P, x, ph) {
     return a.map((v, k) => v + u[k] * L / 2 + n[k] * h);
   };
   const sc = Math.max(...[[1, 0, 0], [0, 1, 0], [0, 0, 1]].map((e) => Math.hypot(P(e)[0] - P([0, 0, 0])[0], P(e)[1] - P([0, 0, 0])[1])));
-  const seg = (pts, w, cls = "") => { const q = pts.filter(Boolean).map(P); return `<path class="fig-body ${cls}" stroke-width="${(w * sc).toFixed(1)}" d="M${q.map(f2).join(" L")}"/>`; };
+  const ink = tint ? `color-mix(in srgb, ${COL[x]} 60%, var(--muted))` : "", ga = tint && x === "b" ? ` opacity="0.75"` : "";
+  const seg = (pts, w, cls = "") => { const q = pts.filter(Boolean).map(P); return `<path class="fig-body fig-${x} ${cls}"${ink ? ` style="stroke:${ink}"` : ""}${ga} stroke-width="${(w * sc).toFixed(1)}" d="M${q.map(f2).join(" L")}"/>`; };
   const grip = st.P.at(0), low = st.P.at(Math.min(0.55, p.pivotFromGrip + 0.45));
   const hd = P(head);
   return `${seg([HIP, knee, foot], 0.1, "fig-leg")}${seg([pad, elbow(pad, low, -1), low], 0.06)}${seg([HIP, sh], 0.15)}${seg([off, pad], 0.09)}` +
-    `${seg([off, elbow(off, grip, 1), grip], 0.06)}<circle class="fig-head" cx="${hd[0].toFixed(1)}" cy="${hd[1].toFixed(1)}" r="${(0.1 * sc).toFixed(1)}"/>`;
+    `${seg([off, elbow(off, grip, 1), grip], 0.06)}<circle class="fig-head fig-${x}"${ink ? ` style="fill:${ink}"` : ""}${ga} cx="${hd[0].toFixed(1)}" cy="${hd[1].toFixed(1)}" r="${(0.1 * sc).toFixed(1)}"/>`;
 }
 // One boat's paddle, blade path and push, in its colour.
 function drawBoat(name, P, x, ph, maxF) {
@@ -2702,7 +2704,9 @@ function drawView(svg, name, ph) {
   // A so the one paddle shows both colours.
   const same = bs.length > 1 && sameBoats();
   const order = same ? ["a", "b"] : bs;
-  g += paddlerFig(P, bs[0], ph);   // one paddler: the first boat shown
+  // Paddlers: one when both boats are set the same, else both, B under A, each in its colour.
+  const two = bs.length > 1 && !same;
+  for (const x of two ? ["b", "a"] : [bs[0]]) g += paddlerFig(P, x, ph, two);
   for (const x of order)
     g += `<g class="${bs.length > 1 && x === "b" ? (same ? "blend-b" : "overlay-b") : ""}">${drawBoat(name, P, x, ph, maxF)}</g>`;
   const label = { side: "bow →", end: "paddle side →", top: "↑ bow" }[name];
