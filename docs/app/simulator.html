@@ -21,6 +21,8 @@
     --series-2: #eb6834;
     --series-3: #1baf7a;
     --series-4: #8a5cc9;
+    /* Categories (never boat A blue or boat B orange): useful, slip, sideways/warning, other. */
+    --cat-useful: #1baf7a; --cat-slip: #8a5cc9; --cat-side: #c08a12; --cat-other: #898781;
     --water: rgba(42, 120, 214, 0.10);
     --water-line: #86b6ef;
     --button: #0b0b0b;
@@ -41,6 +43,7 @@
       --series-2: #d95926;
       --series-3: #199e70;
       --series-4: #9a72d8;
+      --cat-useful: #199e70; --cat-slip: #9a72d8; --cat-side: #d29b2a; --cat-other: #6f6e69;
       --water: rgba(57, 135, 229, 0.14);
       --water-line: #1c5cab;
       --button: #f0efec;
@@ -71,11 +74,11 @@
 
   /* Phones: results, views, then the sliders right below them, then the race.
      Wide screens: sliders in a sticky column beside everything. */
-  .layout { display: grid; gap: 12px; grid-template-areas: "eff" "curve" "views" "ctl" "race"; grid-template-columns: minmax(0, 1fr); }
-  #eff-card { grid-area: eff; } #curve-card { grid-area: curve; } #views-card { grid-area: views; } #controls { grid-area: ctl; } #race-card { grid-area: race; }
+  .layout { display: grid; gap: 12px; grid-template-areas: "eff" "curve" "views" "ctl" "hull" "race"; grid-template-columns: minmax(0, 1fr); }
+  #eff-card { grid-area: eff; } #curve-card { grid-area: curve; } #views-card { grid-area: views; } #controls { grid-area: ctl; } #hull-card { grid-area: hull; } #race-card { grid-area: race; }
   @media (min-width: 960px) {
-    .layout { grid-template-columns: minmax(0, 1fr) 360px; grid-template-areas: "eff ctl" "curve ctl" "views ctl" "race ctl";
-              grid-template-rows: auto auto auto 1fr; align-items: start; }
+    .layout { grid-template-columns: minmax(0, 1fr) 360px; grid-template-areas: "eff ctl" "curve ctl" "views ctl" "hull ctl" "race ctl";
+              grid-template-rows: auto auto auto auto 1fr; align-items: start; }
     .controls { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow: auto; } }
 
   /* Boat switcher: which boat the sliders edit. */
@@ -127,7 +130,7 @@
   .bars .who { font-size: 13px; font-weight: 600; }
   .bar { display: flex; height: 18px; border-radius: 5px; overflow: hidden; gap: 2px; }
   .bar > span { display: block; height: 100%; }
-  .s1 { background: var(--series-1); } .s2 { background: var(--series-2); } .s3 { background: var(--series-3); } .s4 { background: var(--series-4); }
+  .s1 { background: var(--cat-useful); } .s2 { background: var(--cat-slip); } .s3 { background: var(--cat-side); } .s4 { background: var(--cat-other); }
   table.legend { border-collapse: collapse; margin-top: 6px; font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
   table.legend td { padding: 1px 12px 1px 0; }
   table.legend td.n { text-align: right; color: var(--text-primary); font-weight: 600; }
@@ -279,7 +282,7 @@
   .cb-editor { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-top: 10px; }
   .cb-editor .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
   .cb-editor .head b { font-size: 15px; }
-  .warn { color: var(--series-2); }
+  .warn { color: var(--cat-side); }
   table.secs { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 6px; font-variant-numeric: tabular-nums; }
   table.secs th { text-align: left; font-weight: 500; color: var(--text-secondary); padding: 4px; border-bottom: 1px solid var(--border); }
   table.secs td { padding: 6px 4px; border-bottom: 1px solid var(--border); cursor: pointer; }
@@ -1522,7 +1525,7 @@ function drawStrip() {
     const h = Math.max(1, (Math.min(6, s.current) / 6) * 30);
     g += `<rect data-sec="${i}" x="${x}" y="${36 - h}" width="${w}" height="${h}" fill="${secColor(s)}"${on}/>`;
     const y = 46 + (Math.min(5, s.depth) / 5) * 32;
-    g += `<line x1="${x}" x2="${x + w}" y1="${y}" y2="${y}" stroke="${s.depth < 1 ? "var(--series-2)" : "var(--series-1)"}" stroke-width="3"/>`;
+    g += `<line x1="${x}" x2="${x + w}" y1="${y}" y2="${y}" stroke="${s.depth < 1 ? "var(--cat-side)" : "var(--water-line)"}" stroke-width="3"/>`;
   });
   g += `<line class="axis" x1="${l}" x2="${r}" y1="36.5" y2="36.5"/><line class="axis" x1="${l}" x2="${r}" y1="80.5" y2="80.5"/>`;
   const step = niceStep(cb.L / 1000 / 4, 1);
@@ -1930,14 +1933,15 @@ function drawPower() {
   const W = 360, x0 = 8, bw = W - 16;
   const parts = (x) => {
     const e = results[x].at(effortW), sh = e.shares, wave = 0.23 * Math.pow(e.waterSpeed / 2.5, 4);
-    return [["Hull: friction", sh.hull * (1 - wave), "var(--series-1)"], ["Hull: waves", sh.hull * wave, "color-mix(in srgb, var(--series-1) 50%, var(--surface-1))"],
-            ["Blade slip", sh.slip, "var(--series-2)"], ["Speed swings", sh.surge, "var(--series-4)"], ["Bob", sh.bounce, "var(--series-3)"], ["Crab", sh.leeway, "var(--muted)"]];
+    return [["Hull: friction", sh.hull * (1 - wave), "var(--cat-useful)"], ["Hull: waves", sh.hull * wave, "color-mix(in srgb, var(--cat-useful) 50%, var(--surface-1))"],
+            ["Blade slip", sh.slip, "var(--cat-slip)"], ["Crab", sh.leeway, "var(--cat-side)"],
+            ["Speed swings", sh.surge, "var(--cat-other)"], ["Bob", sh.bounce, "color-mix(in srgb, var(--cat-other) 55%, var(--surface-1))"]];
   };
   let g = "";
   BOATS.forEach((x, k) => {
     const y = 16 + k * 40, ps = parts(x), tot = ps.reduce((a, p) => a + p[1], 0);
     let xx = x0;
-    g += `<text class="strong" x="${x0}" y="${y - 4}">${NAME[x]}</text><text x="${W - 8}" y="${y - 4}" text-anchor="end">moves the boat: ${fmtNum((ps[0][1] + ps[1][1]) * 100, 0)}%</text>`;
+    g += `<text class="strong" x="${x0}" y="${y - 4}" style="fill:${COL[x]}">${NAME[x]}</text><text x="${W - 8}" y="${y - 4}" text-anchor="end">moves the boat: ${fmtNum((ps[0][1] + ps[1][1]) * 100, 0)}%</text>`;
     for (const [, v, c] of ps) { const w = (Math.max(0, v) / tot) * bw; g += `<rect x="${xx}" y="${y}" width="${Math.max(0.5, w)}" height="18" fill="${c}"/>`; xx += w; }
   });
   parts(hullFocus()).forEach(([nm, v, c], i) => {
@@ -1952,7 +1956,7 @@ function drawShallow() {
   const W = 360, H = 230, m = { l: 40, r: 14, t: 10, b: 34 }, pw = W - m.l - m.r, ph = H - m.t - m.b;
   const XV = (v) => m.l + ((v - 1.5) / 2.6) * pw, YD = (d) => m.t + ph - ((d - 0.3) / 2.7) * ph;
   const nx = 26, ny = 27, cw = pw / nx, ch = ph / ny;
-  const col = (p) => p < 1 ? "var(--surface-1)" : `color-mix(in srgb, var(--series-2) ${Math.round(Math.min(1, p / 100) ** 0.6 * 100)}%, var(--surface-1))`;
+  const col = (p) => p < 1 ? "var(--surface-1)" : `color-mix(in srgb, var(--cat-side) ${Math.round(Math.min(1, p / 100) ** 0.6 * 100)}%, var(--surface-1))`;
   const extra = (v, d) => 0.23 * Math.pow(v / 2.5, 4) * (S.shallowFactor(v, d) - 1) * 100;
   let g = "";
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
