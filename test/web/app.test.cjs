@@ -320,7 +320,9 @@ function liveHex(seq, tMs, inDrive, force) {
     check("demo pivot is dynamic", spread > 0.03, `moved ${(spread * 100).toFixed(0)} cm in 6 s`);
     const lever = parseFloat(await page.textContent("#v-lever"));
     const pivotNow = parseFloat((await page.textContent("#v-pivot")).replace("\u2212", "-"));
-    check("lever arm = blade − pivot", Math.abs(lever - (0.95 - pivotNow)) < 0.015, `${lever} vs ${0.95 - pivotNow}`);
+    // Bent shaft (12°): L = 0.25 + (0.60 − pivot)·cos 12°, as in the firmware.
+    const expectL = 0.25 + (0.60 - pivotNow) * Math.cos(12 * Math.PI / 180);
+    check("lever arm uses the bent-shaft formula", Math.abs(lever - expectL) < 0.015, `${lever} vs ${expectL.toFixed(3)}`);
     if (shotDir) {
       await page.waitForFunction(() => document.querySelector("#stroke-view line.force"), null, { timeout: 3000 });
       await page.locator("#stroke-view").screenshot({ path: path.join(shotDir, "stroke-drive.png") });

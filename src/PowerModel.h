@@ -52,6 +52,11 @@ public:
   // blade aft of the pivot (exit), negative forward (catch).
   float shaftAngle() const;
 
+  // Distance from a pivot at `pivot` (m along the shaft) to the line of
+  // action of the blade force. With a bent shaft (bend β, centre of
+  // pressure d past the throat at s_b): L = d + (s_b − pivot)·cos β.
+  static float leverArmFor(float pivot);
+
   // Per-stroke values
   float strokePower() const { return strokePower_; }  // W, energy / cycle time
   float strokeRate() const { return strokeRate_; }    // strokes per minute

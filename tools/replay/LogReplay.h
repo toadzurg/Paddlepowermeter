@@ -20,11 +20,21 @@ public:
   bool open(const char *path, std::string &err) {
     f_ = std::fopen(path, "rb");
     if (!f_) { err = "cannot open file"; return false; }
-    if (std::fread(&h_, sizeof h_, 1, f_) != 1) { err = "file too short"; return false; }
+    if (std::fread(&h_, logfmt::V1_HEADER_SIZE, 1, f_) != 1) { err = "file too short"; return false; }
     if (h_.magic != logfmt::MAGIC) { err = "not a paddle log (bad magic)"; return false; }
-    if (h_.version != logfmt::VERSION) { err = "unsupported log version"; return false; }
+    if (h_.version < 1 || h_.version > logfmt::VERSION) { err = "unsupported log version"; return false; }
     if (h_.recordSize != sizeof(logfmt::LogRecord)) { err = "record size mismatch"; return false; }
-    if (h_.headerSize < sizeof h_) { err = "header too short"; return false; }
+    if (h_.version >= 2) {
+      if (h_.headerSize < sizeof h_ ||
+          std::fread(reinterpret_cast<char *>(&h_) + logfmt::V1_HEADER_SIZE,
+                     sizeof h_ - logfmt::V1_HEADER_SIZE, 1, f_) != 1) {
+        err = "header too short"; return false;
+      }
+    } else {
+      // Version 1 predates bent shafts: the blade was on the shaft line.
+      h_.bladeBendDeg = 0;
+      h_.shaftBendPosM = h_.bladeCopPosM;
+    }
     // A newer firmware may append header fields; skip what we don't know.
     std::fseek(f_, h_.headerSize, SEEK_SET);
     return true;

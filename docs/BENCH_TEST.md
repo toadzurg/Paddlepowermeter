@@ -40,8 +40,12 @@ toward the blade, and must match `src/Config.h`:
 
 5. [ ] `IMU2_POS_M`: IMU1 to IMU2. It must be toward the blade, with at
        least 0.2 m between them; 0.3 m or more is better.
-6. [ ] `BLADE_COP_POS_M`: IMU1 to the middle of the blade (the centre of
-       pressure).
+6. [ ] `SHAFT_BEND_POS_M`: IMU1 to the throat, where the blade leaves the
+       shaft.
+   [ ] `BLADE_COP_FROM_BEND_M`: throat to the middle of the blade (the
+       centre of pressure), measured along the blade.
+   [ ] `BLADE_BEND_DEG`: the bend angle (e.g. 12 for a 12° bent shaft, 0
+       for a straight paddle).
 7. [ ] `PIVOT_PRIOR_POS_M`: IMU1 to where your top hand usually grips.
        Negative if your hand is above IMU1.
 8. [ ] If any value changed, edit `Config.h` and re-flash.
@@ -86,8 +90,10 @@ For example, if pose A (expect x = −9.8) shows chip `y 9.79`, set
 ## 4. Force sensor
 
 Clamp the shaft at your top-hand position with the power face facing up,
-and the blade sticking out free. Weight resting on the power face pushes
-on it the same way the water does.
+and the blade sticking out free. Tilt the paddle so the **blade face** is
+level. On a bent shaft that means the shaft is tilted by the bend angle
+(e.g. 12°). That way the weight pushes straight into the blade, the same way
+the water does.
 
 14. [ ] Unloaded, type `tare`. Expect `tared: zero offset ...`.
 15. [ ] With `debug` on, `F` reads 0 ± 1 N and jitters by less than ±0.5 N.
@@ -194,7 +200,9 @@ on it the same way the water does.
 | Item | Value | Date |
 |---|---|---|
 | IMU2 position (m) | | |
-| Blade centre of pressure (m) | | |
+| Throat position (m) | | |
+| Throat to blade centre (m) | | |
+| Bend angle (°) | | |
 | Top-hand position (m) | | |
 | IMU axis maps changed? (values) | | |
 | Force calibration (counts/N, from `status`) | | |

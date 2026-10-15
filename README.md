@@ -19,13 +19,22 @@ like a cycling power meter.
 ## How power is computed
 
 ```
-P = F · v_blade        v_blade = ω · L        L = x_blade − x_pivot
+P = F · ω · L        L = d + (x_throat − x_pivot) · cos β
 ```
 
-* **F**: force at the blade's centre of pressure, from the strain gauge.
+* **F**: force at the blade's centre of pressure, normal to the blade face,
+  from the strain gauge.
 * **ω**: shaft angular velocity about the stroke axis.
-* **L**: distance from the pivot (the point on the shaft that stays still
-  relative to the boat, usually near the top hand) to the blade.
+* **L**: distance from the pivot to the line the blade force acts along.
+  The pivot is the point on the shaft that stays still relative to the boat,
+  usually near the top hand. On a bent shaft (bend β, blade centre d past the
+  throat) that line is turned by β, so L is shorter than the distance to the
+  blade itself: about 1.7% at 12°. For a straight paddle (β = 0) it is simply
+  pivot to blade centre.
+
+The forward share of the blade force is likewise taken from the blade's
+angle, not the shaft's: `cos(θ − β)`. That is the point of a bent shaft: the
+blade is vertical while the shaft leans aft by β.
 
 Per stroke, `∫P dt` over the drive is the stroke energy. **Stroke power** is
 that energy divided by the full cycle time (drive + recovery), which is
@@ -62,7 +71,9 @@ accelerometer-difference α measurement and some pivot accuracy.
 1. Measure the geometry and set it in `src/Config.h`. Positions are metres
    along the shaft from IMU1, positive toward the blade:
    * `IMU2_POS_M`
-   * `BLADE_COP_POS_M` (roughly the middle of the blade)
+   * `SHAFT_BEND_POS_M` (the throat, where the blade leaves the shaft)
+   * `BLADE_COP_FROM_BEND_M` (throat to the middle of the blade, along the blade)
+   * `BLADE_BEND_DEG` (bent-shaft angle, e.g. 12; 0 for a straight paddle)
    * `PIVOT_PRIOR_POS_M` (where your top hand usually is)
 2. Check the IMU axes. With the identity map, each chip's X axis points at
    the blade and its Y axis points the way the power face moves. If yours

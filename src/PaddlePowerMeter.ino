@@ -76,6 +76,8 @@ logfmt::LogHeader makeLogHeader() {
   h.pulsesPerM = pulsesPerM;
   h.startMillis = millis();
   strncpy(h.firmware, __DATE__, sizeof h.firmware - 1);
+  h.bladeBendDeg = cfg::BLADE_BEND_DEG;
+  h.shaftBendPosM = cfg::SHAFT_BEND_POS_M;
   return h;
 }
 

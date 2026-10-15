@@ -225,6 +225,21 @@ int main() {
     CHECK_NEAR("rms error (deg)", std::sqrt(sq / n) * 180 / M_PI, 0, 3.0);
   }
 
+  std::printf("\nBent shaft (%.0f deg)\n", cfg::BLADE_BEND_DEG);
+  {
+    // L = d + (throat − pivot)·cos β, e.g. 0.25 + 0.70·cos 12° = 0.9347 m
+    double b = cfg::BLADE_BEND_DEG * M_PI / 180;
+    CHECK_NEAR("lever arm formula (m)", PowerModel::leverArmFor(-0.10f),
+               cfg::BLADE_COP_FROM_BEND_M + (cfg::SHAFT_BEND_POS_M + 0.10) * std::cos(b), 1e-5);
+    // Tight enough to catch a model that treats the paddle as straight
+    // (1.9% / 1.4% off at 12°); the bent model is within 0.3% / 0.6%.
+    SimConfig c;
+    c.boatSpeed = 2.0;
+    SimResult r = simulate(c);
+    CHECK_NEAR("stroke power within 1% (W)", r.meanModelPower, r.truePower, 0.01 * r.truePower);
+    CHECK_NEAR("useful power within 1% (W)", r.meanUseful, r.trueUseful, 0.01 * r.trueUseful);
+  }
+
   std::printf("\nPower split: no impeller\n");
   {
     SimResult r = simulate(SimConfig());

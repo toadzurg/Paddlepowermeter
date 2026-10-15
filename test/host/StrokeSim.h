@@ -48,7 +48,10 @@ SimTruth generateStroke(const SimConfig &c, unsigned seed, OnSample onSample,
 
   const double dt = 1.0 / cfg::SAMPLE_HZ;
   const double cycle = c.driveS + c.recoveryS;
-  const double L = cfg::BLADE_COP_POS_M - c.pivotPos;
+  // Lever arm and blade angle for the configured (possibly bent) blade.
+  const double bend = cfg::BLADE_BEND_DEG * M_PI / 180;
+  const double L = cfg::BLADE_COP_FROM_BEND_M +
+                   (cfg::SHAFT_BEND_POS_M - c.pivotPos) * std::cos(bend);
   const double g = cfg::GRAVITY_MS2;
   const double imuPos[2] = {0.0, cfg::IMU2_POS_M};
 
@@ -84,8 +87,9 @@ SimTruth generateStroke(const SimConfig &c, unsigned seed, OnSample onSample,
     // Boat speed consistent with the surge acceleration used below.
     double cycleW = 2 * M_PI / cycle;
     double vBoat = c.boatSpeed - c.surgeAmp / cycleW * std::cos(cycleW * t);
-    // Only the horizontal part of the blade force drives the boat.
-    if (paddling) trueUsefulEnergy += force * std::cos(th) * vBoat * dt;
+    // Only the horizontal part of the blade force drives the boat; the
+    // force is normal to the blade, which is at θ − β from vertical.
+    if (paddling) trueUsefulEnergy += force * std::cos(th - bend) * vBoat * dt;
 
     // World frame: X forward, Y left, Z up. Paddle axes in world:
     double ex[3] = {-std::sin(th), 0, -std::cos(th)};  // toward blade

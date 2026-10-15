@@ -222,7 +222,9 @@
     <div class="card chart-card">
       <h2>Stroke</h2>
       <div class="sub">Side view, bow to the right. The pivot and lever arm (blue)
-        are the paddle's live estimates; the orange arrow is the water's force on the blade.</div>
+        are the paddle's live estimates. The lever arm runs square to the line the blade
+        force acts along, so a bent blade makes it shorter. The orange arrow is the water's
+        force on the blade.</div>
       <div id="stroke-empty" class="empty">The stroke view starts when data arrives.</div>
       <svg class="stroke-view" id="stroke-view" role="img" hidden
            aria-label="Side view of the paddle, its pivot, lever arm and blade force"></svg>
@@ -272,7 +274,9 @@
     <div class="card">
       <h2>Force sensor</h2>
       <p>Tare with the blade unloaded. To calibrate, clamp the shaft at the top
-         hand, rest a known weight on the centre of the power face, and enter its mass.</p>
+         hand, power face up, and tilt it so the <em>blade</em> face is level (on a bent
+         shaft that's the bend angle, e.g. 12°). Rest a known weight on the blade's centre
+         and enter its mass.</p>
       <div class="row">
         <button class="secondary needs-unlock" data-cmd="tare" data-confirm="Tare now? The blade must be unloaded.">Tare</button>
         <input id="cal-kg" inputmode="decimal" placeholder="Mass (kg)">
@@ -356,7 +360,7 @@
 // scripts into the page, and shared global names would break one or both.
 (() => {
 "use strict";
-const APP_VERSION = "2026-10-15.5";
+const APP_VERSION = "2026-10-15.6";
 // Must match src/BleProtocol.h.
 const UUID = {
   service: "7e1a0001-5c3b-4c2e-9a77-0f5d3e2b9c10",
@@ -587,7 +591,12 @@ $("chart").addEventListener("pointerleave", hideTip);
 // the pivot stays put on screen and the shaft swings (and slides, as the
 // pivot estimate moves along it) through it. Positions along the shaft are
 // metres from IMU1, as in src/Config.h.
-const GEOM = { grip: -0.42, bladeStart: 0.70, bladeCop: 0.95, bladeTip: 1.20, imu2: 0.30 };
+// Matches the defaults in src/Config.h: a 52" bent-shaft marathon paddle.
+const GEOM = { grip: -0.22, bend: 0.60, copFromBend: 0.25, bladeLen: 0.50, imu2: 0.30, bendDeg: 12 };
+const BEND = GEOM.bendDeg * Math.PI / 180;
+// Distance from the pivot to the blade force's line of action, as in
+// PowerModel::leverArmFor(): L = d + (throat − pivot)·cos β.
+const leverArmFor = (pivot) => GEOM.copFromBend + (GEOM.bend - pivot) * Math.cos(BEND);
 const WATER_BELOW_PIVOT = 0.80;  // m
 const RECOVERY_LIFT = 0.58;      // m the paddle is drawn lifted between drives
 const GUNWALE_BELOW_PIVOT = 0.60, KEEL_BELOW_PIVOT = 0.93;
@@ -647,34 +656,49 @@ function drawStrokeView(svg, v, noAngle) {
     `<line class="water-line" x1="0" x2="${W}" y1="${water}" y2="${water}"/>` +
     `<text x="${W - 8}" y="16" text-anchor="end">bow →</text>`;
 
-  // Paddle
-  const grip = at(GEOM.grip), bladeA = at(GEOM.bladeStart), tip = at(GEOM.bladeTip);
+  // Paddle. The blade leaves the shaft at the throat, bent by β toward the
+  // bow side (−Y): along (cos β, −sin β) in shaft coordinates.
+  const along = (d) => [GEOM.bend + d * Math.cos(BEND), -d * Math.sin(BEND)];
+  const grip = at(GEOM.grip), throat = at(GEOM.bend);
+  const tipS = along(GEOM.bladeLen), copS = along(GEOM.copFromBend);
+  const tip = at(tipS[0], tipS[1]), cop = at(copS[0], copS[1]);
   const gl = at(GEOM.grip, -0.07), gr = at(GEOM.grip, 0.07);
-  g += `<line class="shaft" x1="${grip[0]}" y1="${grip[1]}" x2="${bladeA[0]}" y2="${bladeA[1]}"/>` +
+  g += `<line class="shaft" x1="${grip[0]}" y1="${grip[1]}" x2="${throat[0]}" y2="${throat[1]}"/>` +
     `<line class="shaft" x1="${gl[0]}" y1="${gl[1]}" x2="${gr[0]}" y2="${gr[1]}"/>` +
-    `<line class="blade" x1="${bladeA[0]}" y1="${bladeA[1]}" x2="${tip[0]}" y2="${tip[1]}"/>`;
+    `<line class="blade" x1="${throat[0]}" y1="${throat[1]}" x2="${tip[0]}" y2="${tip[1]}"/>`;
   for (const sIMU of [0, GEOM.imu2]) {
     const q = at(sIMU, -0.035);
     g += `<rect class="imu" x="${q[0] - 4}" y="${q[1] - 4}" width="8" height="8" rx="2"/>`;
   }
 
-  // Lever arm: dimension line beside the shaft, pivot to blade centre.
-  const off = 0.13;
-  const l0 = at(v.pivot, off), l1 = at(GEOM.bladeCop, off);
-  const t0a = at(v.pivot, off - 0.04), t0b = at(v.pivot, off + 0.04);
-  const t1a = at(GEOM.bladeCop, off - 0.04), t1b = at(GEOM.bladeCop, off + 0.04);
-  // Label just outside the dimension line, anchored away from the shaft.
-  const sMid = (v.pivot + GEOM.bladeCop) / 2;
-  const mid = at(sMid, off + 0.06), onShaft = at(sMid);
-  const anchor = mid[0] >= onShaft[0] ? "start" : "end";
-  g += `<path class="lever" d="M${f(l0)} L${f(l1)} M${f(t0a)} L${f(t0b)} M${f(t1a)} L${f(t1b)}"/>` +
-    `<text class="strong" x="${mid[0]}" y="${mid[1] + 4}" text-anchor="${anchor}">L ${num(v.lever, 2)} m</text>`;
+  // Lever arm: from the pivot, square to the blade force's line of action
+  // (through the centre of pressure, along the blade normal n). With a bent
+  // blade that is shorter than the distance to the blade itself.
+  const n = [Math.sin(BEND), Math.cos(BEND)];             // shaft coordinates
+  const rel = [copS[0] - v.pivot, copS[1]];
+  const along_n = rel[0] * n[0] + rel[1] * n[1];
+  const footS = [copS[0] - along_n * n[0], copS[1] - along_n * n[1]];
+  const pv0 = at(v.pivot), foot = at(footS[0], footS[1]);
+  const lx = foot[0] - pv0[0], ly = foot[1] - pv0[1], ll = Math.hypot(lx, ly) || 1;
+  const px = -ly / ll * 5, py = lx / ll * 5;              // tick direction
+  g += `<path class="lever" d="M${f(pv0)} L${f(foot)} M${pv0[0] + px},${pv0[1] + py} L${pv0[0] - px},${pv0[1] - py}` +
+    ` M${foot[0] + px},${foot[1] + py} L${foot[0] - px},${foot[1] - py}"/>` +
+    `<line class="lever" stroke-dasharray="3 3" x1="${foot[0]}" y1="${foot[1]}" x2="${cop[0]}" y2="${cop[1]}"/>`;
+  // Label beside the middle of the lever line, on the side away from the
+  // shaft: find which side of the lever line the shaft's middle is on.
+  const mx = (pv0[0] + foot[0]) / 2, my = (pv0[1] + foot[1]) / 2;
+  const sh = at((v.pivot + GEOM.bend) / 2);
+  const shaftSide = Math.sign((sh[0] - mx) * px + (sh[1] - my) * py) || 1;
+  const lab = [mx - shaftSide * px * 2.6, my - shaftSide * py * 2.6];
+  const anchor = lab[0] >= mx ? "start" : "end";
+  g += `<text class="strong" x="${lab[0]}" y="${lab[1] + 4}" text-anchor="${anchor}">L ${num(v.lever, 2)} m</text>`;
 
-  // Force of the water on the blade: opposite the power face's motion.
+  // Force of the water on the blade: along −n, the power face normal.
   if (v.force > 8) {
-    const c = at(GEOM.bladeCop);
-    const len = Math.min(110, 0.42 * v.force) ;
-    const end = [c[0] - ey[0] * len, c[1] + ey[1] * len];
+    const c = cop;
+    const len = Math.min(110, 0.42 * v.force);
+    const nw = [ex[0] * n[0] + ey[0] * n[1], ex[1] * n[0] + ey[1] * n[1]];  // world (X, Z)
+    const end = [c[0] - nw[0] * len, c[1] + nw[1] * len];
     const ang = Math.atan2(end[1] - c[1], end[0] - c[0]);
     const h1 = [end[0] - 9 * Math.cos(ang - 0.45), end[1] - 9 * Math.sin(ang - 0.45)];
     const h2 = [end[0] - 9 * Math.cos(ang + 0.45), end[1] - 9 * Math.sin(ang + 0.45)];
@@ -685,10 +709,10 @@ function drawStrokeView(svg, v, noAngle) {
 
   // Pivot last, on top
   // Label on the opposite side of the shaft from the lever arm.
-  const pv = at(v.pivot), lab = at(v.pivot, -0.12);
-  const side = lab[0] >= pv[0] ? "start" : "end";
+  const pv = at(v.pivot), plab = at(v.pivot, -0.12);
+  const pside = plab[0] >= pv[0] ? "start" : "end";
   g += `<circle class="pivot" cx="${pv[0]}" cy="${pv[1]}" r="6"/>` +
-    `<text x="${lab[0]}" y="${lab[1] + 4}" text-anchor="${side}">pivot ${num(v.pivot, 2)} m</text>`;
+    `<text x="${plab[0]}" y="${plab[1] + 4}" text-anchor="${pside}">pivot ${num(v.pivot, 2)} m</text>`;
   if (noAngle) g += `<text x="8" y="16">update the paddle firmware for the live shaft angle</text>`;
   svg.innerHTML = g;
 }
@@ -907,7 +931,7 @@ function startDemo() {
       force = 1.5 * Math.random();
     }
     const pivot = -0.14 + 0.08 * Math.sin(2 * Math.PI * t / 23) + 0.03 * Math.sin(2 * Math.PI * t / 7);
-    const lever = GEOM.bladeCop - pivot;
+    const lever = leverArmFor(pivot);
     const instPower = Math.max(0, force * omega * lever);
     if (inDrive) energy += instPower * dt;
     if (wasDrive && !inDrive) {
