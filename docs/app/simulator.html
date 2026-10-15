@@ -322,6 +322,9 @@
   svg.hv .ln.still { stroke-width: 1; opacity: 0.45; }
   svg.hv .hull.boat-a { stroke: var(--series-1); } svg.hv .hull.boat-b { stroke: var(--series-2); fill-opacity: 0.6; }
   svg.hv .paddler { fill: var(--muted); }
+  svg .fig-body { fill: none; stroke: var(--muted); stroke-linecap: round; stroke-linejoin: round; }
+  svg .fig-leg { opacity: 0.6; }
+  svg .fig-head { fill: var(--muted); }
   .hpair.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0 12px; }
   .hull-legend i { background: var(--text-secondary); } .hull-legend i.dash { background: repeating-linear-gradient(90deg, var(--text-secondary) 0 4px, transparent 4px 7px); }
   .hull-legend i.dot { background: repeating-linear-gradient(90deg, var(--text-secondary) 0 2px, transparent 2px 5px); } .hull-legend i.ghost { background: var(--muted); height: 1px; }
@@ -433,6 +436,9 @@
           <section><h3>Bob</h3>
             <div class="hpair" id="hp-bob" data-what="The boat rising and sinking"></div>
             <div class="hull-read" id="hull-bob-read"></div>
+            <h3>Pitch<button type="button" class="info" data-tip="Your body moving fore and aft, and the hips swinging the torso, rock the bow up and down. So does the push on the hull, which sits a little above the drag." aria-label="What is this?">?</button></h3>
+            <div class="hpair" id="hp-pitch" data-what="The boat pitching, from the side"></div>
+            <div class="hull-read" id="hull-pitch-read"></div>
             <h3>Roll<button type="button" class="info" data-tip="The blade's push up and sideways rolls the boat. From a C1's shape (31–32 in wide at the 4 in waterline) and a paddler sitting high; the stability is an estimate." aria-label="What is this?">?</button></h3>
             <div class="hpair" id="hp-roll" data-what="The boat rolling, from behind"></div>
             <div class="hull-read" id="hull-roll-read"></div></section>
@@ -617,14 +623,14 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of stroke-sim.js (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. -->
-<script src="stroke-sim.js?v=87555f28da"></script>
+<script src="stroke-sim.js?v=8776ff41b1"></script>
 <script>
 (() => {
 "use strict";
 const $ = (id) => document.getElementById(id);
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 31;
+const NEEDS_API = 32;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -922,7 +928,7 @@ function showEfficiency() {
   }).join("");
 
   const power = (s) => { const sh = s.at.shares;
-    return [sh.hull, sh.slip, sh.leeway, sh.surge + sh.bounce + Math.max(0, sh.sink)].map((v) => v * 100); };
+    return [sh.hull, sh.slip, sh.leeway, sh.surge + sh.bounce + sh.pitch + Math.max(0, sh.sink)].map((v) => v * 100); };
   const force = (r) => [r.forceShare.forward, r.forceShare.sideways, r.forceShare.vertical].map((v) => v * 100);
   breakdown("power", ["moves the boat", "slip", "sideways drag", "surge & bounce"], power(A), power(B), 1);
   breakdown("force", ["forward", "sideways", "vertical"], force(results.a), force(results.b), 0);
@@ -1940,7 +1946,7 @@ function updateHull() {
   drawScore(); drawSurgeChart(); drawHeading(); drawPower(); drawShallow(); hullReadouts(); drawHullLive(phase);
 }
 // Each boat's score, and the biggest things costing it points.
-const SCORE_NAMES = { switching: "Switching", zigzag: "Zigzag", swing: "Body swing", drop: "Drop", surge: "Speed swings", bob: "Bob", crab: "Crab", riding: "Riding higher" };
+const SCORE_NAMES = { switching: "Switching", zigzag: "Zigzag", swing: "Body swing", drop: "Drop", surge: "Speed swings", bob: "Bob", pitch: "Pitch", crab: "Crab", riding: "Riding higher" };
 function drawScore() {
   $("boat-score").innerHTML = BOATS.map((x) => {
     const sc = results[x].at(effortW).boatScore;
@@ -1988,6 +1994,20 @@ function drawHullLive(ph) {
       g += `<text x="8" y="${16 + k * 15}"><tspan class="strong" style="fill:${COL[x]}">${x.toUpperCase()}</tspan> ${c.heave[i] >= 0 ? "up" : "down"} ${fmtNum(Math.abs(c.heave[i]) * 1000, 1)} mm</text>`;
     });
     g += `<text x="${W_HV - 8}" y="16" text-anchor="end">height ×200</text>`;
+    svg.innerHTML = g;
+  }
+  // Pitch: side view, bow right, with the paddler; tilt ×20.
+  for (const { svg, bs } of panesIn("hp-pitch")) {
+    svg.setAttribute("viewBox", `0 0 ${W_HV} 120`);
+    const cx = 180, wl = 82, ps = s;
+    let g = hullDefs + `<rect class="water" x="0" y="${wl}" width="${W_HV}" height="${120 - wl}"/><line class="wl" x1="0" x2="${W_HV}" y1="${wl}" y2="${wl}"/>`;
+    bs.forEach((x, k) => {
+      const [c, i] = at(x), deg = c.pitch[i] * 180 / Math.PI;
+      g += `<g transform="rotate(${(-deg * 20).toFixed(2)} ${cx} ${wl})"><path class="hull boat-${x}" d="${hullPath("side", sideP(cx, wl, ps))}"/>` +
+        (k === 0 ? paddlerFig(sideP(cx, wl, ps), x, ph) : "") + `</g>`;
+      g += `<text x="8" y="${16 + k * 15}"><tspan class="strong" style="fill:${COL[x]}">${x.toUpperCase()}</tspan> bow ${c.pitch[i] >= 0 ? "up" : "down"} ${fmtNum(Math.abs(c.pitch[i]) * 2.8 * 1000, 1)} mm</text>`;
+    });
+    g += `<text x="${W_HV - 8}" y="16" text-anchor="end">tilt ×20</text>`;
     svg.innerHTML = g;
   }
   // Roll: from behind, paddle on the right; tilt ×3.
@@ -2041,6 +2061,7 @@ function hullReadouts() {
   const lines = (f) => bs.map((x) => `<span>${tag(x)}${f(x, hullCyc[x], results[x].at(effortW), results[x])}</span>`).join("");
   $("hull-surge-read").innerHTML = lines((x, c, e) => `Speed swings <b>${fmtNum(Math.min(...c.speed) * 3.6, 1)}–${fmtNum(Math.max(...c.speed) * 3.6, 1)} km/h</b>, costing <b>${fmtNum(e.shares.surge * 100, 1)}%</b>; peak push <b>${fmtNum(Math.max(...c.push), 0)} N</b> against <b>${fmtNum(e.hullK * e.waterSpeed ** 2, 0)} N</b> of drag`);
   $("hull-bob-read").innerHTML = lines((x, c, e) => `Rides <b>${fmtNum(Math.abs(e.sinkMm), 1)} mm ${e.sinkMm < 0 ? "higher" : "lower"}</b> (${fmtNum(Math.abs(e.shares.sink) * 100, 1)}% ${e.shares.sink < 0 ? "less" : "more"} drag), bobs <b>±${fmtNum(e.bounceMm, 1)} mm</b> (${fmtNum(e.shares.bounce * 100, 1)}%)`);
+  $("hull-pitch-read").innerHTML = lines((x, c, e) => `Pitches <b>±${fmtNum(e.pitchDeg, 2)}°</b>, the bow moving <b>±${fmtNum(e.bowMm, 1)} mm</b>, costing <b>${fmtNum(e.shares.pitch * 100, 1)}%</b>`);
   $("hull-roll-read").innerHTML = lines((x, c) => {
     const heel = Math.max(...c.heel.map(Math.abs)) * 180 / Math.PI, inStep = Math.abs(c.rollPeriod / c.cycle - 1) < 0.15;
     const rock = results[x].params.hipRock;
@@ -2081,7 +2102,7 @@ function drawPower() {
     const e = results[x].at(effortW), sh = e.shares, wave = 0.23 * Math.pow(e.waterSpeed / 2.5, 4);
     return [["Hull: friction", sh.hull * (1 - wave), "var(--cat-useful)"], ["Hull: waves", sh.hull * wave, "color-mix(in srgb, var(--cat-useful) 50%, var(--surface-1))"],
             ["Blade slip", sh.slip, "var(--cat-slip)"], ["Crab", sh.leeway, "var(--cat-side)"],
-            ["Speed swings", sh.surge, "var(--cat-other)"], ["Bob", sh.bounce, "color-mix(in srgb, var(--cat-other) 55%, var(--surface-1))"]];
+            ["Speed swings", sh.surge, "var(--cat-other)"], ["Bob & pitch", sh.bounce + sh.pitch, "color-mix(in srgb, var(--cat-other) 55%, var(--surface-1))"]];
   };
   let g = "";
   BOATS.forEach((x, k) => {
@@ -2146,7 +2167,7 @@ const simOf = (p) => {
   if (!simCache.has(k)) { if (simCache.size > 40) simCache.clear(); simCache.set(k, S.simulate(p)); }
   return simCache.get(k);
 };
-const FIXABLE = { "Muscle not used": "more rotation, leg drive and hinge", "Body swing": "a quieter body", "Switching": "fewer switches", "Drop": "less drop at the catch", "Crab": "a straighter pull", "Speed swings & bob": "a smoother pull", "Heel": "" };
+const FIXABLE = { "Muscle not used": "more rotation, leg drive and hinge", "Body swing": "a quieter body", "Switching": "fewer switches", "Drop": "less drop at the catch", "Crab": "a straighter pull", "Speed swings, bob & pitch": "a smoother pull", "Heel": "" };
 const span = (s) => { s = Math.abs(s); return s >= 3600 ? `${Math.floor(s / 3600)}:${String(Math.round((s % 3600) / 60)).padStart(2, "0")} h` : `${Math.floor(s / 60)}:${String(Math.round(s % 60) % 60).padStart(2, "0")}`; };
 function scheduleScore() {
   const gen = ++scoreGen;
@@ -2181,7 +2202,7 @@ async function runScore(gen) {
     if (p.heelDeg && !(await step("Heel", set("heelDeg", 0)))) return;
     if (!(await step("Switching", set("switchLossStrokes", 0)))) return;
     if (!(await step("Crab", intoHull("leeway")))) return;
-    if (!(await step("Speed swings & bob", intoHull(["surge", "bounce", "swing", "drop"])))) return;
+    if (!(await step("Speed swings, bob & pitch", intoHull(["surge", "bounce", "swing", "drop", "pitch"])))) return;
     if (setup.map) rows.push(["Portages", race[`legs${x.toUpperCase()}`].filter((l) => l.kind === "portage").reduce((a, l) => a + l.t, 0)]);
     if (!(await step("Blade slip", intoHull("slip")))) return;
     out[x] = { t: t0, rows };
@@ -2526,6 +2547,7 @@ function viewport(svg, v) {
   return { W, H, P: (p) => [ox + s * v.x(p), oy - s * v.y(p)], s };
 }
 const f2 = (q) => `${q[0].toFixed(1)},${q[1].toFixed(1)}`;
+const rad = (d) => (d * Math.PI) / 180, sub3 = (a, b) => a.map((v, k) => v - b[k]);
 
 // A USCA C1 marathon canoe: 18'6" long, 32" at its widest (just aft of
 // midships, a little above the waterline), pulled in to 17" at the gunwale
@@ -2593,6 +2615,38 @@ function stateAt(r, ph) {
   return { P: Pl, B: S.blade(r.geom, Pl, face), thrust: [0, 0, 0], F: 0, inDrive: false };
 }
 
+// The paddler, sitting in the boat, at phase ph: torso hinged by the engine's
+// body motion (bodyX, bodyZ), shoulders turned by rotation, hands on the
+// paddle. Boat coordinates in metres, x forward, y to the off side, z up.
+const HIP = [-0.5, 0, 0.1], TORSO = 0.55, LEAN0 = 15;
+function paddlerFig(P, x, ph) {
+  const r = results[x], c = hullCyc[x], p = r.params, st = stateAt(r, ph), df = p.driveFraction;
+  const i = c ? Math.min(c.t.length - 1, Math.floor(ph * c.t.length)) : 0;
+  const bx = c ? c.bodyX[i] : 0, bz = c ? c.bodyZ[i] : 0;
+  // A hinge or swing of x m (whole body) turns the torso about x / (0.6 · 0.3) rad.
+  const lean = rad(Math.max(-20, Math.min(55, LEAN0 + (bx / 0.18) * 180 / Math.PI)));
+  const s = ph < df ? Math.cos(Math.PI * ph / df) : -Math.cos(Math.PI * (ph - df) / (1 - df));
+  const twist = rad(25 * (p.rotation || 0) * s);
+  const sh = [HIP[0] + TORSO * Math.sin(lean), 0, HIP[2] + TORSO * Math.cos(lean) + 1.6 * bz];
+  const off = [sh[0] + 0.2 * Math.sin(twist), 0.2 * Math.cos(twist), sh[2]], pad = [sh[0] - 0.2 * Math.sin(twist), -0.2 * Math.cos(twist), sh[2]];
+  const head = [sh[0] + 0.24 * Math.sin(lean), 0, sh[2] + 0.24 * Math.cos(lean)];
+  const knee = [HIP[0] + 0.42, 0, HIP[2] + 0.16 - 0.04 * (p.legDrive || 0) * (ph < df ? Math.sin(Math.PI * ph / df) : 0)], foot = [HIP[0] + 0.78, 0, -0.04];
+  // Elbows: two 0.3 m segments, bent down and out.
+  const elbow = (a, b, out) => {
+    const d = sub3(b, a), L = Math.hypot(...d);
+    if (L >= 0.6) return null;
+    const u = d.map((v) => v / L), hint = [0, out, -1], hu = hint.reduce((q, v, k) => q + v * u[k], 0);
+    let n = hint.map((v, k) => v - hu * u[k]); const nl = Math.hypot(...n) || 1; n = n.map((v) => v / nl);
+    const h = Math.sqrt(0.09 - (L / 2) ** 2);
+    return a.map((v, k) => v + u[k] * L / 2 + n[k] * h);
+  };
+  const sc = Math.max(...[[1, 0, 0], [0, 1, 0], [0, 0, 1]].map((e) => Math.hypot(P(e)[0] - P([0, 0, 0])[0], P(e)[1] - P([0, 0, 0])[1])));
+  const seg = (pts, w, cls = "") => { const q = pts.filter(Boolean).map(P); return `<path class="fig-body ${cls}" stroke-width="${(w * sc).toFixed(1)}" d="M${q.map(f2).join(" L")}"/>`; };
+  const grip = st.P.at(0), low = st.P.at(Math.min(0.55, p.pivotFromGrip + 0.45));
+  const hd = P(head);
+  return `${seg([HIP, knee, foot], 0.1, "fig-leg")}${seg([pad, elbow(pad, low, -1), low], 0.06)}${seg([HIP, sh], 0.15)}${seg([off, pad], 0.09)}` +
+    `${seg([off, elbow(off, grip, 1), grip], 0.06)}<circle class="fig-head" cx="${hd[0].toFixed(1)}" cy="${hd[1].toFixed(1)}" r="${(0.1 * sc).toFixed(1)}"/>`;
+}
 // One boat's paddle, blade path and push, in its colour.
 function drawBoat(name, P, x, ph, maxF) {
   const r = results[x], st = stateAt(r, ph), sm = r.samples;
@@ -2648,6 +2702,7 @@ function drawView(svg, name, ph) {
   // A so the one paddle shows both colours.
   const same = bs.length > 1 && sameBoats();
   const order = same ? ["a", "b"] : bs;
+  g += paddlerFig(P, bs[0], ph);   // one paddler: the first boat shown
   for (const x of order)
     g += `<g class="${bs.length > 1 && x === "b" ? (same ? "blend-b" : "overlay-b") : ""}">${drawBoat(name, P, x, ph, maxF)}</g>`;
   const label = { side: "bow →", end: "paddle side →", top: "↑ bow" }[name];
