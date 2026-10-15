@@ -54,8 +54,8 @@
 //    boat's mass and weight, so they are worked out at the comparison
 //    effort and your actual stroke rate: the drive's force shape, scaled to
 //    that effort, played over 60/rate seconds. A slower rate at the same
-//    power means bigger, further-apart pulses, so more surge (Burke, The
-//    Science of Paddling, Parts 25 and 33).
+//    power means bigger, further-apart pulses, so more surge (The Science
+//    of Paddling, Parts 25 and 33).
 //  - Efficiency = moving the boat / paddler power, where moving the boat is
 //    k·V³ for the boat at its own weight with no vertical push. A stroke
 //    that lifts the boat can earn a little back.
@@ -63,7 +63,7 @@
 (function (root) {
   "use strict";
   const RHO = 1000, CD = 1.6, BLADE_AREA = 0.095;  // ~20"×8.5" marathon blade
-  // Hull drag k·V² (still air included). Burke measured k = 4.26 by
+  // Hull drag k·V² (still air included). A coast-down test measured k = 4.26 by
   // coasting a USCA C-1 (18'6", ~109 kg aboard) at mostly under 2.3 m/s
   // (The Science of Paddling, Part 14). Scaled to 90 kg by wetted area, that
   // is 3.75; wave drag grows quickly toward hull speed (~3 m/s for 5.6 m,
@@ -93,7 +93,7 @@
   const RHO_AIR = 1.2, CDA_AIR = 0.45;
   // Side-on air drag area (paddler + freeboard, m²), and how far the wind's
   // push sits aft of the hull's pivot underway. The pivot moves forward when
-  // a hull is moving (Burke, The Science of Paddling, Part 37), so the stern
+  // a hull is moving (The Science of Paddling, Part 37), so the stern
   // blows downwind and the bow turns into the wind.
   const CDA_SIDE = 1.1, WIND_ARM = 0.3;
   // Wave-making share of hull drag at race pace (2.5 m/s), rising as V⁶
@@ -417,7 +417,7 @@
     };
   }
 
-  // Shallow water (Burke, Part 4): the boat's own wave, wavelength
+  // Shallow water (The Science of Paddling, Part 4): the boat's own wave, wavelength
   // λ = 2πV²/g, runs slower when the depth D is under about λ/2, as
   // c = √(gλ/2π · tanh(2πD/λ)). The hull then makes the wave it would make
   // in deep water at V / √tanh(gD/V²) (Schlichting's intermediate speed), so
@@ -514,7 +514,7 @@
   }
 
   // ---------------------------------------------------------------- river
-  // A river (Burke, The Science of Paddling, Parts 18 and 20): current and
+  // A river (The Science of Paddling, Parts 18 and 20): current and
   // depth are greatest mid-channel and fall to the banks,
   //   straight: shape(y) = 1 − (1 − 2y/W)², y from the nearer bank;
   //   bend: deep and fast on the outside, a shallow slack bar on the inside,
@@ -599,7 +599,7 @@
   // (m/s, + with you) and course: "point" (one way) or "outback" (out to a
   // turn at half distance and back, so the wind and current reverse on the
   // way home; the turn itself isn't timed). Time lost against them is never
-  // fully won back with them (Burke, The Science of Paddling, Part 7).
+  // fully won back with them (The Science of Paddling, Part 7).
   // Returns times (Infinity if a boat can't make headway), average ground
   // speeds, the finishing gap and each boat's distance at time t.
   function race(a, b, metres, wattsA, wattsB, env = {}) {

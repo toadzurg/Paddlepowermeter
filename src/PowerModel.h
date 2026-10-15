@@ -63,12 +63,12 @@ public:
   float strokeEnergy() const { return lastEnergy_; }  // J of last drive
   // Forward impulse of the last drive, ∫ F·cos(θ − β) dt in N·s: the push
   // along the boat's direction of travel, which is what changes its
-  // momentum (Burke, The Science of Paddling, Parts 25 and 33). Doesn't need
+  // momentum (The Science of Paddling, Parts 25 and 33). Doesn't need
   // boat speed.
   float strokeImpulse() const { return lastImpulse_; }
   // Length of the last drive (force above the stroke threshold), s.
   float driveTime() const { return lastDriveS_; }
-  // Share of the stroke cycle spent in the drive (Burke's duty factor), and
+  // Share of the stroke cycle spent in the drive (the duty factor), and
   // the forward push averaged over the whole cycle: impulse / cycle time,
   // N. At steady speed it equals the hull's drag. Both need a timed cycle,
   // like strokePower(); 0 until then and after the paddler stops.

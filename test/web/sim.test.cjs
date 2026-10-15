@@ -27,7 +27,7 @@ console.log("\nStroke simulator physics");
   check("shares at 150 W add to 1", Math.abs(total - 1) < 1e-4, total.toFixed(6));
   check("efficiency is the hull share at the comparison effort", Math.abs(base.efficiency - sh.hull) < 1e-12);
   check("surge costs a little", sh.surge > 0.0005 && sh.surge < 0.02, pct(sh.surge));
-  // Burke (The Science of Paddling, Part 32) cites about ±10% speed swing.
+  // The Science of Paddling (Part 32) cites about ±10% speed swing.
   const swing = base.at(150).surgeSwing;
   check("speed swings 5–20% over a stroke at 60 spm", swing > 0.05 && swing < 0.2, pct(swing));
   const slow = S.simulate({ rateSpm: 30 }), quick = S.simulate({ rateSpm: 90 });
@@ -40,7 +40,7 @@ console.log("\nStroke simulator physics");
         `${pct(shortDrive.efficiency)} / ${pct(base.efficiency)} / ${pct(longDrive.efficiency)}`);
   const peakAt = (r) => r.peakForce * Math.pow(150 / r.paddlerPower, 2 / 3);
   check("longer drive: lower peak force at the same effort", peakAt(longDrive) < peakAt(base) && peakAt(base) < peakAt(shortDrive));
-  check("hull calibrated near Burke's C-1 (k 4.26 at 109 kg)", base.speedAt(150) > 2.5 && base.speedAt(150) < 2.85,
+  check("hull calibrated near a measured C-1 (k 4.26 at 109 kg)", base.speedAt(150) > 2.5 && base.speedAt(150) < 2.85,
         `${base.speedAt(150).toFixed(2)} m/s at 150 W`);
   check("plausible C1 speed at 150 W", base.speedAt(150) > 2.0 && base.speedAt(150) < 3.2, `${base.speedAt(150).toFixed(2)} m/s`);
   check("blade stays buried during the drive", base.samples.every((s) => s.B.wet > 0.99));
@@ -120,13 +120,13 @@ console.log("\nStroke simulator physics");
   check("race: too much current means nobody finishes", !isFinite(flood.tA) && !isFinite(flood.tB) &&
         flood.timeGap === 0 && flood.distanceGap === 0);
   // There and back: what you lose against the current you don't win back
-  // with it (Burke, Part 7): T = (2L/V) / (1 − U²/V²).
+  // with it (The Science of Paddling, Part 7): T = (2L/V) / (1 − U²/V²).
   const ob0 = S.race(clean, clean, 2000, 150, 150, { course: "outback" });
   const ob = S.race(clean, clean, 2000, 150, 150, { course: "outback", current: 0.5 });
-  const V0 = clean.speedAt(150), burke = 1 / (1 - 0.25 / (V0 * V0));
+  const V0 = clean.speedAt(150), formula = 1 / (1 - 0.25 / (V0 * V0));
   check("there and back in still water = point to point", Math.abs(ob0.tA - S.race(clean, clean, 2000, 150, 150).tA) < 1e-6);
-  check("there and back with current matches Burke's formula", Math.abs(ob.tA / ob0.tA - burke) < 0.005,
-        `${(ob.tA / ob0.tA).toFixed(4)} vs ${burke.toFixed(4)}`);
+  check("there and back with current matches (2L/V)/(1 − U²/V²)", Math.abs(ob.tA / ob0.tA - formula) < 0.005,
+        `${(ob.tA / ob0.tA).toFixed(4)} vs ${formula.toFixed(4)}`);
   const obw = S.race(clean, clean, 2000, 150, 150, { course: "outback", headwind: 4 });
   const obt = S.race(clean, clean, 2000, 150, 150, { course: "outback", headwind: -4 });
   check("there and back: wind costs either way round", obw.tA > ob0.tA && Math.abs(obw.tA - obt.tA) < 1e-6);
@@ -139,7 +139,7 @@ console.log("\nStroke simulator physics");
   const noTravel = S.simulate({ handTravelM: 0 });
   check("hand travel speeds the blade (more power at the same rate)", base.paddlerPower > noTravel.paddlerPower);
 
-  // Shallow water (Burke, Part 4): deep below L/2 changes nothing; under 2 ft drag climbs.
+  // Shallow water (The Science of Paddling, Part 4): deep below L/2 changes nothing; under 2 ft drag climbs.
   const cA = S.simulate({});
   const at = (env) => S.race(cA, cA, 10000, 150, 150, env);
   const deep = at({}), d28 = at({ depth: 2.8 }), d14 = at({ depth: 1.4 }), d06 = at({ depth: 0.6 }), d03 = at({ depth: 0.3 });
@@ -168,7 +168,7 @@ console.log("\nStroke simulator physics");
   check("there and back: wind angle mirrors on the way home", obW.legsA[0].leewayDeg > 0.5 && obW.legsA[1].leewayDeg > 0.5 &&
         obW.legsA[1].water > obW.legsA[0].water);
 
-  // River (Burke, Parts 18 and 20): current and depth across the river; corners.
+  // River (The Science of Paddling, Parts 18 and 20): current and depth across the river; corners.
   const riv = (line, current, depth = 3, bends = 180, extra = {}) => at(Object.assign({ current: current / 3.6, depth,
     river: { width: 60, bendsDegPerKm: bends, lineA: line, lineB: line } }, extra));
   check("river, middle line, still water = open water", Math.abs(riv(0, 0, 5).tA - at({ depth: 5 }).tA) < 1e-6);
@@ -382,6 +382,18 @@ console.log("\nStroke simulator physics");
     // Race
     const verdict = () => text("#verdict");
     check(`${tag}: race verdict`, /^Boat [AB] wins by (\d+(\.\d)? s|\d+:\d\d), \d+ m ahead/.test(await verdict()), await verdict());
+    // Force per stroke at race effort: folded away, summary shows the peaks.
+    const sumTxt = () => text("#race-curve-sum");
+    check(`${tag}: race force curve closed, with peaks`, !(await page.$eval("#race-curve-d", (d) => d.open)) &&
+          /^Force per stroke · peak A \d+ N, B \d+ N$/.test(await sumTxt()), await sumTxt());
+    await page.click("#race-curve-sum"); await settle();
+    check(`${tag}: race force curve opens to both boats`, (await page.$$("#race-curve path.ln")).length === 2);
+    const before = await sumTxt();
+    await slide("#effB", 250);
+    check(`${tag}: race curve follows each boat's effort`, (await sumTxt()) !== before && (await sumTxt()).startsWith(before.split(", B")[0]),
+          `${before} → ${await sumTxt()}`);
+    await slide("#effB", 150);
+    await page.click("#race-curve-sum");
     check(`${tag}: point to point by default`, JSON.stringify(await pressed("#course")) === '["point"]');
     const t0 = await text("#t-a");
     await slide("#effB", 250);
