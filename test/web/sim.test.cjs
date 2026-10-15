@@ -189,6 +189,20 @@ console.log("\nStroke simulator physics");
   const segs = S.riverSegments({ width: 60, bendsDegPerKm: 180 }, 1, -1, 3);
   check("river segments add up to a km", Math.abs(segs.reduce((a, g) => a + g.len, 0) - 1000) < 1e-6 &&
         segs.some((g) => g.kind === "crossing") && segs.find((g) => g.kind === "bend").path < segs.find((g) => g.kind === "bend").len);
+
+  // Strokes per side: switching by heading, or a fixed count that sets the wander.
+  const autoS = S.simulate({});
+  check("auto: wander equals the heading tolerance", Math.abs(autoS.headingWanderDeg - 3) < 1e-6, autoS.headingWanderDeg.toFixed(2));
+  const fixedN = (n) => S.simulate({ switchStrokes: n });
+  check("fixed count is used", fixedN(9).strokesPerSide === 9);
+  check("fixed count: more strokes, more wander", fixedN(12).headingWanderDeg > fixedN(6).headingWanderDeg * 1.9,
+        `${fixedN(6).headingWanderDeg.toFixed(1)}° / ${fixedN(12).headingWanderDeg.toFixed(1)}°`);
+  check("zigzag costs progress: V·(1 − ψ²/6)", Math.abs(autoS.courseFactor - (1 - Math.pow(3 * Math.PI / 180, 2) / 6)) < 1e-12);
+  const sp = (n) => fixedN(n).speedAt(150);
+  check("strokes per side has a sweet spot", sp(8) > sp(1) && sp(8) > sp(20), `1: ${sp(1).toFixed(3)} 8: ${sp(8).toFixed(3)} 20: ${sp(20).toFixed(3)}`);
+  const swp = (n) => S.simulate({ leanDeg: 40, sweepDeg: 70, handOutM: 0.5, catchDeg: 25, exitDeg: 25, switchStrokes: n }).speedAt(150);
+  check("a turning stroke wants fewer strokes per side", swp(4) > swp(12));
+  check("race in calm matches speedAt with a fixed count", Math.abs(S.race(fixedN(12), fixedN(12), 10000, 150, 150).vA - sp(12)) < 1e-6);
 }
 
 (async () => {
@@ -225,6 +239,9 @@ console.log("\nStroke simulator physics");
     // Efficiency comparison
     check(`${tag}: A and B efficiencies`, (await cellVal("eff", 2)) > 50 && (await cellVal("eff", 3)) > 50);
     check(`${tag}: defaults beat the wide sweep`, (await cellVal("eff", 2)) > (await cellVal("eff", 3)));
+    const peakRow = await page.$eval('#cmp tr[data-row="peak"]', (e) => ({ d: e.querySelector("td.d").textContent, wins: e.querySelectorAll("td.win").length }));
+    check(`${tag}: peak force has no winner, difference adds up`, peakRow.wins === 0 &&
+          peakRow.d === `A pulls ${(await cellVal("peak", 2)) - (await cellVal("peak", 3))} N harder`, peakRow.d);
     check(`${tag}: winner highlighted`, (await page.$$('#cmp tr[data-row="eff"] td.win.a')).length === 1);
     check(`${tag}: two power bars, four parts`, (await page.$$("#bars-power .bar")).length === 2 &&
           (await page.$$("#leg-power tr")).length === 5);
@@ -270,6 +287,10 @@ console.log("\nStroke simulator physics");
     check(`${tag}: swap`, (await text("#nm-a")) === "Custom" && (await text("#nm-b")) === "Defaults");
     await page.click("#copy"); await settle();   // editing B: copy B to A
     check(`${tag}: copy`, (await text("#nm-a")) === "Defaults" && (await cellVal("eff", 2)) === (await cellVal("eff", 3)));
+    await page.click("#view-mode >> text=Overlay"); await settle();
+    check(`${tag}: same settings: overlay blends B over A`, (await page.$$("svg.view g.blend-b")).length === 3 &&
+          (await page.$$eval("svg.view", (ss) => ss.map((s) => s.querySelector("g.blend-b") === s.querySelectorAll("g")[1]))).every(Boolean));
+    await page.click("#view-mode >> text=Split");
     check(`${tag}: same settings: curves blend, one label`, (await page.$$("#curve-same")).length === 1 &&
           (await page.$$eval("#curve text.peak", (ts) => ts.map((t) => t.textContent))).join() === "A = B" &&
           (await page.$$eval("#curve path.ln", (ps) => ps.map((p) => p.classList[1]))).join() === "a,b");
@@ -279,6 +300,14 @@ console.log("\nStroke simulator physics");
     await page.click("#presets >> text=Wide sweep");
     await page.click("#boats [data-boat=a]"); await settle();
     check(`${tag}: drive time readout`, (await text("#o-driveFraction")) === "50% of each stroke");
+    check(`${tag}: strokes per side auto by default`, (await text("#o-switchStrokes")) === "auto, by heading" &&
+          !(await page.$eval("#c-switchHeadingDeg", (e) => e.disabled)));
+    await slide("#c-switchStrokes", 10); await settle();
+    check(`${tag}: fixed strokes per side`, (await text("#o-switchStrokes")) === "10 strokes" &&
+          (await page.$eval("#c-switchHeadingDeg", (e) => e.disabled)) && (await cellVal("side", 2)) === 10 &&
+          (await text("#o-switchHeadingDeg")) === "off (fixed count)");
+    check(`${tag}: wander shown`, /^±[\d.]+°$/.test(await page.$eval('#cmp tr[data-row="wander"] td:nth-child(2)', (e) => e.textContent)));
+    await slide("#c-switchStrokes", 0); await settle();
     await slide("#c-rateSpm", 30); await settle();
     check(`${tag}: slower rate, longer drive on the curve`, /^A: .*drive 1\.00 s/.test(await text("#curve-legend")), await text("#curve-legend"));
     await slide("#c-rateSpm", 60); await settle();
