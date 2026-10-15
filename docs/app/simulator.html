@@ -239,8 +239,6 @@
   svg.race .line-a, svg.race .line-b { fill: none; stroke-width: 2.5; stroke-linecap: round; }
   svg.race .line-a { stroke: var(--series-1); } svg.race .line-b { stroke: var(--series-2); stroke-dasharray: 6 4; }
   svg.race .flow { stroke: var(--water-line); stroke-width: 1.5; fill: none; }
-  svg.race .boatdot { stroke: var(--surface-1); stroke-width: 2; }
-  svg.race .boatdot.a { fill: var(--series-1); } svg.race .boatdot.b { fill: var(--series-2); }
   svg.race .turn { stroke: var(--text-secondary); stroke-dasharray: 3 3; }
   /* Replay scrubber, speed along the course, stats at the scrubbed point. */
   .scrub { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
@@ -264,10 +262,6 @@
   #tip { position: fixed; z-index: 50; max-width: min(280px, calc(100vw - 24px)); padding: 8px 10px;
     background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border); border-radius: 8px;
     box-shadow: 0 4px 14px rgba(0,0,0,0.18); font-size: 13px; line-height: 1.35; font-weight: 400; }
-  /* The race chart's opener looks like a button so it's easy to find. */
-  #race-curve-d > summary { display: inline-flex; gap: 6px; align-items: center; margin-top: 8px; padding: 6px 12px;
-    border: 1px solid var(--border); border-radius: 10px; background: var(--surface-1); font-size: 14px; }
-  #race-curve-d[open] > summary { border-color: var(--series-1); }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -408,13 +402,6 @@
               <div class="sub" id="s-b"></div><div class="cond" id="c-b"></div></div>
           </div>
           <div class="verdict" id="verdict"></div>
-          <details id="race-curve-d" open><summary id="race-curve-sum"></summary>
-            <div class="row" style="justify-content:space-between;margin-top:4px">
-              <div class="curve-legend" id="race-curve-cap" style="margin-top:0"></div>
-              <div class="row chips"><button type="button" id="race-curve-live" aria-pressed="false">Live</button></div>
-            </div>
-            <svg class="curve" id="race-curve" role="img" aria-label="Force per stroke for each boat at its race effort"></svg>
-          </details>
           <svg class="race river-only" id="river-map" role="img" aria-label="The river from above: each boat on its line" hidden></svg>
           <svg class="race" id="race-view" role="img" aria-label="Race between boat A and boat B"></svg>
           <div class="scrub">
@@ -736,7 +723,6 @@ let curveMode = "force", curveData = null, curveGeom = null, curveLive = false;
 // animation (the stroke views' phase), with a dot and the force readout.
 function drawCurveLive(ph) {
   traceLive($("curve-live-g"), curveGeom, curveLive, ph);
-  traceLive($("race-curve-live-g"), raceCurveGeom, raceCurveLive && $("race-curve-d").open, ph);
 }
 // Each boat's curve traced up to where its paddle is in the animation.
 function traceLive(gEl, geom, on, ph) {
@@ -1001,7 +987,6 @@ function updateRace() {
   const outback = course === "outback";
   $("c-a").textContent = legNote(race.legsA[0], outback && race.legsA[0].river ? race.legsA : null);
   $("c-b").textContent = legNote(race.legsB[0], outback && race.legsB[0].river ? race.legsB : null);
-  drawRaceCurve(effA, effB);
   const gap = Math.abs(race.timeGap), dist = Math.abs(race.distanceGap);
   const winner = race.timeGap > 0 ? "A" : "B";
   $("verdict").textContent =
@@ -1024,42 +1009,17 @@ const raceEnd = () => {
   const done = [race.tA, race.tB].filter(isFinite);
   return done.length ? Math.max(...done) : 3600;
 };
-// Force per stroke at each boat's race effort (the Force curve card uses the
-// one comparison effort). Folded away by default; a summary line says the peaks.
-function drawRaceCurve(effA, effB) {
-  const C = { a: curveOf(results.a, effA), b: curveOf(results.b, effB) };
-  $("race-curve-sum").textContent = `${$("race-curve-d").open ? "Hide" : "Show"} force per stroke`;
-  $("race-curve-cap").innerHTML = `<span><i class="key a"></i>A at ${effA} W: peak ${fmtNum(C.a.peakForce, 0)} N</span>` +
-    `<span><i class="key b"></i>B at ${effB} W: peak ${fmtNum(C.b.peakForce, 0)} N</span>`;
-  const svg = $("race-curve");
-  if (!$("race-curve-d").open) return;
-  svg.classList.toggle("live", raceCurveLive);
-  const same = C.a.pts.length === C.b.pts.length && Math.abs(C.a.Td - C.b.Td) < 1e-9 &&
-    C.a.pts.every((p, i) => Math.abs(p.force - C.b.pts[i].force) < 0.5);
-  svg.classList.toggle("same", same);
-  const W = Math.max(280, Math.round(svg.getBoundingClientRect().width)) || 320, H = 130;
-  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
-  const m = { l: 52, r: 12, t: 10, b: 24 }, pw = W - m.l - m.r, ph = H - m.t - m.b;
-  const tMax = Math.max(C.a.Td, C.b.Td), fMax = Math.max(1, C.a.peakForce, C.b.peakForce) * 1.08;
-  const ys = niceStep(fMax, 2), yTop = Math.ceil(fMax / ys) * ys;
-  const X = (t) => m.l + (t / tMax) * pw, Y = (f) => m.t + ph - (f / yTop) * ph;
-  let g = "";
-  for (let f = 0; f <= yTop + 1e-9; f += ys)
-    g += `<line class="${f === 0 ? "axis" : "grid"}" x1="${m.l}" x2="${W - m.r}" y1="${Y(f)}" y2="${Y(f)}"/>` +
-      `<text x="${m.l - 6}" y="${Y(f) + 4}" text-anchor="end">${fmtNum(f, 0)}${f + ys > yTop + 1e-9 ? " N" : ""}</text>`;
-  g += `<text x="${m.l}" y="${H - 6}">0</text><text x="${W - m.r}" y="${H - 6}" text-anchor="end">${fmtNum(tMax, 2)} s</text>`;
-  for (const x of ["a", "b"])
-    g += `<path class="ln ${x}" d="${C[x].pts.map((p, i) => `${i ? "L" : "M"}${X(p.t).toFixed(1)},${Y(p.force).toFixed(1)}`).join(" ")}"/>`;
-  svg.innerHTML = g + `<g id="race-curve-live-g"></g>`;
-  raceCurveGeom = { C, k: "force", X, Y, W, m };
+// The gap when the winner finishes. The race views keep one scale for the
+// whole race, sized to this, so the gap visibly grows.
+function finalGap() {
+  let t = winTime();
+  if (rec) { const fins = [rec.finA, rec.finB].filter((f) => f !== null); t = fins.length ? Math.min(...fins) : rec.end; }
+  const st = stateAtT(t), g = Math.abs(st.A.d - st.B.d);
+  return isFinite(g) ? g : 0;
 }
-let raceCurveGeom = null, raceCurveLive = false;
-$("race-curve-d").addEventListener("toggle", () => updateRace());
-$("race-curve-live").addEventListener("click", () => {
-  raceCurveLive = !raceCurveLive;
-  $("race-curve-live").setAttribute("aria-pressed", String(raceCurveLive));
-  $("race-curve").classList.toggle("live", raceCurveLive);
-});
+// A canoe with its nose at (x, y), pointing along deg.
+const boatIcon = (x, y, deg, cls) =>
+  `<path class="${cls}" transform="translate(${x.toFixed(1)},${y.toFixed(1)}) rotate(${deg.toFixed(1)})" d="M0,0 Q-13,-7 -26,0 Q-13,7 0,0 Z"/>`;
 
 // River race view: the real course from above, following the leader. Bends
 // sit where the course has them (alternating sides), each boat's line comes
@@ -1073,7 +1033,7 @@ function drawRiverRace(dA, dB) {
   const centres = race.profileA.filter((g) => g.kind === "bend").map((g) => (g.d0 + g.d1) / 2);
   const unit = centres.length > 1 ? centres[1] - centres[0] : Infinity;
   const lead = Math.max(dA, dB);
-  const S = Math.min(L, Math.max(isFinite(unit) ? 3 * unit : 400, Math.abs(dA - dB) * 2.5, 150));
+  const S = Math.min(L, Math.max(isFinite(unit) ? 3 * unit : 400, finalGap() * 2.5, 150));
   const start = Math.max(0, Math.min(L - S, lead - 0.75 * S));
   const X = (d) => left + ((d - start) / S) * (right - left);
   const amp = isFinite(unit) ? Math.min(26, 8 + (right - left) / (S / unit) / 10) : 0;
@@ -1115,10 +1075,10 @@ function drawRiverRace(dA, dB) {
   if (L <= start + S + 1e-9) g += `<line class="finish" x1="${X(L)}" x2="${X(L)}" y1="${top - 6}" y2="${top + band + 4}"/>`;
   if (race.legsA.length > 1 && L / 2 >= start && L / 2 <= start + S)
     g += `<line class="turn" x1="${X(L / 2)}" x2="${X(L / 2)}" y1="${top - 6}" y2="${top + band + 4}"/><text x="${X(L / 2) + 4}" y="${top - 8}">turn</text>`;
-  // Boats as dots on their lines.
+  // Boats on their lines, pointing along them.
   for (const [x, d] of [["B", dB], ["A", dA]]) {
-    const q = pts(lineOff(x), d, d)[0];
-    g += `<circle class="boatdot ${x.toLowerCase()}" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="6"/>` +
+    const tail = pts(lineOff(x), d - S / 100, d), q = tail[tail.length - 1], p = tail[tail.length - 2];
+    g += boatIcon(q[0], q[1], (Math.atan2(q[1] - p[1], q[0] - p[0]) * 180) / Math.PI, `boat-${x.toLowerCase()}`) +
       `<text class="strong" x="${q[0].toFixed(1)}" y="${(q[1] - 10).toFixed(1)}" text-anchor="middle">${x}</text>`;
   }
   // Flow relative to the racing direction: it reverses after the turn.
@@ -1131,13 +1091,13 @@ function drawRiverRace(dA, dB) {
     `<text class="strong" x="8" y="14"><tspan fill="var(--series-1)">A</tspan> solid · <tspan fill="var(--series-2)">B</tspan> dashed</text>`;
   svg.innerHTML = g;
 }
-// Follow the leader with a window wide enough to show the finishing gap.
+// Follow the leader with a fixed window wide enough to show the finishing gap.
 function drawRace(dA, dB, elapsed) {
   const svg = $("race-view");
   const W = Math.max(280, Math.round(svg.getBoundingClientRect().width)) || 320, H = 112;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   const L = race.metres, lead = Math.max(dA, dB);
-  const span = Math.min(L, Math.max(40, Math.abs(dA - dB) * 2.5));
+  const span = Math.min(L, Math.max(40, finalGap() * 2.5));
   const left = 36, right = W - 14;
   const x = (d) => left + ((d - (lead - span * 0.8)) / span) * (right - left);
   let g = "";
@@ -1152,10 +1112,7 @@ function drawRace(dA, dB, elapsed) {
       `<text x="${xx}" y="104" text-anchor="middle">${d >= 1000 ? `${+(d / 1000).toFixed(2)} km` : `${Math.round(d)} m`}</text>`;
   }
   if (x(L) <= right + 1) g += `<line class="finish" x1="${x(L)}" x2="${x(L)}" y1="8" y2="94"/>`;
-  const canoe = (d, y, cls) => {
-    const nose = Math.min(right, x(d)), len = 26;
-    return `<path class="${cls}" d="M${nose},${y} Q${nose - len * 0.5},${y - 7} ${nose - len},${y} Q${nose - len * 0.5},${y + 7} ${nose},${y} Z"/>`;
-  };
+  const canoe = (d, y, cls) => boatIcon(Math.min(right, x(d)), y, 0, cls);
   g += canoe(dA, laneY[0], "boat-a") + canoe(dB, laneY[1], "boat-b") +
     `<text class="strong" x="8" y="${laneY[0] + 4}">A</text><text class="strong" x="8" y="${laneY[1] + 4}">B</text>`;
   svg.innerHTML = g;
@@ -1230,7 +1187,9 @@ function drawStats(st) {
   rows.push(
     row("Stroke rate", ...both((s) => fmtNum(s.g.rate, 0), " spm")),
     row("Strokes", ...both((s) => fmtNum(s.strokes, 0), "")),
-    row("Distance per stroke", ...both((s) => (s.v > 0 ? fmtNum((s.v * 60) / s.g.rate, 2) : "—"), " m")),
+    // Per stroke taken: strokes lost to switching sides don't count.
+    row("Distance per stroke", ...both((s) => (s.v > 0 ? fmtNum((s.v * 60) / s.g.rate * (s.g.perSide + s.g.loss) / s.g.perSide, 2) : "—"), " m")),
+    row("Avg distance per stroke", ...both((s) => (s.strokes >= 1 ? fmtNum(s.d / s.strokes, 2) : "—"), " m")),
     row("Switches", ...both((s) => fmtNum(s.switches, 0), "")),
     row("Energy", ...both((s) => fmtNum(s.energy / 1000, 0), " kJ")),
     `<tr><td>Gap${info("+ ahead, − behind, in metres along the course.")}</td><td class="v">${gap("A")}</td><td class="v">${gap("B")}</td></tr>`,

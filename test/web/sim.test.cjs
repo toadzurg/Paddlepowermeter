@@ -413,25 +413,6 @@ console.log("\nStroke simulator physics");
     // Race
     const verdict = () => text("#verdict");
     check(`${tag}: race verdict`, /^Boat [AB] wins by (\d+(\.\d)? s|\d+:\d\d), \d+ m ahead/.test(await verdict()), await verdict());
-    // Force per stroke at race effort: folded away, summary shows the peaks.
-    const sumTxt = () => text("#race-curve-sum");
-    check(`${tag}: race force curve open by default`, (await page.$eval("#race-curve-d", (d) => d.open)) &&
-          (await sumTxt()) === "Hide force per stroke" && (await page.$$("#race-curve path.ln")).length === 2, await sumTxt());
-    await page.click("#race-curve-sum"); await settle();
-    check(`${tag}: race force curve folds away`, (await sumTxt()) === "Show force per stroke");
-    await page.click("#race-curve-sum"); await settle();
-    await page.click("#race-curve-live");
-    await page.waitForFunction(() => document.querySelectorAll("#race-curve path.trace").length >= 1, null, { timeout: 5000 });
-    check(`${tag}: race curve live trace`, /^A (\d+ N|recovery) · B (\d+ N|recovery)$/.test(await text("#race-curve .live-read")));
-    await page.click("#race-curve-live");
-    const cap = () => text("#race-curve-cap");
-    check(`${tag}: race curve caption: each boat's effort and peak`, /^A at 150 W: peak \d+ NB at 150 W: peak \d+ N$/.test(await cap()), await cap());
-    const before = await cap();
-    await slide("#effB", 250);
-    check(`${tag}: race curve follows each boat's effort`, (await cap()) !== before && (await cap()).startsWith(before.split("B at")[0]) &&
-          (await cap()).includes("B at 250 W"), `${before} → ${await cap()}`);
-    await slide("#effB", 150);
-    await page.click("#race-curve-sum");
     check(`${tag}: point to point by default`, JSON.stringify(await pressed("#course")) === '["point"]');
     check(`${tag}: point to point: no turn mentioned`, /the start isn't timed\.$/.test(await text("#race-sub")));
     await page.click("#course >> text=There and back");
@@ -500,7 +481,7 @@ console.log("\nStroke simulator physics");
 
     // Replay: scrub through the race; stats and the speed chart follow.
     check(`${tag}: stats rows`, JSON.stringify(await labels0()) ===
-          '["Time","Distance","Speed now","Avg speed","Power","Stroke rate","Strokes","Distance per stroke","Switches","Energy","Gap"]',
+          '["Time","Distance","Speed now","Avg speed","Power","Stroke rate","Strokes","Distance per stroke","Avg distance per stroke","Switches","Energy","Gap"]',
           JSON.stringify(await labels0()));
     check(`${tag}: replay starts at the winner's finish`, /✓/.test(await page.$eval("#race-stats tbody tr:first-child", (r) => r.textContent)));
     await page.$eval("#scrub", (el) => { el.value = 500; el.dispatchEvent(new Event("input")); });
@@ -512,6 +493,15 @@ console.log("\nStroke simulator physics");
     check(`${tag}: step forward`, (await page.$eval("#scrub", (e) => +e.value)) === 510 && (await dist())[0] > dA5);
     await page.click("#scrub-back"); await page.click("#scrub-back");
     check(`${tag}: step back`, (await page.$eval("#scrub", (e) => +e.value)) === 490);
+    // One scale for the whole race: the boats' on-screen gap grows as the real gap does.
+    const pxGap = async (v) => {
+      await page.$eval("#scrub", (el, v) => { el.value = v; el.dispatchEvent(new Event("input")); }, v);
+      return page.$$eval("#race-view path.boat-a, #race-view path.boat-b", (ps) =>
+        Math.abs(ps.map((p) => parseFloat(/translate\(([-\d.]+)/.exec(p.getAttribute("transform"))[1])).reduce((x, y) => x - y)));
+    };
+    const [g2, g6, g9] = [await pxGap(200), await pxGap(600), await pxGap(900)];
+    check(`${tag}: lanes gap grows through the race`, g2 < g6 && g6 < g9 && g9 > 20, `${g2} < ${g6} < ${g9} px`);
+    await page.$eval("#scrub", (el) => { el.value = 490; el.dispatchEvent(new Event("input")); });
     check(`${tag}: speed chart: two boats with markers`, (await page.$$("#race-speed path.ln")).length === 2 &&
           (await page.$$("#race-speed circle.dot")).length === 2);
     // River with bends: the chart shades bends and the replay says where each boat is.
@@ -519,7 +509,7 @@ console.log("\nStroke simulator physics");
     await slide("#current", -3); await slide("#depth", 2.5);
     check(`${tag}: bends shaded`, (await page.$$("#race-speed rect.bendband")).length > 5);
     check(`${tag}: river view replaces the lanes, with both boats on it`, (await page.$eval("#race-view", (e) => e.hasAttribute("hidden"))) &&
-          !(await page.$eval("#river-map", (e) => e.hasAttribute("hidden"))) && (await page.$$("#river-map circle.boatdot")).length === 2);
+          !(await page.$eval("#river-map", (e) => e.hasAttribute("hidden"))) && (await page.$$("#river-map path.boat-a, #river-map path.boat-b")).length === 2);
     const wheres = new Set();
     for (let v = 0; v <= 1000; v += 7) {
       await page.$eval("#scrub", (el, v) => { el.value = v; el.dispatchEvent(new Event("input")); }, v);
