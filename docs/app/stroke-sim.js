@@ -26,7 +26,8 @@
 //    (hit and switch): the hull resists turning in proportion to its speed,
 //    so the boat drifts off course at a steady rate, and the paddler
 //    switches when the heading is off by switchHeadingDeg. Each switch
-//    loses switchLossStrokes of a stroke with no propulsion. A stroke that
+//    loses switchLossS seconds with no propulsion: about the same time at any
+//    stroke rate, so it costs more strokes at a higher rate. A stroke that
 //    turns the boat more forces more switches, so more lost time.
 //  - Sideways push slows the boat too. The boat (with paddler and the water
 //    it carries along, SWAY_MASS) sways under the stroke's sideways force,
@@ -142,7 +143,7 @@
     massKg: 90,                // paddler + boat
     effortW: 150,              // effort the effort-dependent results are for
     switchHeadingDeg: 3,       // switch sides when this far off course
-    switchLossStrokes: 0.3,    // time lost per switch, in strokes
+    switchLossS: 0.3,          // time lost per switch, s (an estimate, not measured)
     switchStrokes: 0,          // fixed strokes per side; 0 = switch by heading
     // Body motion, relative to the boat.
     swingM: 0,                 // torso fore-aft, ± m (half the travel)
@@ -371,7 +372,7 @@
       ? Math.min(MAX_STROKES_PER_SIDE, Math.max(1, (2 * rad(p.switchHeadingDeg)) / turnPerStroke))
       : MAX_STROKES_PER_SIDE;
     const wander = Math.min(Math.PI / 2, (perSide * turnPerStroke) / 2);
-    return { perSide, duty: perSide / (perSide + p.switchLossStrokes), wander, course: 1 - (wander * wander) / 6, turnPerStroke };
+    return { perSide, duty: perSide / (perSide + switchLossStrokes(p)), wander, course: 1 - (wander * wander) / 6, turnPerStroke };
   }
 
   // Body motion relative to the boat over one stroke (period Tc, drive Td).
@@ -425,6 +426,8 @@
     return Math.max(0, extra);
   }
 
+  // A switch's lost time, in strokes at this rate.
+  const switchLossStrokes = (p) => (p.switchLossS * p.rateSpm) / 60;
   function simulate(params) {
     const p = Object.assign({}, DEFAULTS, params);
     // Heeling the boat toward the paddle brings the hands (about 0.9 m up)
@@ -649,7 +652,7 @@
   // in still conditions; time lost switching changes with the wind.
   function legSpeed(r, watts, c) {
     const e = r.at(watts), k = e.hullK, budget = k * Math.pow(e.waterSpeed, 3);
-    const loss = r.params.switchLossStrokes, fixed = r.params.switchStrokes > 0;
+    const loss = switchLossStrokes(r.params), fixed = r.params.switchStrokes > 0;
     const M = Math.abs(r.yawAt(watts));
     const tol = rad(r.params.switchHeadingDeg);
     const head = c.windSpeed * Math.cos(rad(c.windAngle)), cross = Math.abs(c.windSpeed * Math.sin(rad(c.windAngle)));
@@ -812,7 +815,7 @@
     const out = [];
     let d = 0;
     legs.forEach((l, li) => {
-      const base = { leg: li, watts, rate: r.params.rateSpm, loss: r.params.switchLossStrokes,
+      const base = { leg: li, watts, rate: r.params.rateSpm, loss: switchLossStrokes(r.params),
                      perSide: isFinite(l.windward) ? (l.windward + l.lee) / 2 : MAX_STROKES_PER_SIDE };
       if (l.section !== undefined) Object.assign(base, { leg: 0, section: l.section, name: l.name });
       const start = d, end = d + l.len;
@@ -954,7 +957,7 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 32;
+  const API_LEVEL = 33;
   const PADDLE = paddleOf(DEFAULTS);
   const api = { API_LEVEL, simulate, race, capacity, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
