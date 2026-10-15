@@ -181,10 +181,18 @@ switch sides more often and lose drive time on each switch; the page shows
 how many strokes per side the stroke allows. It also gives boat speed at a
 chosen effort and the turning moment. Save a stroke to compare against it.
 
-The race card puts two boats in the same canoe: Boat A uses the sliders,
-Boat B the saved stroke or a preset, each at its own effort over a chosen
-distance. It shows finishing times, speeds and the gap at the finish, and
-animates the race.
+It also models the boat surging through each stroke (drag grows with V²,
+so uneven speed costs more) and the blade's up and down push: a forward
+blade at the catch lifts the boat, a blade behind you at the exit pulls it
+down. The average changes how deep the boat sits (hull drag follows wetted
+area), and the swing bounces it, making waves. Paddler + boat weight is a
+slider.
+
+The race card puts two boats in the same canoe. Each boat picks a preset,
+the live sliders, or sliders saved for that boat (the selected one is
+highlighted), at its own effort over a chosen distance, with headwind or
+tailwind and current. It shows finishing times, speeds and the gap at the
+finish, and animates the race.
 
 It is a simplified drag model, good for comparing techniques rather than
 predicting exact speeds. The switching assumptions (how far off course

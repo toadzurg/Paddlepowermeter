@@ -20,6 +20,7 @@
     --series-1: #2a78d6;
     --series-2: #eb6834;
     --series-3: #1baf7a;
+    --series-4: #8a5cc9;
     --water: rgba(42, 120, 214, 0.10);
     --water-line: #86b6ef;
     --good: #0ca30c;
@@ -40,6 +41,7 @@
       --series-1: #3987e5;
       --series-2: #d95926;
       --series-3: #199e70;
+      --series-4: #9a72d8;
       --water: rgba(57, 135, 229, 0.14);
       --water-line: #1c5cab;
       --button: #f0efec;
@@ -90,10 +92,10 @@
 
   .bar { display: flex; height: 22px; border-radius: 6px; overflow: hidden; gap: 2px; margin: 6px 0 4px; }
   .bar > span { display: block; height: 100%; }
-  .bar .s1 { background: var(--series-1); } .bar .s2 { background: var(--series-2); } .bar .s3 { background: var(--series-3); }
+  .bar .s1 { background: var(--series-1); } .bar .s2 { background: var(--series-2); } .bar .s3 { background: var(--series-3); } .bar .s4 { background: var(--series-4); }
   .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
   .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
-  .legend .s1 { background: var(--series-1); } .legend .s2 { background: var(--series-2); } .legend .s3 { background: var(--series-3); }
+  .legend .s1 { background: var(--series-1); } .legend .s2 { background: var(--series-2); } .legend .s3 { background: var(--series-3); } .legend .s4 { background: var(--series-4); }
   .legend b { color: var(--text-primary); font-weight: 600; }
 
   .controls .group { margin-bottom: 14px; }
@@ -109,6 +111,15 @@
     background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border);
   }
   button.primary { background: var(--button); color: var(--button-text); border-color: var(--button); }
+  /* Choice chips: the selected one gets a coloured outline, tint and tick. */
+  .chips { --chip: var(--series-1); }
+  .chips.b { --chip: var(--series-2); }
+  .chips button { padding: 6px 10px; min-height: 36px; font-size: 14px; }
+  .chips button[aria-pressed="true"] {
+    border: 2px solid var(--chip); padding: 5px 9px;
+    background: color-mix(in srgb, var(--chip) 16%, var(--surface-1));
+  }
+  .chips button[aria-pressed="true"]::before { content: "✓ "; color: var(--chip); }
   details { font-size: 14px; color: var(--text-secondary); }
   details p { margin: 6px 0; }
   .note { font-size: 13px; color: var(--text-secondary); margin-top: 6px; }
@@ -122,12 +133,18 @@
   svg.race .progress-track { fill: var(--grid); }
   svg.race .progress-a { fill: var(--series-1); } svg.race .progress-b { fill: var(--series-2); }
   .race-grid { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; margin-top: 8px; }
+  .boat-cfg { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 10px; }
+  .boat-cfg .who { font-weight: 600; display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  .boat-cfg .who i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  .boat-cfg.a .who i { background: var(--series-1); } .boat-cfg.b .who i { background: var(--series-2); }
+  .boat-cfg .save-row { margin-top: 8px; align-items: center; }
+  .boat-cfg .save-row .note { margin: 0; }
+  .race-cfg { display: grid; gap: 0 16px; grid-template-columns: 1fr; }
+  @media (min-width: 700px) { .race-cfg { grid-template-columns: 1fr 1fr; } }
   .race-grid .who { font-weight: 600; display: flex; align-items: center; gap: 6px; }
   .race-grid .who i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
   .race-grid .a i { background: var(--series-1); } .race-grid .b i { background: var(--series-2); }
   .race-grid .time { font-size: 24px; font-weight: 650; font-variant-numeric: tabular-nums; }
-  select { font: inherit; padding: 8px 10px; min-height: 40px; border-radius: 10px; border: 1px solid var(--border);
-           background: var(--surface-0); color: var(--text-primary); max-width: 100%; }
   .verdict { font-size: 16px; font-weight: 600; margin-top: 10px; }
   [hidden] { display: none !important; }
 </style>
@@ -147,8 +164,9 @@
           <div class="value" id="r-eff">—</div>
           <div class="delta" id="d-eff"></div>
           <div class="sub">Share of your power that moves the boat. The rest is lost to slip (churning
-            water) and to sideways drag, and switching sides more often costs time. Doesn't depend
-            on effort or rate, only on technique and geometry.</div>
+            water), sideways drag, speed surging and bounce, and switching sides more often costs
+            time. Mostly technique and geometry; the up and down push matters a little more at
+            higher effort.</div>
         </div>
         <div class="card">
           <div class="label">Boat speed at <span id="effort-label">150</span> W</div>
@@ -181,6 +199,7 @@
         <div class="bar" id="bar-force"></div>
         <div class="legend" id="leg-force"></div>
         <div class="note" id="yaw-note"></div>
+        <div class="note" id="vert-note"></div>
       </div>
 
       <div class="views">
@@ -207,24 +226,35 @@
 
       <div class="card" style="margin-top:10px" id="race-card">
         <h2>Race: two boats, same canoe</h2>
-        <div class="sub">Boat A paddles the stroke set by the sliders. Pick Boat B's stroke, set each
-          paddler's effort, and race them at steady speed (starts and turns aren't modelled).</div>
-        <div class="race-grid">
-          <div class="a">
+        <div class="sub">Pick a stroke for each boat: a preset, the sliders as they are now, or sliders
+          you saved for that boat. Set each paddler's effort and the conditions, and race at steady
+          speed (starts and turns aren't modelled).</div>
+        <div class="race-cfg">
+          <div class="boat-cfg a">
             <div class="who"><i></i>Boat A</div>
-            <div class="sub">Current sliders</div>
+            <div class="row chips a" id="chips-a" role="group" aria-label="Boat A stroke"></div>
+            <div class="row save-row"><button id="save-a">Save sliders as A</button><span class="note" id="saved-a"></span></div>
             <div class="ctl"><label class="top"><span>Effort</span><output id="o-effA"></output></label>
               <input type="range" id="c-effA" min="50" max="400" step="10" value="150" aria-label="Boat A effort"></div>
           </div>
-          <div class="b">
+          <div class="boat-cfg b">
             <div class="who"><i></i>Boat B</div>
-            <select id="race-b" aria-label="Boat B stroke"></select>
+            <div class="row chips b" id="chips-b" role="group" aria-label="Boat B stroke"></div>
+            <div class="row save-row"><button id="save-b">Save sliders as B</button><span class="note" id="saved-b"></span></div>
             <div class="ctl"><label class="top"><span>Effort</span><output id="o-effB"></output></label>
               <input type="range" id="c-effB" min="50" max="400" step="10" value="150" aria-label="Boat B effort"></div>
           </div>
         </div>
-        <div class="ctl"><label class="top"><span>Race distance</span><output id="o-dist"></output></label>
-          <input type="range" id="c-dist" min="0.2" max="40" step="0.1" value="10" aria-label="Race distance"></div>
+        <div class="boat-cfg race-cfg">
+          <div class="ctl"><label class="top"><span>Race distance</span><output id="o-dist"></output></label>
+            <input type="range" id="c-dist" min="0.2" max="40" step="0.1" value="10" aria-label="Race distance"></div>
+          <div class="ctl"><label class="top"><span>Wind</span><output id="o-wind"></output></label>
+            <input type="range" id="c-wind" min="-30" max="30" step="1" value="0" aria-label="Wind">
+            <div class="help">Along the course. Air drag on you and the boat.</div></div>
+          <div class="ctl"><label class="top"><span>Current</span><output id="o-current"></output></label>
+            <input type="range" id="c-current" min="-10" max="10" step="0.5" value="0" aria-label="Current">
+            <div class="help">Adds to or takes from your speed over the ground.</div></div>
+        </div>
         <div class="race-grid">
           <div class="a"><div class="label">Boat A finishes in</div><div class="time" id="t-a">—</div><div class="sub" id="s-a"></div></div>
           <div class="b"><div class="label">Boat B finishes in</div><div class="time" id="t-b">—</div><div class="sub" id="s-b"></div></div>
@@ -246,7 +276,7 @@
       </div>
       <div class="group">
         <h3>Presets</h3>
-        <div class="row" id="presets"></div>
+        <div class="row chips" id="presets" role="group" aria-label="Presets"></div>
       </div>
       <div class="group" id="ctl-stroke"><h3>Stroke shape</h3></div>
       <div class="group" id="ctl-paddle"><h3>Paddle</h3></div>
@@ -269,12 +299,21 @@
         <p>Sideways push slows you too. The boat sways under it, and the hull resists by crabbing
           slightly through the water, like a keel, which creates drag. Brief pushes mostly just
           sway the boat; steady ones cost the most.</p>
-        <p>Your power splits exactly into moving the boat, sideways drag, and slip (churning
-          water). Vertical pushing isn't charged directly. It means the blade has to move faster
-          for the same forward push, which shows up as slip.</p>
-        <p>This is a simplified model for comparing techniques. It doesn't model boat surge,
-          waves, the blade's lift, or your body. Absolute speeds are approximate; differences
-          between strokes are the useful part.</p>
+        <p>The push comes in pulses, so the boat speeds up in the drive and slows in the
+          recovery. Drag grows with the square of speed, so an uneven speed costs more than a
+          steady one at the same average.</p>
+        <p>Up and down push: a blade angled forward at the catch pushes water down and lifts the
+          boat; angled back at the exit it lifts water and pulls the boat down. The bent shaft
+          shifts that balance toward the exit. The average changes how deep the boat sits, and
+          hull drag follows wetted area (about weight to the 2/3). The swing bounces the boat on
+          the water, and the waves it makes cost power. Both are small next to slip.</p>
+        <p>Your power splits exactly into moving the boat, slip (churning water), sideways drag,
+          surge, and bounce and sinking (or a small saving if the stroke lifts the boat).</p>
+        <p>Wind and current (race): air drag on you and the boat changes with the air speed past
+          you, and current adds to your speed over the ground. Crosswinds and waves aren't modelled.</p>
+        <p>This is a simplified model for comparing techniques. It doesn't model waves, the
+          blade's lift, or your body moving in the boat. Absolute speeds are approximate;
+          differences between strokes are the useful part.</p>
       </details>
     </div>
   </div>
@@ -310,6 +349,8 @@ const CONTROLS = [
     help: "How far the pivot moves aft as you pull." },
   { group: "ctl-paddler", key: "rateSpm", label: "Stroke rate", min: 30, max: 90, step: 1, unit: " spm",
     help: "Changes speed and power together; efficiency stays the same." },
+  { group: "ctl-paddler", key: "massKg", label: "Paddler + boat weight", min: 50, max: 150, step: 1, unit: " kg",
+    help: "Heavier sits deeper, so more drag. Also sets how much the stroke's up and down push matters." },
   { group: "ctl-paddler", key: "effortW", label: "Effort for comparing speed", min: 50, max: 400, step: 10, unit: " W",
     help: "Boat speed is shown at this paddler power, so strokes compare fairly." },
   { group: "ctl-switch", key: "switchHeadingDeg", label: "Switch when off course by", min: 1, max: 10, step: 0.5, unit: "°",
@@ -334,7 +375,8 @@ const showValue = (c) => {
   $(`o-${c.key}`).textContent = c.fmt ? c.fmt(v) : `${+v.toFixed(c.step < 1 ? 2 : 0)}${c.unit}`;
 };
 function setParams(p) {
-  Object.assign(params, S.DEFAULTS, { effortW: params.effortW }, p);
+  // Presets set the technique; your weight and effort stay.
+  Object.assign(params, S.DEFAULTS, { effortW: params.effortW, massKg: params.massKg }, p);
   for (const c of CONTROLS) $(`c-${c.key}`).value = params[c.key];
   update();
 }
@@ -347,9 +389,20 @@ const PRESETS = {
   "Short reach, pull behind": { catchDeg: 12, exitDeg: 45 },
   "Defaults": {},
 };
+// The preset the sliders match (technique only), if any.
+const KEEP = ["effortW", "massKg"];
+function matchingPreset() {
+  for (const [name, pre] of Object.entries(PRESETS)) {
+    const want = Object.assign({}, S.DEFAULTS, pre);
+    if (Object.keys(S.DEFAULTS).every((k) => KEEP.includes(k) || Math.abs(params[k] - want[k]) < 1e-9)) return name;
+  }
+  return null;
+}
 for (const [name, p] of Object.entries(PRESETS)) {
   const b = document.createElement("button");
+  b.type = "button";
   b.textContent = name;
+  b.dataset.value = name;
   b.addEventListener("click", () => setParams(p));
   $("presets").append(b);
 }
@@ -385,6 +438,8 @@ function summarize(r, effort) {
 let pending = false;
 function update() {
   for (const c of CONTROLS) showValue(c);
+  const on = matchingPreset();
+  for (const b of $("presets").children) b.setAttribute("aria-pressed", String(b.dataset.value === on));
   if (pending) return;
   pending = true;
   requestAnimationFrame(() => {
@@ -405,10 +460,19 @@ function update() {
     delta("d-side", s.perSide, b && b.perSide, " strokes", 1, true);
     delta("d-peak", s.peak, b && b.peak, " N", 0, false);
 
-    const pw = result.paddlerPower || 1;
-    bar("bar-power", "leg-power", [["moves the boat", 100 * result.hullPower / pw, "s1"],
-                                  ["slip", 100 * result.slipPower / pw, "s2"],
-                                  ["sideways drag", 100 * result.leewayPower / pw, "s3"]], 1);
+    const at = result.at(e), sh = at.shares;
+    // A stroke that lifts the boat saves drag (sink < 0): shown in the note.
+    bar("bar-power", "leg-power", [["moves the boat", 100 * sh.hull, "s1"],
+                                  ["slip", 100 * sh.slip, "s2"],
+                                  ["sideways drag", 100 * sh.leeway, "s3"],
+                                  ["surge & bounce", 100 * (sh.surge + sh.bounce + Math.max(0, sh.sink)), "s4"]], 1);
+    const lift = at.meanLift;
+    $("vert-note").textContent = Math.abs(lift) < 0.5 ? "Up and down push about cancels: the boat rides at its normal depth." :
+      `On average this stroke ${lift > 0 ? "lifts the boat" : "pulls the boat down"} by ${fmtNum(Math.abs(lift), 0)} N at ${e} W ` +
+      `(${fmtNum(Math.abs(at.sinkMm), 1)} mm ${lift > 0 ? "higher" : "deeper"}), ` +
+      `${lift > 0 ? "saving" : "costing"} ${fmtNum(Math.abs(sh.sink) * 100, 2)}% of your power in hull drag. ` +
+      `It bounces the boat ±${fmtNum(at.bounceMm, 1)} mm, and the waves that makes cost ${fmtNum(sh.bounce * 100, 2)}%. ` +
+      `Speed surging through each stroke costs ${fmtNum(sh.surge * 100, 2)}%.`;
     const f = result.forceShare;
     bar("bar-force", "leg-force", [["forward", f.forward * 100, "s1"], ["sideways", f.sideways * 100, "s2"],
                                   ["vertical", f.vertical * 100, "s3"]]);
@@ -433,58 +497,101 @@ function bar(barId, legId, parts, digits = 0) {
 $("save").addEventListener("click", () => {
   baseline = result;
   $("clear-cmp").hidden = false;
-  $("cmp-note").textContent = "Saved. Change the sliders to compare against it; it's also Boat B in the race.";
-  fillRaceOptions("saved");
+  $("cmp-note").textContent = "Saved. Change the sliders to compare against it.";
   update();
 });
 $("clear-cmp").addEventListener("click", () => {
   baseline = null;
   $("clear-cmp").hidden = true;
   $("cmp-note").textContent = "Save a stroke, change sliders, and the results show the difference.";
-  fillRaceOptions();
   update();
 });
 
 // ----------------------------------------------------------------- race
-// Boat A: the sliders. Boat B: the saved stroke or a preset. Same canoe,
-// steady speeds at each paddler's effort.
-const presetCache = {};
-function fillRaceOptions(select) {
-  const el = $("race-b"), keep = select || el.value || "Wide sweep";
-  el.innerHTML = (baseline ? `<option value="saved">Saved stroke</option>` : "") +
-    Object.keys(PRESETS).map((n) => `<option value="${n}">${n}</option>`).join("");
-  el.value = [...el.options].some((o) => o.value === keep) ? keep : "Wide sweep";
+// Each boat: a preset, the live sliders, or sliders saved for that boat.
+// Same canoe (the sliders' weight), steady speeds at each paddler's effort.
+const raceSel = { a: "live", b: "Wide sweep" };
+const raceSaved = { a: null, b: null };
+const presetCache = new Map();
+function presetResult(name) {
+  const key = `${name}|${params.massKg}|${params.effortW}`;
+  if (!presetCache.has(key))
+    presetCache.set(key, S.simulate(Object.assign({}, S.DEFAULTS, PRESETS[name],
+      { massKg: params.massKg, effortW: params.effortW })));
+  return presetCache.get(key);
 }
-function boatB() {
-  const v = $("race-b").value;
-  if (v === "saved" && baseline) return baseline;
-  if (!presetCache[v]) presetCache[v] = S.simulate(Object.assign({}, S.DEFAULTS, PRESETS[v]));
-  return presetCache[v];
+function boat(x) {
+  const v = raceSel[x];
+  if (v === "live") return result;
+  if (v === "saved") return raceSaved[x] ? raceSaved[x].result : result;
+  return presetResult(v);
+}
+function renderChips(x) {
+  const opts = [["live", "Current sliders"]];
+  if (raceSaved[x]) opts.push(["saved", `Saved ${x.toUpperCase()}`]);
+  for (const n of Object.keys(PRESETS)) opts.push([n, n]);
+  const el = $(`chips-${x}`);
+  el.innerHTML = "";
+  for (const [v, label] of opts) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    b.dataset.value = v;
+    b.setAttribute("aria-pressed", String(raceSel[x] === v));
+    b.addEventListener("click", () => { raceSel[x] = v; renderChips(x); updateRace(); });
+    el.append(b);
+  }
+}
+function saveBoat(x) {
+  raceSaved[x] = { params: Object.assign({}, params), result };
+  raceSel[x] = "saved";
+  const name = matchingPreset();
+  $(`saved-${x}`).textContent = name ? `Saved (${name}).` : "Saved.";
+  renderChips(x);
+  updateRace();
 }
 const clock = (sec) => {
+  if (!isFinite(sec)) return "never";
   const t = Math.round(sec), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
   return h ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
 };
 const gapText = (sec) => sec < 60 ? `${fmtNum(sec, 1)} s` : clock(sec);
+const windText = (k) => k === 0 ? "calm" : `${Math.abs(k)} km/h ${k > 0 ? "headwind" : "tailwind"}`;
+const currentText = (k) => k === 0 ? "none" : `${fmtNum(Math.abs(k), 1)} km/h ${k > 0 ? "with you" : "against you"}`;
 let race = null, raceAnim = null;
 function updateRace() {
   if (!result) return;
   const effA = parseFloat($("c-effA").value), effB = parseFloat($("c-effB").value);
   const km = parseFloat($("c-dist").value);
+  const wind = parseFloat($("c-wind").value), current = parseFloat($("c-current").value);
   $("o-effA").textContent = `${effA} W`;
   $("o-effB").textContent = `${effB} W`;
   $("o-dist").textContent = km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`;
-  race = S.race(result, boatB(), km * 1000, effA, effB);
+  $("o-wind").textContent = windText(wind);
+  $("o-current").textContent = currentText(current);
+  race = S.race(boat("a"), boat("b"), km * 1000, effA, effB, { headwind: wind / 3.6, current: current / 3.6 });
   $("t-a").textContent = clock(race.tA);
   $("t-b").textContent = clock(race.tB);
-  $("s-a").textContent = `${fmtNum(race.vA, 2)} m/s · ${fmtNum(race.vA * 3.6, 1)} km/h`;
-  $("s-b").textContent = `${fmtNum(race.vB, 2)} m/s · ${fmtNum(race.vB * 3.6, 1)} km/h`;
+  const spd = (v) => v > 1e-3 ? `${fmtNum(v, 2)} m/s · ${fmtNum(v * 3.6, 1)} km/h` : "can't make headway";
+  $("s-a").textContent = spd(race.vA);
+  $("s-b").textContent = spd(race.vB);
   const gap = Math.abs(race.timeGap), dist = Math.abs(race.distanceGap);
-  $("verdict").textContent = gap < 0.05 ? "Dead heat." :
-    `Boat ${race.timeGap > 0 ? "A" : "B"} wins by ${gapText(gap)}, ${fmtNum(dist, dist < 10 ? 1 : 0)} m ahead at the finish ` +
+  const winner = race.timeGap > 0 ? "A" : "B";
+  $("verdict").textContent =
+    !isFinite(race.tA) && !isFinite(race.tB) ? "Neither boat can make headway against this current." :
+    !isFinite(race.tA) || !isFinite(race.tB) ? `Only Boat ${winner} can make headway against this current.` :
+    gap < 0.05 ? "Dead heat." :
+    `Boat ${winner} wins by ${gapText(gap)}, ${fmtNum(dist, dist < 10 ? 1 : 0)} m ahead at the finish ` +
     `(${fmtNum(Math.abs(race.vA - race.vB) / Math.min(race.vA, race.vB) * 100, 1)}% faster).`;
-  if (!raceAnim) drawRace(race.metres, race.metres);  // show the finish
+  const fin = (v) => Math.min(race.metres, Math.max(0, v) * raceEnd());
+  if (!raceAnim) drawRace(fin(race.vA), fin(race.vB));  // show the finish
 }
+// Race clock when the animation ends: when the last boat that can finish
+// does (an hour if neither can).
+const raceEnd = () => {
+  const done = [race.tA, race.tB].filter(isFinite);
+  return done.length ? Math.max(...done) : 3600;
+};
 
 // Follow the leader with a window wide enough to show the finishing gap.
 function drawRace(dA, dB, elapsed) {
@@ -525,21 +632,24 @@ function drawRace(dA, dB, elapsed) {
 }
 $("race-start").addEventListener("click", () => {
   if (!race) return;
-  const total = Math.max(race.tA, race.tB), wall = 12;  // seconds on screen
+  const total = raceEnd(), wall = 12;  // seconds on screen
   const t0 = performance.now();
   $("race-start").textContent = "Restart race";
   const step = (now) => {
     const raceT = Math.min(total, ((now - t0) / 1000 / wall) * total);
-    drawRace(Math.min(race.metres, race.vA * raceT), Math.min(race.metres, race.vB * raceT), raceT);
+    const d = (v) => Math.min(race.metres, Math.max(0, v) * raceT);
+    drawRace(d(race.vA), d(race.vB), raceT);
     if (raceT < total) raceAnim = requestAnimationFrame(step);
     else raceAnim = null;
   };
   if (raceAnim) cancelAnimationFrame(raceAnim);
   raceAnim = requestAnimationFrame(step);
 });
-for (const id of ["c-effA", "c-effB", "c-dist"]) $(id).addEventListener("input", updateRace);
-$("race-b").addEventListener("change", updateRace);
-fillRaceOptions();
+for (const id of ["c-effA", "c-effB", "c-dist", "c-wind", "c-current"]) $(id).addEventListener("input", updateRace);
+$("save-a").addEventListener("click", () => saveBoat("a"));
+$("save-b").addEventListener("click", () => saveBoat("b"));
+renderChips("a");
+renderChips("b");
 
 // ---------------------------------------------------------------- views
 // World: X toward the bow, Y to port, Z up (stroke-sim.js). Each view maps

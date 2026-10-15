@@ -29,13 +29,27 @@
 //    long shallow keel. The force it carries, Y, costs induced drag
 //    Y² / (½ρV²·π·(2·draft)²). Brief pushes mostly just sway the boat;
 //    steady ones are carried by the hull and cost the most.
+//  - The push comes in pulses (drive, then recovery), so the boat surges:
+//    faster during the drive, slower in the recovery. Drag grows with V², so
+//    an uneven speed costs more than a steady one at the same average
+//    (mean of V³ > V̄³). Only the paddle's push is modelled, not your body
+//    moving fore and aft in the boat.
 //  - Boat speed is where mean thrust (counting the switches) balances hull
-//    drag k·V² plus that leeway drag. Then paddler power = moving the boat
-//    (k·V³) + leeway drag + slip (power into the water), exactly;
-//    efficiency = moving the boat / paddler power.
-//  - With quadratic drag on blade and hull, efficiency does not depend on
-//    stroke rate or effort: every speed and force scales together. It is a
-//    measure of technique and geometry alone.
+//    drag k·V² plus leeway and surge drag. Then paddler power = moving the
+//    boat (k·V³) + leeway + surge + slip (power into the water), exactly.
+//    With quadratic drag on blade and hull, these shares do not depend on
+//    stroke rate or effort: every speed and force scales together.
+//  - Vertical push. A blade angled forward at the catch pushes water down
+//    and lifts the boat; angled back at the exit it lifts water and pulls
+//    the boat down. The average over the stroke changes how deep the boat
+//    sits: drag scales with wetted area, about displacement^(2/3). The
+//    swing in vertical force bounces the boat on its waterplane (a spring,
+//    ρ·g·area) and the bouncing makes waves, which cost power. These grow
+//    with effort relative to the boat's weight, so they are worked out at
+//    the comparison effort and your stroke rate.
+//  - Efficiency = moving the boat / paddler power, where moving the boat is
+//    k·V³ for the boat at its own weight with no vertical push. A stroke
+//    that lifts the boat can earn a little back.
 
 (function (root) {
   "use strict";
@@ -54,6 +68,15 @@
   const HULL_AR = Math.pow(2 * HULL_DRAFT, 2) / (HULL_L * HULL_DRAFT);
   const HULL_LIFT_SLOPE = Math.PI * HULL_AR / 2;
   const BOAT_HALF_BEAM = 0.36;   // m, at the gunwale
+  const G = 9.81;
+  const MASS_REF = 90;           // kg, paddler + boat that HULL_K is for
+  const SURGE_ADDED = 0.05;      // entrained water moving with the hull, fore-aft
+  // Heave: waterplane area of a C1 marathon hull (5.6 m, ~0.6 m wide at the
+  // waterline), added mass of the water moving with it, and damping (wave
+  // making) as a fraction of critical.
+  const WATERPLANE = 2.3, HEAVE_ADDED = 1.0, HEAVE_ZETA = 0.3;
+  // Air drag of paddler and boat (CdA, m²), used for wind in race().
+  const RHO_AIR = 1.2, CDA_AIR = 0.45;
 
   // Bent-shaft marathon paddle, distances from the grip (m).
   const PADDLE = { throat: 0.82, bladeLen: 0.50, copFromThroat: 0.25 };
@@ -69,6 +92,8 @@
     handTravelM: 0.15,    // pivot moves aft this far during the drive
     bendDeg: 12,
     rateSpm: 60,
+    massKg: 90,                // paddler + boat
+    effortW: 150,              // effort the effort-dependent results are for
     switchHeadingDeg: 3,       // switch sides when this far off course
     switchLossStrokes: 0.3,    // time lost per switch, in strokes
   };
@@ -161,33 +186,82 @@
   // Leeway drag: sway the boat under the sideways force through a few
   // stroke cycles (to settle), then average the hull's induced drag over
   // the last one. The hull resists sway with Y = b·v, b = ½ρV·A·lift slope.
-  function leewayDrag(samples, Tc, V) {
+  function leewayDrag(samples, Tc, V, mass = MASS_REF) {
+    const swayMass = SWAY_MASS + (mass - MASS_REF);
     if (V <= 0) return 0;
     const b = 0.5 * RHO * V * HULL_L * HULL_DRAFT * HULL_LIFT_SLOPE;
     const qpb2 = 0.5 * RHO * V * V * Math.PI * Math.pow(2 * HULL_DRAFT, 2);
     const n = 400, dt = Tc / n, Td = samples[samples.length - 1].t;
-    const fy = (t) => {                       // sideways push at cycle time t
-      if (t > Td) return 0;
-      const i = Math.min(samples.length - 1, Math.round((t / Td) * (samples.length - 1)));
-      return samples[i].thrust[1];
-    };
+    const fy = (t) => pulse(samples, Td, t, 1);   // sideways push at cycle time t
     let v = 0, sumD = 0;
     const cycles = 6;
     for (let c = 0; c < cycles; c++)
       for (let i = 0; i < n; i++) {
         const t = i * dt, Y = b * v;
-        v += ((fy(t) - Y) / SWAY_MASS) * dt;   // explicit Euler; τ = m/b ≫ dt
+        v += ((fy(t) - Y) / swayMass) * dt;   // explicit Euler; τ = m/b ≫ dt
         if (c === cycles - 1) sumD += (Y * Y) / qpb2;
       }
     return sumD / n;
   }
 
-  // Mean forward thrust, mean yaw moment and leeway drag at boat speed V.
-  function means(p, V, steps = 120) {
+  // Thrust at cycle time t (zero in the recovery), component k.
+  function pulse(samples, Td, t, k) {
+    if (t > Td) return 0;
+    const i = Math.min(samples.length - 1, Math.round((t / Td) * (samples.length - 1)));
+    return samples[i].thrust[k];
+  }
+
+  // Surge drag: the boat's speed V + δ(t) under the pulsed push, linearised
+  // about V (m·δ' = Fx − F̄ − 2kV·δ). The extra hull drag power averages
+  // k·((V+δ)³ − V³); returned as the equivalent force at V.
+  function surgeDrag(samples, Tc, V, mass, k) {
+    if (V <= 0) return 0;
+    const m = mass * (1 + SURGE_ADDED), Td = samples[samples.length - 1].t;
+    const n = 400, dt = Tc / n;
+    let mean = 0;
+    for (let i = 0; i < n; i++) mean += pulse(samples, Td, i * dt, 0) / n;
+    let d = 0;
+    const cycles = 8, last = [];
+    for (let c = 0; c < cycles; c++)
+      for (let i = 0; i < n; i++) {
+        d += ((pulse(samples, Td, i * dt, 0) - mean - 2 * k * V * d) / m) * dt;
+        if (c === cycles - 1) last.push(d);
+      }
+    const avg = last.reduce((a, x) => a + x, 0) / n;
+    let extra = 0;
+    for (const x of last) { const v = V + x - avg; extra += k * (v * v * v - V * V * V) / n; }
+    return Math.max(0, extra / V);
+  }
+
+  // Heave under the vertical push, at stroke period Tc (s), with the force
+  // scaled by `scale`. Spring ρ·g·waterplane, mass with added water,
+  // damping HEAVE_ZETA of critical. Returns the wave power (W), the bounce
+  // amplitude (m) and the mean vertical push (N, + lifts the boat).
+  function heave(samples, Td0, Tc, scale, mass) {
+    const K = RHO * G * WATERPLANE, m = mass * (1 + HEAVE_ADDED);
+    const c = 2 * HEAVE_ZETA * Math.sqrt(K * m);
+    const Td = Tc * DRIVE_FRACTION, n = 1000, dt = Tc / n;
+    const fz = (t) => (t > Td ? 0 : scale * pulse(samples, Td0, (t / Td) * Td0, 2));
+    let mean = 0;
+    for (let i = 0; i < n; i++) mean += fz(i * dt) / n;
+    let z = 0, v = 0, power = 0, lo = Infinity, hi = -Infinity;
+    const cycles = 12;
+    for (let k = 0; k < cycles; k++)
+      for (let i = 0; i < n; i++) {
+        v += ((fz(i * dt) - mean - c * v - K * z) / m) * dt;   // semi-implicit Euler
+        z += v * dt;
+        if (k === cycles - 1) { power += c * v * v / n; lo = Math.min(lo, z); hi = Math.max(hi, z); }
+      }
+    return { power, amplitude: (hi - lo) / 2, meanLift: mean };
+  }
+
+  // Mean forward thrust, mean yaw moment, leeway and surge drag at speed V.
+  function means(p, V, k, steps = 120) {
     const { samples, Tc } = drive(p, V, steps);
     let thrust = 0, yaw = 0;
     for (const s of samples) { thrust += s.thrust[0] * s.dt; yaw += s.yaw * s.dt; }
-    return { thrust: thrust / Tc, yaw: yaw / Tc, leeway: leewayDrag(samples, Tc, V) };
+    return { thrust: thrust / Tc, yaw: yaw / Tc, leeway: leewayDrag(samples, Tc, V, p.massKg),
+             surge: surgeDrag(samples, Tc, V, p.massKg, k) };
   }
   const yawDamping = (V) => C_TRACK * RHO * V * Math.pow(HULL_L, 3) * HULL_DRAFT / 12;
 
@@ -205,15 +279,16 @@
 
   function simulate(params) {
     const p = Object.assign({}, DEFAULTS, params);
+    const k = HULL_K * Math.pow(p.massKg / MASS_REF, 2 / 3);  // drag ∝ wetted area
     // Boat speed: mean thrust falls as the boat speeds up (less slip), so
     // bisect for thrust (less the time lost switching) = hull drag.
     const Tc0 = 60 / p.rateSpm;
     let lo = 0, hi = 8;
     for (let i = 0; i < 40; i++) {
       const V = (lo + hi) / 2;
-      const m = means(p, V);
+      const m = means(p, V, k);
       const sw = switching(p, V, m.yaw, Tc0);
-      if (sw.duty * m.thrust > HULL_K * V * V + m.leeway) lo = V; else hi = V;
+      if (sw.duty * m.thrust > k * V * V + m.leeway + m.surge) lo = V; else hi = V;
     }
     const V = (lo + hi) / 2;
     const { samples, Tc } = drive(p, V);
@@ -225,39 +300,99 @@
     const useful = sw.duty * sum((s) => s.useful) / Tc;
     const slip = sw.duty * sum((s) => s.slip) / Tc;
     const imp2 = sum((s) => dot(s.thrust, s.thrust)) || 1;
-    const share = (k) => sum((s) => s.thrust[k] * s.thrust[k]) / imp2;
-    const hull = HULL_K * V * V * V;
-    const leeway = leewayDrag(samples, Tc, V) * V;
+    const share = (i) => sum((s) => s.thrust[i] * s.thrust[i]) / imp2;
+    const hull = k * V * V * V;
+    const leeway = leewayDrag(samples, Tc, V, p.massKg) * V;
+    const surge = surgeDrag(samples, Tc, V, p.massKg, k) * V;
     const peakForce = Math.max(...samples.map((s) => s.F));
-    const atEffort = (watts) => V * Math.cbrt(watts / Math.max(1e-9, paddler));
+    const Td0 = samples[samples.length - 1].t;
+    const pd = Math.max(1e-9, paddler);
+    const base = hull / pd;  // efficiency before the vertical push
+
+    // At an effort of `watts` (and your stroke rate): forces scale as
+    // (watts / paddler)^(2/3). The vertical push changes hull drag by
+    // eps = sinking + bounce (a fraction of k·V³), which the same propulsion
+    // pays for, so speed ∝ (1 + eps)^(-1/3).
+    const cache = new Map();
+    function at(watts) {
+      const key = Math.round(watts * 100);
+      if (cache.has(key)) return cache.get(key);
+      const scale = Math.pow(watts / pd, 2 / 3);
+      const Vw = V * Math.cbrt(watts / pd);
+      const h = heave(samples, Td0, 60 / p.rateSpm, scale, p.massKg);
+      const weight = p.massKg * G;
+      const sink = Math.pow(Math.max(0.05, 1 - h.meanLift / weight), 2 / 3) - 1;
+      const bounce = h.power / (k * Vw * Vw * Vw);
+      const eps = sink + bounce, f = 1 / (1 + eps);
+      const r = {
+        speed: Vw * Math.cbrt(f),
+        efficiency: base * f,
+        // Shares of your power. They add to 1; `sink` is negative (a saving)
+        // when the stroke lifts the boat.
+        shares: { hull: base * f, slip: slip / pd, leeway: leeway / pd, surge: surge / pd,
+                  sink: base * sink * f, bounce: base * bounce * f },
+        meanLift: h.meanLift,            // N, + lifts the boat
+        sinkMm: -h.meanLift / (RHO * G * WATERPLANE) * 1000,  // + deeper
+        bounceMm: h.amplitude * 1000,
+        hullK: k * (1 + eps),            // effective drag constant at this effort
+      };
+      cache.set(key, r);
+      return r;
+    }
+    const e = at(p.effortW);
     return {
       params: p, speed: V, cycle: Tc,
-      paddlerPower: paddler, usefulPower: useful, slipPower: slip, hullPower: hull, leewayPower: leeway,
-      // Share of your power that moves the boat, after slip, including the
-      // effect of time lost switching sides.
-      efficiency: paddler > 0 ? hull / paddler : 0,
+      paddlerPower: paddler, usefulPower: useful, slipPower: slip, hullPower: hull,
+      leewayPower: leeway, surgePower: surge,
+      // Share of your power that moves the boat at the comparison effort,
+      // after slip, sideways, surge and vertical effects, including time
+      // lost switching sides.
+      efficiency: e.efficiency,
+      baseEfficiency: base,
+      at,
       strokesPerSide: sw.perSide,
       switchDuty: sw.duty,
       forceShare: { forward: share(0), sideways: share(1), vertical: share(2) },
       yawMoment: yawMean,  // N·m; > 0 turns the bow away from the paddle side
       peakForce,
-      speedAt: atEffort,
+      speedAt: (watts) => at(watts).speed,
       // Turning moment scales with speed², i.e. with effort^(2/3).
-      yawAt: (watts) => yawMean * Math.pow(watts / Math.max(1e-9, paddler), 2 / 3),
+      yawAt: (watts) => yawMean * Math.pow(watts / pd, 2 / 3),
       samples,
     };
   }
 
+  // Speed through the water at `watts` with wind and current. Air drag
+  // ½ρ·CdA·u² on paddler and boat, at the air speed past them u = ground
+  // speed + headwind; still-air drag is already part of HULL_K, so only the
+  // change counts. The paddle drives the same share of power into overcoming
+  // resistance as in still conditions.
+  function waterSpeed(r, watts, headwind, current) {
+    const e = r.at(watts), k = e.hullK, budget = k * Math.pow(e.speed, 3);
+    const air = (V) => { const u = V + current + headwind; return 0.5 * RHO_AIR * CDA_AIR * (u * Math.abs(u) - V * V); };
+    let lo = 0, hi = 3 * e.speed + 10;
+    for (let i = 0; i < 60; i++) {
+      const V = (lo + hi) / 2;
+      if (k * V * V * V + air(V) * V < budget) lo = V; else hi = V;
+    }
+    return (lo + hi) / 2;
+  }
+
   // Steady race between two strokes: each boat holds its average speed at
-  // its own effort over `metres`. Returns times and the finishing gap.
-  function race(a, b, metres, wattsA, wattsB) {
-    const vA = a.speedAt(wattsA), vB = b.speedAt(wattsB);
-    const tA = metres / vA, tB = metres / vB;
+  // its own effort over `metres`. env: headwind (m/s, + against you,
+  // − tailwind) and current (m/s, + with you). Returns ground speeds, times
+  // (Infinity if a boat can't make headway) and the finishing gap.
+  function race(a, b, metres, wattsA, wattsB, env = {}) {
+    const hw = env.headwind || 0, cur = env.current || 0;
+    const wA = waterSpeed(a, wattsA, hw, cur), wB = waterSpeed(b, wattsB, hw, cur);
+    const vA = wA + cur, vB = wB + cur;
+    const tA = vA > 1e-3 ? metres / vA : Infinity, tB = vB > 1e-3 ? metres / vB : Infinity;
     const first = Math.min(tA, tB);
     return {
-      vA, vB, tA, tB, metres,
-      timeGap: tB - tA,                       // > 0: A wins by this many seconds
-      distanceGap: (vA - vB) * first,         // m between them as the winner finishes
+      vA, vB, waterA: wA, waterB: wB, tA, tB, metres,
+      // > 0: A wins by this many seconds (0 if neither finishes)
+      timeGap: isFinite(tA) || isFinite(tB) ? tB - tA : 0,
+      distanceGap: isFinite(first) ? (Math.max(0, vA) - Math.max(0, vB)) * first : 0,  // m apart as the winner finishes
     };
   }
 
