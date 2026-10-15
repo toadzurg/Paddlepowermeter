@@ -59,10 +59,13 @@ struct __attribute__((packed)) StrokePacket {
   int16_t slipW;
   uint16_t efficiencyPermille;  // not capped at 1000, like efficiency()
   uint8_t flags;
+  // Added later (older firmware sends 15 bytes without them):
+  uint16_t impulseCentiNs;  // 0.01 N·s, forward impulse of the drive
+  uint16_t driveMs;         // drive length; duty = driveMs × rate / 60000
 };
 
 static_assert(sizeof(LivePacket) == 19, "LivePacket layout changed");
-static_assert(sizeof(StrokePacket) == 15, "StrokePacket layout changed");
+static_assert(sizeof(StrokePacket) == 19, "StrokePacket layout changed");
 
 // Saturating conversions: an out-of-range value pins at the limit instead
 // of wrapping to nonsense.

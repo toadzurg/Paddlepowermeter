@@ -79,7 +79,7 @@ int main(int argc, char **argv) {
   double sumPower = 0, maxDOmega = 0, maxDPivot = 0;
 
   std::printf("stroke,time_s,power_w,rate_spm,energy_j,pivot_m,lever_m,"
-              "useful_w,slip_w,efficiency\n");
+              "useful_w,slip_w,efficiency,impulse_ns,drive_s,duty,mean_push_n\n");
   while (reader.next(r)) {
     PaddleSample s = builder.next(r);
     if (first) model.begin(s);
@@ -105,10 +105,13 @@ int main(int argc, char **argv) {
                   model.strokeRate(), model.strokeEnergy(),
                   model.pivotPosition(), model.leverArm());
       if (model.hasPowerSplit())
-        std::printf("%.1f,%.1f,%.4f\n", model.usefulPower(), model.slipPower(),
+        std::printf("%.1f,%.1f,%.4f,", model.usefulPower(), model.slipPower(),
                     model.efficiency());
       else
-        std::printf(",,\n");
+        std::printf(",,,");
+      std::printf("%.2f,%.3f,%.3f,%.1f\n", model.strokeImpulse(),
+                  model.driveTime(), model.dutyFactor(),
+                  model.meanForwardForce());
     }
   }
 

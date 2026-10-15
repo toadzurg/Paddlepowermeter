@@ -94,7 +94,7 @@
           border-radius: 14px; padding: 14px 16px; }
   .grid { display: grid; gap: 10px; }
   .tiles { grid-template-columns: repeat(2, 1fr); }
-  @media (min-width: 560px) { .tiles { grid-template-columns: repeat(4, 1fr); } }
+  @media (min-width: 560px) { .tiles { grid-template-columns: repeat(3, 1fr); } }
 
   .label { font-size: 13px; color: var(--text-secondary); }
   .value { font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
@@ -211,6 +211,16 @@
         <div class="label">Efficiency</div>
         <div class="value" id="v-eff">—<span class="unit">%</span></div>
         <div class="sub" id="v-eff-sub">needs boat speed</div>
+      </div>
+      <div class="card tile">
+        <div class="label">Impulse per stroke</div>
+        <div class="value" id="v-impulse">—<span class="unit">N·s</span></div>
+        <div class="sub" id="v-impulse-sub">forward push × time</div>
+      </div>
+      <div class="card tile">
+        <div class="label">Mean push</div>
+        <div class="value" id="v-push">—<span class="unit">N</span></div>
+        <div class="sub" id="v-push-sub">over the whole stroke</div>
       </div>
       <div class="card tile">
         <div class="label">Lever arm</div>
@@ -362,7 +372,7 @@
 // scripts into the page, and shared global names would break one or both.
 (() => {
 "use strict";
-const APP_VERSION = "2026-10-15.6";
+const APP_VERSION = "2026-10-15.7";
 // Must match src/BleProtocol.h.
 const UUID = {
   service: "7e1a0001-5c3b-4c2e-9a77-0f5d3e2b9c10",
@@ -387,12 +397,18 @@ function decodeLive(dv) {
 }
 function decodeStroke(dv) {
   const f = dv.getUint8(14);
-  return {
+  const s = {
     count: dv.getUint16(0, true), power: dv.getInt16(2, true),
     rate: dv.getUint16(4, true) / 100, energy: dv.getUint16(6, true) / 10,
     useful: dv.getInt16(8, true), slip: dv.getInt16(10, true),
     efficiency: dv.getUint16(12, true) / 1000, hasSplit: !!(f & STROKE_HAS_SPLIT),
+    // Added later: older firmware sends 15 bytes without them.
+    impulse: dv.byteLength >= 19 ? dv.getUint16(15, true) / 100 : null,
+    driveMs: dv.byteLength >= 19 ? dv.getUint16(17, true) : null,
   };
+  // Share of the stroke in the drive (duty factor), from drive time and rate.
+  s.duty = s.driveMs && s.rate > 0 ? +(s.driveMs * s.rate / 60000).toFixed(4) : null;
+  return s;
 }
 
 // --------------------------------------------------------------- storage
@@ -480,6 +496,16 @@ function onStroke(s) {
       : `Average of the last ${timed.length} strokes: ${nb(Math.round(avg), "W")}`;
   }
   if (s.rate > 0) setValue("v-rate", s.rate.toFixed(0), "spm");
+  if (s.impulse !== null && s.impulse > 0) {
+    setValue("v-impulse", s.impulse.toFixed(1), "N·s");
+    const drive = `drive ${nb((s.driveMs / 1000).toFixed(2), "s")}`;
+    $("v-impulse-sub").textContent = s.duty !== null ? `${drive} · ${Math.round(s.duty * 100)}% of the stroke` : drive;
+    // Impulse spread over the whole stroke: at steady speed, the hull's drag.
+    if (s.rate > 0) {
+      setValue("v-push", (s.impulse * s.rate / 60).toFixed(0), "N");
+      $("v-push-sub").textContent = "= the boat's drag at steady speed";
+    }
+  }
   if (s.hasSplit) {
     setValue("v-eff", (s.efficiency * 100).toFixed(0), "%");
     $("v-eff-sub").textContent = `useful ${nb(num(s.useful), "W")} · slip ${nb(num(s.slip), "W")}`;
@@ -900,10 +926,11 @@ function encodeLive(p) {
   return dv;
 }
 function encodeStroke(s) {
-  const dv = new DataView(new ArrayBuffer(15));
+  const dv = new DataView(new ArrayBuffer(19));
   dv.setUint16(0, s.count, true); dv.setInt16(2, s.power, true); dv.setUint16(4, Math.round(s.rate * 100), true);
   dv.setUint16(6, Math.round(s.energy * 10), true); dv.setInt16(8, s.useful, true); dv.setInt16(10, s.slip, true);
   dv.setUint16(12, Math.round(s.efficiency * 1000), true); dv.setUint8(14, STROKE_HAS_SPLIT);
+  dv.setUint16(15, Math.round(s.impulse * 100), true); dv.setUint16(17, Math.round(s.driveMs), true);
   return dv;
 }
 function startDemo() {
@@ -914,7 +941,7 @@ function startDemo() {
   // lever arm. The pivot estimate wanders slowly between strokes, as the
   // firmware's does for a real paddler, and power follows the lever arm.
   const A = 0.6, drive = 0.6, cycle = 1.2, dt = 0.05;
-  let seq = 0, t = 0, count = 0, energy = 0, wasDrive = false;
+  let seq = 0, t = 0, count = 0, energy = 0, impulse = 0, wasDrive = false;
   const timer = setInterval(() => {
     t += dt;
     const k = Math.floor(t / cycle), tau = t - k * cycle;
@@ -935,15 +962,16 @@ function startDemo() {
     const pivot = -0.14 + 0.08 * Math.sin(2 * Math.PI * t / 23) + 0.03 * Math.sin(2 * Math.PI * t / 7);
     const lever = leverArmFor(pivot);
     const instPower = Math.max(0, force * omega * lever);
-    if (inDrive) energy += instPower * dt;
+    if (inDrive) { energy += instPower * dt; impulse += force * Math.cos(angle - BEND) * dt; }
     if (wasDrive && !inDrive) {
       count++;
       const power = Math.round(energy / cycle);
       const eff = 0.8 + 0.04 * Math.sin(k * 0.9);
       const useful = Math.round(power * eff);
       onStroke(decodeStroke(encodeStroke({ count, power: count > 1 ? power : 0, rate: count > 1 ? 50 : 0,
-        energy, useful, slip: power - useful, efficiency: eff })));
+        energy, useful, slip: power - useful, efficiency: eff, impulse, driveMs: drive * 1000 })));
       energy = 0;
+      impulse = 0;
     }
     wasDrive = inDrive;
     onLive(decodeLive(encodeLive({ seq: seq++, tMs: Math.round(t * 1000),

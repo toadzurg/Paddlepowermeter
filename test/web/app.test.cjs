@@ -155,6 +155,10 @@ function liveHex(seq, tMs, inDrive, force) {
     check("stroke rate", (await page.textContent("#v-rate")) === "50spm");
     check("efficiency above 100% shown, not capped", (await page.textContent("#v-eff")) === "107%");
     check("useful / slip", (await page.textContent("#v-eff-sub")) === "useful 149\u00a0W · slip 25\u00a0W");
+    check("impulse per stroke", (await page.textContent("#v-impulse")) === "78.5N·s", await page.textContent("#v-impulse"));
+    check("drive time and duty", (await page.textContent("#v-impulse-sub")) === "drive 0.57\u00a0s · 47% of the stroke",
+          await page.textContent("#v-impulse-sub"));
+    check("mean push = impulse × rate / 60", (await page.textContent("#v-push")) === "65N", await page.textContent("#v-push"));
     check("force", (await page.textContent("#v-force")) === "187N");
     check("boat speed km/h", (await page.textContent("#v-speed")) === "8.9km/h",
           await page.textContent("#v-speed"));
@@ -309,6 +313,15 @@ function liveHex(seq, tMs, inDrive, force) {
     check("demo shows stroke power", /^\d+W$/.test(await page.textContent("#v-power")),
           await page.textContent("#v-power"));
     check("demo draws force curves", await page.isVisible("#chart"));
+    check("demo shows impulse per stroke", /^\d+\.\dN·s$/.test(await page.textContent("#v-impulse")),
+          await page.textContent("#v-impulse"));
+    // Older firmware sends a 15-byte stroke packet without impulse.
+    const old = await page.evaluate(() => {
+      const dv = new DataView(new ArrayBuffer(15));
+      dv.setUint16(0, 3, true); dv.setInt16(2, 150, true); dv.setUint16(4, 5000, true);
+      return window.ppm.decodeStroke(dv);
+    });
+    check("15-byte stroke packet (old firmware) decodes without impulse", old.power === 150 && old.impulse === null && old.duty === null);
     check("links to the stroke simulator", (await page.getAttribute("#sim-link", "href")) === "simulator.html");
     check("stroke view drawn", await page.isVisible("#stroke-view") &&
           (await page.$$("#stroke-view line.blade")).length === 1);
