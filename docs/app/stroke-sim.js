@@ -183,6 +183,10 @@
     forearmM: 0.30,            // elbow to the middle of the grip
     thighM: 0.45,
     shinM: 0.45,
+    // Who they are: not used by the physics. The page shapes lengths from
+    // height by sex, the heat's toll by age, and its fitness suggestion by both.
+    ageY: 35,
+    female: 0,                 // 1: female, 0: male
   };
 
   // Who's paddling, as opposed to how.
@@ -1196,8 +1200,9 @@
     // course turns. A portage is carried, not paddled.
     // env.weather: hour by hour from the start, [{ windSpeed (m/s), windFrom
     // (deg, compass), power (the share of each boat's watts it holds in that
-    // hour's heat) }]. Each boat meets the hour it reaches each leg in (the
-    // last hour holds after); it replaces windSpeed and windFrom.
+    // hour's heat; powerB, if given, for boat B) }]. Each boat meets the hour
+    // it reaches each leg in (the last hour holds after); it replaces
+    // windSpeed and windFrom.
     const angleTo = (from, heading) => Math.abs((((from - (heading || 0)) % 360) + 540) % 360 - 180);
     if (env.sections) {
       const from = env.windFrom || 0;
@@ -1214,7 +1219,7 @@
     // "best" (fastest for each leg).
     const river = env.river && env.river.width > 2 * RIVER_EDGE ? env.river : null;
     const hours = env.sections && env.weather && env.weather.length ? env.weather : null;
-    const boat = (r, watts0, line) => {
+    const boat = (r, watts0, line, who) => {
       // Best line once per editable section, on its average bends.
       const best = new Map();
       const bestFor = (l) => {
@@ -1231,7 +1236,8 @@
         let out;
         if (hours) {
           const hour = Math.max(0, Math.min(hours.length - 1, Math.round(clock / 3600) || 0)), h = hours[hour];
-          const watts = watts0 * (h.power === undefined ? 1 : h.power);
+          const share = who === "B" && h.powerB !== undefined ? h.powerB : h.power;
+          const watts = watts0 * (share === undefined ? 1 : share);
           out = Object.assign(runLeg(Object.assign({}, l0, { windSpeed: h.windSpeed, windAngle: angleTo(h.windFrom, l0.heading) }), watts), { watts, hour });
         } else out = runLeg(l0, watts0);
         clock += out.t;
@@ -1276,7 +1282,7 @@
     };
     const lineOf = (x) => (env.sections ? (env.lines || {})[x] : river && river[`line${x}`]);
     // b can be null to race A alone (B then mirrors A).
-    const A = boat(a, wattsA, lineOf("A")), B = b ? boat(b, wattsB, lineOf("B")) : A;
+    const A = boat(a, wattsA, lineOf("A"), "A"), B = b ? boat(b, wattsB, lineOf("B"), "B") : A;
     const first = Math.min(A.t, B.t);
     return {
       vA: A.v, vB: B.v, waterA: A.water, waterB: B.water, tA: A.t, tB: B.t, metres,
@@ -1290,7 +1296,7 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 43;
+  const API_LEVEL = 44;
   const PADDLE = paddleOf(DEFAULTS);
   const api = { API_LEVEL, shaftDir, paddled, paddleOf, gearFactor, bestRate, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
