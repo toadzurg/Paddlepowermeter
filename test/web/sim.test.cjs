@@ -490,6 +490,10 @@ console.log("\nStroke simulator physics");
     await page.click("#presets >> text=Wide sweep");
     await page.click("#boats [data-boat=a]"); await settle();
     check(`${tag}: drive time readout`, (await text("#o-driveFraction")) === "50% of each stroke");
+    await slide("#c-driveFraction", 0.8); await settle();
+    check(`${tag}: drive time goes to 80%`, (await page.$eval("#c-driveFraction", (e) => e.max)) === "0.8" &&
+          (await text("#o-driveFraction")) === "80% of each stroke" && (await cellVal("eff", 2)) > 0);
+    await slide("#c-driveFraction", 0.5); await settle();
     check(`${tag}: strokes per side auto by default`, (await text("#o-switchStrokes")) === "auto, by heading" &&
           !(await page.$eval("#c-switchHeadingDeg", (e) => e.disabled)));
     await slide("#c-switchStrokes", 10); await settle();
