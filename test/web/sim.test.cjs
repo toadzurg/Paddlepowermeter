@@ -1284,6 +1284,9 @@ console.log("\nPaddle fit");
       await lp.$eval("#scrub", (el) => { el.value = 500; el.dispatchEvent(new Event("input")); });
       await lp.click("#zoom-out"); await lp.waitForTimeout(100);
       check(`${tag}: open water: each boat's weave`, (await lp.$$("#race-view .line-a")).length === 1 && (await lp.$$("#race-view .line-b")).length === 1);
+      check(`${tag}: open water: the weave in words, each boat's sideways swing`,
+            /^Sideways swing, drawn ×\d+: A ±\d+ cm, switching every [\d.]+ strokes · B ±\d+ cm, every [\d.]+ strokes\. Switching by heading/.test(await lp.textContent("#race-weave")),
+            await lp.textContent("#race-weave"));
       // Live with the replay: each boat's heading over its last strokes, and its place on the shallow-water map.
       const live = await lp.evaluate(() => ({ heading: document.querySelectorAll("#race-heading path").length, dots: document.querySelectorAll("#race-shallow-now circle").length,
         hRead: document.getElementById("race-heading-read").textContent, sRead: document.getElementById("race-shallow-read").textContent,
