@@ -147,7 +147,7 @@
     seatZM: 0.10,              // hips above the waterline, sitting in the boat: higher is less stable
     effortW: 150,              // effort the effort-dependent results are for
     switchHeadingDeg: 3,       // switch sides when this far off course
-    switchLossS: 0.3,          // time lost per switch, s (an estimate, not measured)
+    switchLossS: 1.0,          // time lost per switch, s (an estimate, not measured)
     switchStrokes: 0,          // fixed strokes per side; 0 = switch by heading
     // Body motion, relative to the boat.
     swingM: 0,                 // torso fore-aft, ± m (half the travel)

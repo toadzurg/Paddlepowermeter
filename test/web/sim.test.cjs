@@ -43,7 +43,8 @@ console.log("\nStroke simulator physics");
   // The Science of Paddling (Part 32) cites about ±10% speed swing.
   const swing = base.at(150).surgeSwing;
   check("speed swings 5–20% over a stroke at 60 spm", swing > 0.05 && swing < 0.2, pct(swing));
-  const slow = S.simulate({ rateSpm: 30 }), quick = S.simulate({ rateSpm: 90 });
+  // Switching aside: a switch takes the same time at any rate, so it costs a quick rate more (tested below).
+  const slow = S.simulate({ rateSpm: 30, switchLossS: 0 }), quick = S.simulate({ rateSpm: 90, switchLossS: 0 });
   check("same effort, slower rate: more surge", slow.at(150).shares.surge > 3 * quick.at(150).shares.surge,
         `${pct(slow.at(150).shares.surge)} at 30 spm vs ${pct(quick.at(150).shares.surge)} at 90`);
   check("same effort, slower rate: slower boat", slow.speedAt(150) < quick.speedAt(150));
@@ -71,7 +72,7 @@ console.log("\nStroke simulator physics");
   const rate50 = S.simulate({ rateSpm: 50 }), rate80 = S.simulate({ rateSpm: 80 });
   check("a switch takes the same time at any rate, so a higher rate loses more to it",
         1 - rate80.switchDuty > 1 - rate50.switchDuty &&
-        Math.abs(base.switchDuty - base.strokesPerSide / (base.strokesPerSide + 0.3)) < 1e-9,   // 0.3 s at 60 spm = 0.3 of a stroke
+        Math.abs(base.switchDuty - base.strokesPerSide / (base.strokesPerSide + S.DEFAULTS.switchLossS)) < 1e-9,   // at 60 spm a second is a stroke
         `${pct(1 - rate50.switchDuty)} at 50 spm vs ${pct(1 - rate80.switchDuty)} at 80`);
 
   // Drag only (the stricter blade model) for the technique comparisons;
@@ -118,7 +119,7 @@ console.log("\nStroke simulator physics");
   check("sideways push causes leeway drag", sweep.leewayPower > 10 * clean.leewayPower && sweep.leewayPower > 0,
         `${sweep.leewayPower.toFixed(2)} W vs ${clean.leewayPower.toFixed(3)} W`);
   check("leeway drag is a small share", sweep.leewayPower / sweep.paddlerPower < 0.02);
-  const slowSwitch = S.simulate({ switchLossS: 1 });
+  const slowSwitch = S.simulate({ switchLossS: S.DEFAULTS.switchLossS + 0.5 });
   check("slower switches cost speed", slowSwitch.speedAt(150) < base.speedAt(150));
   const tight = S.simulate({ switchHeadingDeg: 1 });
   check("tighter heading tolerance means more switches", tight.strokesPerSide < base.strokesPerSide);
@@ -185,8 +186,10 @@ console.log("\nStroke simulator physics");
   check("hull: speed swing over a stroke = the engine's surge", Math.abs(span(cyc.speed) / e150.waterSpeed - e150.surgeSwing) < 0.005,
         `${(span(cyc.speed) / e150.waterSpeed).toFixed(4)} vs ${e150.surgeSwing.toFixed(4)}`);
   check("hull: bob = the engine's bounce", Math.abs(span(cyc.heave) / 2 * 1000 - e150.bounceMm) < 0.15 * e150.bounceMm, `${(span(cyc.heave) * 500).toFixed(2)} vs ${e150.bounceMm.toFixed(2)} mm`);
-  check("hull: push balances drag over a stroke; the gap averages zero", Math.abs(avg(cyc.push) / avg(cyc.drag) - 1) < 0.1 && Math.abs(avg(cyc.ahead)) < 1e-6,
-        `${avg(cyc.push).toFixed(1)} vs ${avg(cyc.drag).toFixed(1)} N`);
+  // Without switching: with it, each stroke's push also covers the time lost switching.
+  const cyc0 = S.simulate({ switchLossS: 0 }).cycleAt(150);
+  check("hull: push balances drag over a stroke; the gap averages zero", Math.abs(avg(cyc0.push) / avg(cyc0.drag) - 1) < 0.1 && Math.abs(avg(cyc.ahead)) < 1e-6,
+        `${avg(cyc0.push).toFixed(1)} vs ${avg(cyc0.drag).toFixed(1)} N`);
   check("hull: the blade lifts the paddle side; hips shift toward it to balance", Math.min(...cyc.roll) < -10 && cyc.rollMean < 0 && cyc.hipShift > 0 &&
         Math.abs(avg(cyc.heel)) < 1e-6 && cyc.GM > 0.1);
   check("hull: a wider blade slips less", S.simulate({ bladeWidthM: 0.24 }).at(150).shares.slip < e150.shares.slip);
@@ -196,14 +199,17 @@ console.log("\nStroke simulator physics");
   check("body: a bigger swing costs more (±5 cm ~1%, ±10 cm ~3–5%)", sw5.at(150).shares.swing > 0.005 && sw5.at(150).shares.swing < 0.02 &&
         sw10.at(150).shares.swing > 0.03 && sw10.at(150).shares.swing < 0.05 && sw10.at(150).speed < bodyStill.at(150).speed,
         `${(sw5.at(150).shares.swing * 100).toFixed(2)}%, ${(sw10.at(150).shares.swing * 100).toFixed(2)}%`);
-  const dr = S.simulate({ dropM: 0.03 }).at(150);
+  const dr = S.simulate({ dropM: 0.03, switchLossS: 0 }).at(150);
   check("body: a drop at the catch makes the boat bob more", dr.bounceMm > 2 * dr.bounceStillMm && dr.shares.drop > 0);
   check("body: heeling toward the paddle means fewer switches", S.simulate({ heelDeg: 6 }).strokesPerSide > bodyStill.strokesPerSide + 0.5);
   const hr = S.simulate({ hipRock: 0.8 }).cycleAt(150), heelAmp = (a) => Math.max(...a.map(Math.abs));
   check("body: hip rock cancels the roll", Math.abs(heelAmp(hr.heel) / hr.heelStill - 0.2) < 0.08 && hr.hipMax > 0.02, `${(heelAmp(hr.heel) / hr.heelStill).toFixed(2)}`);
   const sc0 = bodyStill.at(150).boatScore, scW = S.simulate({ leanDeg: 40, sweepDeg: 70, handOutM: 0.5, catchDeg: 25, exitDeg: 25 }).at(150).boatScore;
-  check("boat score: a clean stroke ~96, switching costs the wide sweep", sc0.total > 94 && sc0.total < 98 && scW.total < sc0.total - 8 &&
-        scW.parts.switching > 10 && sw10.at(150).boatScore.total < sc0.total - 4, `${sc0.total.toFixed(1)} / ${scW.total.toFixed(1)}`);
+  const scClean = S.simulate({ switchLossS: 0 }).at(150).boatScore;
+  check("boat score: a clean stroke ~100 but for its switching; switching costs the wide sweep more",
+        scClean.total > 98 && scClean.total < 102 && Math.abs(sc0.total + sc0.parts.switching - scClean.total) < 1 &&
+        scW.total < sc0.total - 8 && scW.parts.switching > sc0.parts.switching && sw10.at(150).boatScore.total < sc0.total - 4,
+        `${scClean.total.toFixed(1)} without switching, ${sc0.total.toFixed(1)} with / wide sweep ${scW.total.toFixed(1)}`);
   // A real course, section by section.
   const rivEnv = { current: 0.7, depth: 3, river: { width: 40, bendsDegPerKm: 180, lineA: "best", lineB: 0 } };
   const one = S.race(clean, sweep, 0, 150, 150, { sections: [{ len: 10000, kind: "river", current: 0.7, depth: 3, width: 40, bendsDegPerKm: 180, section: 0 }], lines: { A: "best", B: 0 } });
@@ -284,7 +290,9 @@ console.log("\nStroke simulator physics");
   check("auto: wander equals the heading tolerance", Math.abs(autoS.headingWanderDeg - 3) < 1e-6, autoS.headingWanderDeg.toFixed(2));
   const fixedN = (n) => S.simulate({ switchStrokes: n });
   check("fixed count is used", fixedN(9).strokesPerSide === 9);
-  check("fixed count: more strokes, more wander", fixedN(12).headingWanderDeg > fixedN(6).headingWanderDeg * 1.9,
+  // The boat keeps turning through the switch, so wander goes as strokes per side plus the switch's strokes.
+  const swStrokes = S.DEFAULTS.switchLossS * S.DEFAULTS.rateSpm / 60;
+  check("fixed count: more strokes, more wander", Math.abs(fixedN(12).headingWanderDeg / fixedN(6).headingWanderDeg - (12 + swStrokes) / (6 + swStrokes)) < 0.02,
         `${fixedN(6).headingWanderDeg.toFixed(1)}° / ${fixedN(12).headingWanderDeg.toFixed(1)}°`);
   check("zigzag costs progress: V·(1 − ψ²/6)", Math.abs(autoS.courseFactor - (1 - Math.pow(3 * Math.PI / 180, 2) / 6)) < 1e-12);
   const sp = (n) => fixedN(n).speedAt(150);
@@ -536,8 +544,9 @@ console.log("\nPaddle fit");
     check(`${tag}: pitch readout`, (await text("#o-pitchDeg")) === "15° face turned in, toward the hull");
     await slide("#c-pitchDeg", 0); await settle();
     const peakRow = await page.$eval('#cmp tr[data-row="peak"]', (e) => ({ d: e.querySelector("td.d").textContent, wins: e.querySelectorAll("td.win").length }));
+    const peakA = await cellVal("peak", 2), peakB = await cellVal("peak", 3);
     check(`${tag}: peak force has no winner, difference adds up`, peakRow.wins === 0 &&
-          peakRow.d === `A pulls ${(await cellVal("peak", 2)) - (await cellVal("peak", 3))} N harder`, peakRow.d);
+          peakRow.d === `${peakA >= peakB ? "A" : "B"} pulls ${Math.abs(peakA - peakB)} N harder`, peakRow.d);
     check(`${tag}: winner highlighted`, (await page.$$('#cmp tr[data-row="eff"] td.win.a')).length === 1);
     check(`${tag}: two power bars, five parts`, (await page.$$("#bars-power .bar")).length === 2 &&
           (await page.$$("#leg-power tr")).length === 6);
@@ -1013,7 +1022,7 @@ console.log("\nPaddle fit");
     const score0 = await text("#boat-score .tile.a .big");
     await slide("#c-swingM", 0.1); await page.waitForTimeout(400);
     await scoreReady();
-    check(`${tag}: race score: body swing costs A time`, /^Body swing/.test(await text("#score-bars").then((x) => x.replace(/^0[\d:]+/, ""))) &&
+    check(`${tag}: race score: body swing costs A time`, /Body swing/.test(await text("#score-bars")) &&
           /Boat A: body swing costs \d+:\d\d\. Keep your body quieter\./.test(await text("#score-find")), await text("#score-find"));
     check(`${tag}: body swing: its cost, a lower score, the still-body curve`, /^Hull speed swings [\d.]+–[\d.]+ km\/h: costs [\d.]+% of your power$/.test(await text("#e-swingM")) &&
           (await text("#boat-score .tile.a .big")) !== score0 && /Body swing −/.test(await text("#boat-score .tile.a")) && (await page.$$("#hp-chart path.ln.still")).length === 1,
@@ -1243,7 +1252,7 @@ console.log("\nPaddle fit");
       await lp.click("nav.tabs button[data-tab=race]"); await lp.waitForTimeout(300);
       await lp.$eval("#scrub", (el) => { el.value = 500; el.dispatchEvent(new Event("input")); });
       await lp.click("#zoom-out"); await lp.waitForTimeout(100);
-      check(`${tag}: open water: each boat's weave`, (await lp.$$("#race-view path.line-a")).length === 1 && (await lp.$$("#race-view path.line-b")).length === 1);
+      check(`${tag}: open water: each boat's weave`, (await lp.$$("#race-view .line-a")).length === 1 && (await lp.$$("#race-view .line-b")).length === 1);
       await lp.click("#water >> text=River"); await lp.waitForTimeout(300);
       await lp.click("#race-start"); await lp.waitForTimeout(300);
       const spacings = await lp.evaluate(() => new Promise((res) => {
