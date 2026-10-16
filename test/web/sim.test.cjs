@@ -340,6 +340,30 @@ console.log("\nStroke simulator physics");
         worst.map(([k, m]) => `${k} ${(m * 100).toFixed(0)}%`).join(", "));
   const far = S.simulate({ catchDeg: 60, handOutM: 0.85, leanDeg: 40 }).body;
   check("body: a stroke out of reach says by how much", far.short > 0.05 && far.short < 0.3, `${(far.short * 100).toFixed(0)} cm`);
+  // The seat: hips where your own stroke's blade leaves the water, and every
+  // technique paddled from there.
+  const exitOf = (r) => r.samples[r.samples.length - 1].B.cop[0];
+  const own = S.simulate({}), behind = S.simulate(PRE.behind);
+  check("body: you sit with the blade leaving the water at your hip", Math.abs(own.body.seatX - exitOf(own)) < 0.06,
+        `hips ${(100 * (own.body.seatX - exitOf(own))).toFixed(0)} cm ahead of the exit`);
+  check("body: one seat for every technique; pulling behind exits behind the hip",
+        behind.body.seatX === own.body.seatX && own.body.seatX - exitOf(behind) > 0.2, `${(100 * (own.body.seatX - exitOf(behind))).toFixed(0)} cm behind`);
+  const topAhead = (() => { const g = own.geom, P = S.pose(g, 0.5), b = S.fitBody(g, own.body.seatX, P.at(0), P.at(S.lowerHand(g)), S.neutralAt(g, 0.5));
+    return P.at(0)[0] - b.off[0]; })();
+  check("body: the top hand is ahead of its shoulder mid-drive", topAhead > 0.1 && topAhead < 0.35, `${(topAhead * 100).toFixed(0)} cm`);
+  // Seat height: higher is less stable, and changes nothing else.
+  const seatAt = (z) => S.simulate({ seatZM: z }), lowSeat = seatAt(0.05), highSeat = seatAt(0.25);
+  const gm = (r) => r.cycleAt(150).GM, share = (S.DEFAULTS.massKg - S.BOAT_KG) / S.DEFAULTS.massKg;
+  check("seat height: each cm higher costs the paddler's share of a cm of metacentric height",
+        Math.abs(gm(lowSeat) - gm(highSeat) - 0.2 * share) < 1e-9 && Math.abs(gm(own) - gm(seatAt(S.DEFAULTS.seatZM))) < 1e-12,
+        `${(gm(lowSeat) * 100).toFixed(1)} → ${(gm(highSeat) * 100).toFixed(1)} cm`);
+  // The rock each stroke depends on the stroke's timing against the roll
+  // period (about 1 s, one stroke at 60 spm), so it isn't simply larger.
+  check("seat height: a higher seat rolls more slowly, at the same speed",
+        highSeat.cycleAt(150).rollPeriod > lowSeat.cycleAt(150).rollPeriod + 0.1 && highSeat.speedAt(150) === lowSeat.speedAt(150),
+        `${lowSeat.cycleAt(150).rollPeriod.toFixed(2)} → ${highSeat.cycleAt(150).rollPeriod.toFixed(2)} s`);
+  const hipZ = (r) => { const g = r.geom, P = S.pose(g, 0); return S.fitBody(g, r.body.seatX, P.at(0), P.at(S.lowerHand(g)), S.neutralAt(g, 0)).hip[2]; };
+  check("seat height: the hips sit at it", Math.abs(hipZ(highSeat) - 0.25) < 1e-12 && Math.abs(hipZ(own) - S.DEFAULTS.seatZM) < 1e-12);
   const seats = [36, 38, 40].map((c) => S.simulate({ catchDeg: c }).body.seatX);
   check("body: the seat holds steady as the stroke changes", Math.max(...seats) - Math.min(...seats) < 0.05 && seats.every((x) => x > -0.6 && x < 0),
         seats.map((x) => x.toFixed(2)).join(" "));
@@ -348,8 +372,12 @@ console.log("\nStroke simulator physics");
   check("strength from the arms: arms at full stretch tire you (wide sweep, out of reach), comfortable ones don't",
         Math.abs(fA({}) - 1) < 1e-9 && fA(PRE.sweep) < 0.9 && fA({ catchDeg: 60, handOutM: 0.85, leanDeg: 40 }) < 0.6 && fA(PRE.clean) > 0.98,
         `sweep ×${fA(PRE.sweep).toFixed(2)}, clean ×${fA(PRE.clean).toFixed(2)}`);
-  check("strength from the arms: longer arms make a long reach easier",
-        fA(Object.assign({ upperArmM: 0.34, forearmM: 0.34 }, LR)) > fA(LR) + 0.02);
+  // From one seat the body leans to reach the catch, and leaning isn't
+  // charged, so what longer arms buy is reach: a stroke out of reach for short
+  // arms comes within reach.
+  const farFor = (a) => S.simulate({ catchDeg: 60, handOutM: 0.85, leanDeg: 40, upperArmM: a, forearmM: a }).body.short;
+  check("body: longer arms reach further", farFor(0.34) < farFor(0.30) - 0.05 && farFor(0.30) < farFor(0.26) - 0.05,
+        [0.26, 0.30, 0.34].map((a) => `${(farFor(a) * 100).toFixed(0)} cm`).join(" / "));
   const armCurve = S.simulate(arms(LR)).strengthCurve;
   let bumpy = 0; for (let i = 2; i < armCurve.length; i++) bumpy = Math.max(bumpy, Math.abs(armCurve[i][1] - 2 * armCurve[i - 1][1] + armCurve[i - 2][1]));
   check("strength from the arms: a smooth curve through the drive (no steps)", bumpy < 0.1, bumpy.toFixed(3));

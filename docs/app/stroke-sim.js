@@ -114,8 +114,10 @@
   // Roll. A USCA C1 is 31–32" wide at its 4" waterline; at race weight it
   // floats a little lower and narrower. Transverse waterplane inertia
   // C_IT·L·B³/12 over the displaced volume is the metacentric radius; the
-  // paddler kneeling or sitting high puts the centre of gravity KG up. The
-  // roll inertia is mostly the paddler's (radius of gyration ~0.35 m).
+  // paddler kneeling or sitting high puts the centre of gravity KG up: KG is
+  // for the default seat, and a seat Δz higher lifts the paddler's share of
+  // the weight by Δz. The roll inertia is mostly the paddler's (radius of
+  // gyration ~0.35 m).
   const ROLL_BEAM = 0.72, ROLL_CIT = 0.45, ROLL_KG = 0.45, ROLL_KB = 0.04;
   const ROLL_GYR = 0.35, BOAT_KG = 11, ROLL_ZETA = 0.2;
   // Bent-shaft marathon paddle, distances from the grip (m): throat, blade
@@ -142,6 +144,7 @@
     rateSpm: 60,
     driveFraction: DRIVE_FRACTION,  // share of each stroke spent in the drive
     massKg: 90,                // paddler + boat
+    seatZM: 0.10,              // hips above the waterline, sitting in the boat: higher is less stable
     effortW: 150,              // effort the effort-dependent results are for
     switchHeadingDeg: 3,       // switch sides when this far off course
     switchLossS: 0.3,          // time lost per switch, s (an estimate, not measured)
@@ -251,13 +254,13 @@
   }
   // ------------------------------------------------------------ the body
   // The paddler sits on the centreline at a seat seatX ahead of the paddle's
-  // pivot (behind it, so negative), hips HIP_Z above the water. The torso
+  // pivot (behind it, so negative), hips seatZM above the water. The torso
   // pitches forward, rolls toward the paddle side and twists (paddle-side
   // shoulder forward) about the hips. Each moment it takes the posture
   // nearest the technique's own (its lean and rotation) that keeps both
   // hands within REACH of their shoulders: top hand on the grip, lower hand
   // lowerHandM down the shaft.
-  const HIP_Z = 0.1, LEAN0 = rad(15), REACH = 0.97, SEAT0 = -0.25;
+  const LEAN0 = rad(15), REACH = 0.97;
   const POSE_SIGMA = [rad(25), rad(15), rad(25)];
   const POSE_LIMITS = [[rad(-20), rad(60)], [rad(-10), rad(35)], [rad(-50), rad(50)]];
   const dist = (a, b) => norm(sub(a, b));
@@ -265,7 +268,7 @@
   const lowerHand = (p) => Math.max(p.pivotFromGrip + 0.1, p.lowerHandM);
   // Shoulders and hips for posture v = [pitch, roll, twist] (rad).
   function torso(p, seatX, v, dz = 0) {
-    const [pt, rl, tw] = v, hip = [seatX, 0, HIP_Z + dz];
+    const [pt, rl, tw] = v, hip = [seatX, 0, p.seatZM + dz];
     const t = [Math.sin(pt) * Math.cos(rl), -Math.sin(rl), Math.cos(pt) * Math.cos(rl)];
     const centre = add(hip, mul(t, p.torsoM));
     const across = [-Math.sin(tw), Math.cos(tw) * Math.cos(rl), Math.cos(tw) * Math.sin(rl)];   // toward the off side
@@ -339,20 +342,30 @@
   // The technique's own posture at drive progress u: leaning LEAN0, the
   // shoulders wound up at the catch by the rotation, unwinding to the exit.
   const neutralAt = (p, u) => [LEAN0, 0, rad(25 * (p.rotation || 0) * Math.cos(Math.PI * u))];
-  // Where the paddler sits: the seat that lets the whole drive be reached
-  // with the least strain.
+  // Where the blade leaves the water, fore and aft: the shaft-axis point level
+  // with the blade centre at the end of the drive (as in drive()).
+  const exitX = (pg) => pose(pg, 1).at(paddleOf(pg).throat + paddleOf(pg).copFromThroat)[0];
+  // Where the paddler sits is set by who they are and what's in the boat,
+  // not by the stroke: their own stroke (the default technique, with their
+  // body, paddle and seat height) leaves the water at the hip, as a C1
+  // paddler's does. That puts the top hand ahead of its shoulder. Every
+  // technique is paddled from that seat, so one that pulls behind exits
+  // behind the hip. If the whole of their own stroke can't be reached from
+  // there, the nearest seat that reaches it.
+  const SEAT_KEYS = [...PROFILE_KEYS, "paddleLenM", "bladeLenM", "bendDeg", "seatZM"];
   const seatCache = new Map();
   function seatFor(pg) {
-    const key = JSON.stringify(pg);
+    const own = paddled(Object.assign({}, DEFAULTS, Object.fromEntries(SEAT_KEYS.map((k) => [k, pg[k]]))));
+    const key = JSON.stringify(own);
     if (seatCache.has(key)) return seatCache.get(key);
     const frames = [0, 0.25, 0.5, 0.75, 1].map((u) => {
-      const P = pose(pg, u);
-      return { grip: P.at(0), low: P.at(lowerHand(pg)), n: neutralAt(pg, u) };
+      const P = pose(own, u);
+      return { grip: P.at(0), low: P.at(lowerHand(own)), n: neutralAt(own, u) };
     });
-    // Many seats can work about as well: a gentle pull toward a usual seat
-    // (SEAT0) keeps it from jumping as the settings change.
-    const total = (x) => frames.reduce((a, f) => a + fitBody(pg, x, f.grip, f.low, f.n, 0, f.n, true).cost, 0) +
-      2 * ((x - SEAT0) / 0.2) ** 2;
+    const beyond = (b) => Math.max(0, b.top - REACH) + Math.max(0, b.low - REACH);   // arm stretch past reach
+    const x0 = exitX(own);
+    const total = (x) => 1e4 * frames.reduce((a, f) => a + beyond(fitBody(own, x, f.grip, f.low, f.n, 0, f.n, true)) ** 2, 0) +
+      ((x - x0) / 0.2) ** 2;
     let lo = -1.0, hi = 0.3;
     for (let i = 0; i < 14; i++) {   // to about 2 mm
       const m1 = lo + (hi - lo) * 0.382, m2 = lo + (hi - lo) * 0.618;
@@ -789,7 +802,8 @@
       const hAvg = hv.xs.reduce((a, x) => a + x, 0) / n;
       // Roll stiffness Δ·g·GM; inertia mostly the paddler's.
       const vol = p.massKg / RHO, BM = (ROLL_CIT * HULL_L * Math.pow(ROLL_BEAM, 3)) / 12 / vol;
-      const GM = ROLL_KB + BM - ROLL_KG, Kr = p.massKg * G * GM;
+      const KG = ROLL_KG + ((p.massKg - BOAT_KG) / p.massKg) * (p.seatZM - DEFAULTS.seatZM);
+      const GM = ROLL_KB + BM - KG, Kr = p.massKg * G * GM;
       const Ir = (p.massKg - BOAT_KG) * ROLL_GYR * ROLL_GYR + BOAT_KG * 0.25 * 0.25;
       const rl = periodic(roll.map((m) => m * (1 - p.hipRock)), Ir, 2 * ROLL_ZETA * Math.sqrt(Kr * Ir), Kr);
       const rAvg = rl.xs.reduce((a, x) => a + x, 0) / n;
@@ -1203,7 +1217,7 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 35;
+  const API_LEVEL = 36;
   const PADDLE = paddleOf(DEFAULTS);
   const api = { API_LEVEL, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;

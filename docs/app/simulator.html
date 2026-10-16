@@ -687,7 +687,7 @@
         <div id="strength-ctl"><div id="ctl-strength"></div>
           <svg class="hv" id="strength-curve" role="img" aria-label="Strength at each paddle angle, with this stroke's range"></svg>
           <div class="help" id="strength-read"></div></div>
-        <h4 class="sub-h">Body<button type="button" class="info" data-tip="Height scales every length; then set any one. The body is fitted to the paddle at each moment: seat, lean and twist so both hands are within reach. With strength from the arms, every length changes results; by paddle angle, only the arms do." aria-label="What is this?">?</button></h4>
+        <h4 class="sub-h">Body<button type="button" class="info" data-tip="Height scales every length; then set any one. You sit with your hips where the blade leaves the water on the Defaults stroke (further forward only if you can't reach it from there); every technique is paddled from that seat, and the body leans and twists at each moment so both hands are within reach. With strength from the arms, every length changes results; by paddle angle, only the arms do." aria-label="What is this?">?</button></h4>
         <div id="ctl-body-size"></div>
         <button type="button" class="small" id="profile-fit">Lengths from height</button>
       </details>
@@ -714,8 +714,10 @@
             GPX, with current from USGS gauges.</li>
         </ul>
         <p>A simplified model for comparing strokes. It treats the flow as steady and ignores chop and
-          wakes. The paddler's body is fitted to the paddle (seat, lean, twist) so the hands are within
-          reach, and it says when a stroke isn't. Your strength is the power you can hold; with strength
+          wakes. The paddler sits with the hips where the blade leaves the water on a plain stroke, paddles
+          every technique from that seat, and the body is fitted
+          to the paddle (lean, twist) so the hands are within reach; it says when a stroke isn't.
+          Seat height sets how stable the boat is. Your strength is the power you can hold; with strength
           by position on (Paddler profile), also an assumed curve of how hard you can pull at each paddle
           angle or arm position. Absolute speeds are rough; the differences are what count.</p>
       </details>
@@ -725,7 +727,7 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of stroke-sim.js (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. -->
-<script src="stroke-sim.js?v=203b8118ad"></script>
+<script src="stroke-sim.js?v=cd8b12b339"></script>
 <script>
 (() => {
 "use strict";
@@ -768,7 +770,7 @@ function shown(el) {
 }
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 35;
+const NEEDS_API = 36;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -794,8 +796,8 @@ const PRESETS = {
 // The paddler profile: who's paddling, not how. Presets never change it.
 const BODY = ["torsoM", "shoulderM", "upperArmM", "forearmM", "thighM", "shinM"];
 const PROFILE = ["heightM", ...BODY, "massKg", "fitnessW", "strengthOn", "strengthPeakDeg", "strengthDrop"];
-// Presets set the technique; the profile, the paddle and the blade force model stay.
-const KEEP = ["effortW", ...PROFILE, "bladeLift", "paddleLenM", "bladeLenM", "bladeWidthM"];
+// Presets set the technique; the profile, the paddle, the seat and the blade force model stay.
+const KEEP = ["effortW", ...PROFILE, "bladeLift", "paddleLenM", "bladeLenM", "bladeWidthM", "seatZM"];
 // Each boat's settings are remembered in this browser; Reset goes back to these.
 const STARTING = {
   a: () => Object.assign({}, S.DEFAULTS),
@@ -907,6 +909,8 @@ const CONTROLS = [
     fmt: (v) => (v ? `${v}°` : "level"), help: "Brings the blade nearer the keel line, so each stroke turns the boat less." },
   { group: "ctl-body", key: "hipRock", label: "Hip rock against the roll", min: 0, max: 1, step: 0.05, unit: "", eff: true,
     fmt: (v) => (v ? `${Math.round(v * 100)}%` : "none"), help: "Rock your hips toward the paddle side as the blade lifts it." },
+  { group: "ctl-body", key: "seatZM", label: "Seat height", min: 0, max: 0.3, step: 0.005, unit: "", eff: true, fmt: (v) => cmIn(v),
+    help: "Your hips above the water, sitting in the boat. Higher is less stable: the boat tips more easily and rolls more slowly. Any extra leverage from sitting higher isn't counted." },
   { group: "ctl-switch", key: "switchStrokes", label: "Strokes per side", min: 0, max: 20, step: 1, unit: "",
     fmt: (v) => v === 0 ? "auto, by heading" : `${v} stroke${v === 1 ? "" : "s"}`,
     help: "Fewer: more time lost switching. More: a wider zigzag. In a crosswind it's the average; you take more on the windward side. 0 switches by heading." },
@@ -974,6 +978,7 @@ function showBodyEffects() {
   $("e-heelDeg").innerHTML = p.heelDeg ? `Switch every <b>${fmtNum(r.strokesPerSide, 1)}</b> strokes (from ${fmtNum(r0.strokesPerSide, 1)}), ` +
     `<b>${fmtNum(Math.abs(r0.switchDuty - r.switchDuty) * 100, 1)}%</b> ${r.switchDuty >= r0.switchDuty ? "less" : "more"} time lost switching` : "";
   $("e-hipRock").innerHTML = p.hipRock ? `Heel <b>±${fmtNum((Math.max(...c.heel) - Math.min(...c.heel)) / 2 * 180 / Math.PI, 1)}°</b> instead of ±${fmtNum(c.heelStill * 180 / Math.PI, 1)}°, hips moving up to <b>${fmtNum(c.hipMax * 1000, 0)} mm</b>` : "";
+  $("e-seatZM").innerHTML = `Metacentric height <b>${fmtNum(c.GM * 100, 0)} cm</b>, rolling once every <b>${fmtNum(c.rollPeriod, 2)} s</b>: heel <b>±${fmtNum(c.heelStill * 180 / Math.PI, 1)}°</b> each stroke`;
   for (const k of ["swingM", "dropM", "heelDeg", "hipRock", "rotation", "legDrive", "hinge"]) $(`e-${k}`).hidden = !p[k];
 }
 const showValue = (c) => {
