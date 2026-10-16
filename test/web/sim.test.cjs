@@ -905,6 +905,9 @@ console.log("\nStroke simulator physics");
           `${rowsGap[0].toFixed(1)} vs ${rowsGap[1].toFixed(1)} s`);
     await page.click("#effort-mode >> text=Set by hand"); await slide("#c-rotation", 0); await page.waitForTimeout(300);
     check(`${tag}: effort: back to set by hand`, !(await page.isDisabled("#effA")) && !/what A can hold/.test(await text("#o-effA")));
+    const sh = await page.evaluate(() => [window.sim.shoulders([0, 0, 0], 1, 1), window.sim.shoulders([0, 0, 0], 1, -1)]);
+    check(`${tag}: trunk rotation: paddle-side shoulder forward at the catch, back at the exit`,
+          sh[0].pad[0] > sh[0].off[0] && sh[1].pad[0] < sh[1].off[0] && sh[0].pad[1] < 0);
     // The C1 shape in the stroke views: a gunwale line inside the hull from above.
     check(`${tag}: stroke views draw the C1 (hull and gunwale from above)`, (await page.$$('.pair[data-view="top"] svg path.hull-in')).length >= 1);
     await slide("#depth", 0.9);

@@ -2871,6 +2871,14 @@ function stateAt(r, ph) {
 // paddle. Boat coordinates in metres, x forward, y to the off side, z up.
 const HIP = [-0.5, 0, 0.1], TORSO = 0.55, LEAN0 = 15;
 // tint: in the boat's colour, for telling two paddlers apart.
+// Shoulders about their midpoint sh (world: X to the bow, Y to port; the
+// paddle is to starboard). Trunk rotation winds up at the catch (s = 1),
+// the paddle-side shoulder forward; the drive unwinds it back (s = −1).
+function shoulders(sh, rotation, s) {
+  const twist = rad(25 * rotation * s);
+  return { off: [sh[0] - 0.2 * Math.sin(twist), 0.2 * Math.cos(twist), sh[2]],
+           pad: [sh[0] + 0.2 * Math.sin(twist), -0.2 * Math.cos(twist), sh[2]] };
+}
 function paddlerFig(P, x, ph, tint = false) {
   const r = results[x], c = hullCyc[x], p = r.params, st = stateAt(r, ph), df = p.driveFraction;
   const i = c ? Math.min(c.t.length - 1, Math.floor(ph * c.t.length)) : 0;
@@ -2878,9 +2886,8 @@ function paddlerFig(P, x, ph, tint = false) {
   // A hinge or swing of x m (whole body) turns the torso about x / (0.6 · 0.3) rad.
   const lean = rad(Math.max(-20, Math.min(55, LEAN0 + (bx / 0.18) * 180 / Math.PI)));
   const s = ph < df ? Math.cos(Math.PI * ph / df) : -Math.cos(Math.PI * (ph - df) / (1 - df));
-  const twist = rad(25 * (p.rotation || 0) * s);
   const sh = [HIP[0] + TORSO * Math.sin(lean), 0, HIP[2] + TORSO * Math.cos(lean) + 1.6 * bz];
-  const off = [sh[0] + 0.2 * Math.sin(twist), 0.2 * Math.cos(twist), sh[2]], pad = [sh[0] - 0.2 * Math.sin(twist), -0.2 * Math.cos(twist), sh[2]];
+  const { off, pad } = shoulders(sh, p.rotation || 0, s);
   const head = [sh[0] + 0.24 * Math.sin(lean), 0, sh[2] + 0.24 * Math.cos(lean)];
   const knee = [HIP[0] + 0.42, 0, HIP[2] + 0.16 - 0.04 * (p.legDrive || 0) * (ph < df ? Math.sin(Math.PI * ph / df) : 0)], foot = [HIP[0] + 0.78, 0, -0.04];
   // Elbows: two 0.3 m segments, bent down and out.
@@ -3075,7 +3082,7 @@ requestAnimationFrame(frame);
 window.sim = {
   boats, results, PRESETS,
   get editing() { return editing; }, get race() { return race; }, get mode() { return mode; },
-  get run() { return run; }, setTab, get tab() { return tab; }, get score() { return lastScore && lastScore[0]; },
+  get run() { return run; }, setTab, shoulders, get tab() { return tab; }, get score() { return lastScore && lastScore[0]; },
   raceWallS: 12,   // seconds on screen for a whole race (tests shorten it)
 };
 })();
