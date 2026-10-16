@@ -1122,8 +1122,8 @@
   }
 
   // The course laid out along its length, for replays: segments {d0, d1,
-  // v (speed made good), kind, leg, line, current, depth, watts, rate,
-  // perSide, loss}. Open water is one piece per leg. A river repeats, once
+  // v (speed made good), water (speed through the water), kind, leg, line,
+  // current, depth, watts, rate, perSide, loss}. Open water is one piece per leg. A river repeats, once
   // per bend: a straight, the crossing to the next bend's inside, the bend
   // (riverSegments' per-km mix). Bends sit at the same places for every
   // line. Each leg's speeds are scaled so its time matches the leg's own.
@@ -1136,17 +1136,17 @@
       if (l.section !== undefined) Object.assign(base, { leg: 0, section: l.section, name: l.name });
       const start = d, end = d + l.len;
       if (l.kind === "portage") {
-        out.push(Object.assign({ d0: start, d1: end, v: l.v, kind: "portage", line: 0, current: 0, depth: Infinity }, base, { rate: 0, watts: 0 }));
+        out.push(Object.assign({ d0: start, d1: end, v: l.v, water: 0, kind: "portage", line: 0, current: 0, depth: Infinity }, base, { rate: 0, watts: 0 }));
         d = end;
         return;
       }
       if (l.kind === "pond") {
-        out.push(Object.assign({ d0: start, d1: end, v: l.v, kind: "pond", line: 0, current: l.current, depth: l.depth }, base));
+        out.push(Object.assign({ d0: start, d1: end, v: l.v, water: l.water, kind: "pond", line: 0, current: l.current, depth: l.depth }, base));
         d = end;
         return;
       }
       if (!l.river) {
-        out.push(Object.assign({ d0: start, d1: end, v: l.v, kind: "open", line: 0, current: 0, depth: Infinity }, base));
+        out.push(Object.assign({ d0: start, d1: end, v: l.v, water: l.water, kind: "open", line: 0, current: 0, depth: Infinity }, base));
         d = end;
         return;
       }
@@ -1155,13 +1155,13 @@
       const units = [];
       for (const k of ["straight", "crossing", "bend"]) {
         const p = by(k);
-        if (p && p.len > 0) units.push({ kind: k, len: bends > 0 ? p.len / bends : p.len, v: p.len / p.t, current: p.current, depth: p.depth });
+        if (p && p.len > 0) units.push({ kind: k, len: bends > 0 ? p.len / bends : p.len, v: p.len / p.t, water: p.water, current: p.current, depth: p.depth });
       }
       const first = out.length;
       while (d < end - 1e-9 && units.length) for (const u of units) {
         if (d >= end - 1e-9) break;
         const d1 = Math.min(end, d + u.len);
-        out.push(Object.assign({ d0: d, d1, v: u.v, kind: u.kind, line: l.river.line, current: u.current, depth: u.depth }, base));
+        out.push(Object.assign({ d0: d, d1, v: u.v, water: u.water, kind: u.kind, line: l.river.line, current: u.current, depth: u.depth }, base));
         d = d1;
       }
       // Match the leg's own time, so replays and results agree.
@@ -1273,7 +1273,7 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 41;
+  const API_LEVEL = 42;
   const PADDLE = paddleOf(DEFAULTS);
   const api = { API_LEVEL, shaftDir, paddled, paddleOf, gearFactor, bestRate, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;

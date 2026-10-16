@@ -155,6 +155,16 @@ console.log("\nCanoe Race Simulator physics");
         `${r.timeGap.toFixed(1)} s, ${r.distanceGap.toFixed(0)} m`);
   check("race: times match speeds", Math.abs(r.tA * r.vA - 10000) < 1e-6 && Math.abs(r.tB * r.vB - 10000) < 1e-6);
   check("race: same stroke, same effort is a dead heat", S.race(clean, clean, 5000, 150, 150).timeGap === 0);
+  // Replays carry each piece's speed through the water (the live shallow-water chart):
+  // on a river's inside line the boat goes faster along the course than through the water.
+  {
+    const rv = S.race(clean, null, 5000, 150, 150, { current: 0, depth: 2, river: { width: 60, bendsDegPerKm: 360, lineA: 1, lineB: 1 } });
+    const pieces = rv.profileA.filter((g) => g.kind !== "portage"), w0 = clean.at(150).waterSpeed;
+    const bend = pieces.find((g) => g.kind === "bend"), open = S.race(clean, null, 5000, 150, 150).profileA;
+    check("race: replays know each piece's speed through the water", pieces.every((g) => g.water > 0.8 * w0 && g.water < 1.1 * w0) &&
+          bend && bend.v > bend.water * 1.05 && open.every((g) => Math.abs(g.water - open[0].water) < 1e-12),
+          bend ? `bend: ${bend.v.toFixed(2)} along the course, ${bend.water.toFixed(2)} m/s through the water` : "no bend");
+  }
   check("race: more effort wins", S.race(sweep, clean, 10000, 200, 150).timeGap > 0);
   check("race: swapping boats flips the gap", Math.abs(S.race(sweep, clean, 10000, 150, 150).timeGap + r.timeGap) < 1e-9);
   const still = S.race(clean, clean, 10000, 150, 150);
@@ -1000,6 +1010,13 @@ console.log("\nPaddle fit");
           (await page.$$("#hp-surge path.hull")).length === 2 && (await page.$$("#hp-roll path.hull")).length === 2 &&
           /^Boat Amoves the boat: \d+%Boat Bmoves the boat: \d+%/.test(await text("#hull-power")) &&
           /^A Speed swings [\d.]+–[\d.]+ km\/h, costing [\d.]+%.*B Speed swings/.test(await text("#hull-surge-read")), await text("#hull-surge-read"));
+    // The power chart's note sits under its legend, however many rows, inside the drawing.
+    const powerFit = await page.evaluate(() => {
+      const svg = document.getElementById("hull-power"), ts = [...svg.querySelectorAll("text")], note = ts[ts.length - 1];
+      const legendY = Math.max(...ts.filter((t) => t !== note && +t.getAttribute("y") > 100).map((t) => +t.getAttribute("y")));
+      return { gap: +note.getAttribute("y") - legendY, inside: +note.getAttribute("y") <= svg.viewBox.baseVal.height };
+    });
+    check(`${tag}: hull: the power chart's note clears its legend`, powerFit.gap >= 14 && powerFit.inside, JSON.stringify(powerFit));
     check(`${tag}: hull: roll and its balance`, /^A Lifts the paddle side up to \d+ N·m; balance with hips \d+ mm toward the paddle side\. Held still: ±[\d.]+°/.test(await text("#hull-roll-read")), await text("#hull-roll-read"));
     await page.$eval("#hull-card", (e) => e.scrollIntoView());   // it only redraws while on screen
     const surgeSvg = () => page.$eval("#hp-surge", (e) => e.innerHTML);
@@ -1267,7 +1284,15 @@ console.log("\nPaddle fit");
       await lp.$eval("#scrub", (el) => { el.value = 500; el.dispatchEvent(new Event("input")); });
       await lp.click("#zoom-out"); await lp.waitForTimeout(100);
       check(`${tag}: open water: each boat's weave`, (await lp.$$("#race-view .line-a")).length === 1 && (await lp.$$("#race-view .line-b")).length === 1);
+      // Live with the replay: each boat's heading over its last strokes, and its place on the shallow-water map.
+      const live = await lp.evaluate(() => ({ heading: document.querySelectorAll("#race-heading path").length, dots: document.querySelectorAll("#race-shallow-now circle").length,
+        hRead: document.getElementById("race-heading-read").textContent, sRead: document.getElementById("race-shallow-read").textContent,
+        two: document.getElementById("conditions-cols").classList.contains("two") }));
+      check(`${tag}: race: live heading and shallow water; no empty lines column on open water`, live.heading === 2 && live.dots === 2 &&
+            /A [\d.]+° off straight/.test(live.hRead) && /A [\d.]+ km\/h through the water, deep water/.test(live.sRead) && live.two,
+            `${live.hRead} | ${live.sRead.split("Colour")[0]}`);
       await lp.click("#water >> text=River"); await lp.waitForTimeout(300);
+      check(`${tag}: river: the lines column is back`, !(await lp.$eval("#conditions-cols", (e) => e.classList.contains("two"))) && (await lp.isVisible("#line-a")));
       await lp.click("#race-start"); await lp.waitForTimeout(300);
       const spacings = await lp.evaluate(() => new Promise((res) => {
         const seen = new Set(); let n = 0;
