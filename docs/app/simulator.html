@@ -661,6 +661,7 @@
       <h2 class="ctl-title">Settings for <span id="editing-name">Boat A</span></h2>
       <h3>Presets</h3>
       <div class="row chips" id="presets" role="group" aria-label="Presets"></div>
+      <div class="note warn" id="reach-warn" hidden></div>
       <details class="group" open><summary>Stroke shape</summary><div id="ctl-stroke"></div></details>
       <details class="group" open><summary>Paddle</summary><div id="ctl-paddle"></div>
         <div class="ctl"><div class="top"><span>Blade force</span></div>
@@ -678,12 +679,12 @@
         </div>
         <div id="ctl-profile"></div>
         <div class="engine-box" id="engine-box"></div>
-        <h4 class="sub-h">Strength by position<button type="button" class="info" data-tip="Off: you can pull equally hard at any paddle angle. On: you're strongest at one angle and weaker toward the catch and the exit. Where you're weak the paddle moves slower, so the force bunches where you're strong, and a stroke that spends more time where you're weak lowers what you can hold. An assumption, not measured: your paddle can log the real curve." aria-label="What is this?">?</button></h4>
+        <h4 class="sub-h">Strength by position<button type="button" class="info" data-tip="Off: you can pull equally hard all through the stroke. By paddle angle: strongest at one angle, weaker toward the catch and exit. From the arms: your body follows the paddle, and you're strongest with the arms about 70% stretched, weaker folded up or at full stretch. Where you're weak the paddle moves slower, so the force bunches where you're strong, and what you can hold drops. Assumed curves, not measured." aria-label="What is this?">?</button></h4>
         <div class="row chips" id="strength-mode" role="group" aria-label="Strength by position"></div>
         <div id="strength-ctl"><div id="ctl-strength"></div>
           <svg class="hv" id="strength-curve" role="img" aria-label="Strength at each paddle angle, with this stroke's range"></svg>
           <div class="help" id="strength-read"></div></div>
-        <h4 class="sub-h">Body<button type="button" class="info" data-tip="Height scales every length; then set any one. Arm length (upper arm + forearm) changes results, through strength by position: longer arms stay strong further from vertical. The rest shape the drawings." aria-label="What is this?">?</button></h4>
+        <h4 class="sub-h">Body<button type="button" class="info" data-tip="Height scales every length; then set any one. The body is fitted to the paddle at each moment: seat, lean and twist so both hands are within reach. With strength from the arms, every length changes results; by paddle angle, only the arms do." aria-label="What is this?">?</button></h4>
         <div id="ctl-body-size"></div>
         <button type="button" class="small" id="profile-fit">Lengths from height</button>
       </details>
@@ -710,9 +711,10 @@
             GPX, with current from USGS gauges.</li>
         </ul>
         <p>A simplified model for comparing strokes. It treats the flow as steady and ignores chop and
-          wakes. Your strength is the power you can hold; with strength by position on (Paddler profile),
-          also an assumed curve of how hard you can pull at each paddle angle. Absolute speeds are rough;
-          the differences are what count.</p>
+          wakes. The paddler's body is fitted to the paddle (seat, lean, twist) so the hands are within
+          reach, and it says when a stroke isn't. Your strength is the power you can hold; with strength
+          by position on (Paddler profile), also an assumed curve of how hard you can pull at each paddle
+          angle or arm position. Absolute speeds are rough; the differences are what count.</p>
       </details>
   </section>
 </main>
@@ -720,7 +722,7 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of stroke-sim.js (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. -->
-<script src="stroke-sim.js?v=3e0fcada92"></script>
+<script src="stroke-sim.js?v=203b8118ad"></script>
 <script>
 (() => {
 "use strict";
@@ -763,7 +765,7 @@ function shown(el) {
 }
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 34;
+const NEEDS_API = 35;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -858,7 +860,9 @@ const CONTROLS = [
     fmt: (v) => (v === 0 ? "shaft vertical" : `${Math.abs(v)}° ${v < 0 ? "forward" : "behind"} vertical`),
     help: "The paddle angle you pull hardest at." },
   { group: "ctl-strength", key: "strengthDrop", label: "Weaker toward the ends", min: 0, max: 0.8, step: 0.05, unit: "",
-    fmt: (v) => `${Math.round(v * 100)}% weaker 45° away`, help: "How much strength you lose far from your strongest angle." },
+    fmt: (v) => `${Math.round(v * 100)}% weaker`, help: "By paddle angle: how much weaker 45° from your strongest angle. From the arms: how much weaker with an arm at full stretch." },
+  { group: "ctl-paddler", key: "lowerHandM", label: "Lower hand on the shaft", min: 0.35, max: 0.85, step: 0.01, unit: "",
+    fmt: (v) => `${fmtNum(v * 100, 0)} cm below the grip`, help: "Hands further apart: more leverage on the blade, and a longer reach for the lower arm." },
   { group: "ctl-body-size", key: "heightM", label: "Height", min: 1.4, max: 2.1, step: 0.01, unit: "",
     fmt: (v) => `${fmtNum(v * 100, 0)} cm (${Math.floor(v / 0.3048)}′${Math.round((v / 0.0254) % 12)}″)`, help: "Scales all the lengths below." },
   { group: "ctl-body-size", key: "upperArmM", label: "Upper arm", min: 0.2, max: 0.42, step: 0.005, unit: "", fmt: (v) => cmIn(v),
@@ -1010,7 +1014,7 @@ $("swap").addEventListener("click", () => {
 $("c-effortW").addEventListener("input", (ev) => { effortW = parseFloat(ev.target.value); changed(); });
 
 // ------------------------------------------------------- paddler profile
-const STRENGTH_MODES = [["0", "Off"], ["1", "On"]];
+const STRENGTH_MODES = [["0", "Off"], ["1", "By paddle angle"], ["2", "From the arms"]];
 function renderStrength() {
   const el = $("strength-mode"), on = !!boats[editing].strengthOn;
   el.innerHTML = "";
@@ -1018,16 +1022,19 @@ function renderStrength() {
   for (const [v, label] of STRENGTH_MODES) {
     const b = document.createElement("button");
     b.type = "button"; b.textContent = label; b.dataset.value = v;
-    b.setAttribute("aria-pressed", String(String(+on) === v));
+    b.setAttribute("aria-pressed", String(String(boats[editing].strengthOn || 0) === v));
     b.addEventListener("click", () => { boats[editing].strengthOn = +v; changed(editing); });
     el.append(b);
   }
   $("strength-ctl").hidden = !on;
+  // The strongest angle only applies by paddle angle.
+  $("c-strengthPeakDeg").closest(".ctl").hidden = boats[editing].strengthOn !== 1;
 }
 // Strength at each paddle angle, and the part of it this stroke uses.
 function drawStrength() {
   const r = results[editing];
   if (!r || !boats[editing].strengthOn) return;
+  if (boats[editing].strengthOn === 2) return drawArmStrength(r);
   const p = r.params, g = r.geom, W = 320, H = 120, l = 34, rr = 10, t = 10, b = 26;
   const X = (d) => l + ((d + 70) / 140) * (W - l - rr), Y = (v) => t + (1 - v) * (H - t - b);
   const lo = -g.catchDeg, hi = g.exitDeg;
@@ -1043,6 +1050,28 @@ function drawStrength() {
   const f = S.strengthFactor(p);
   $("strength-read").innerHTML = `Shaded: this stroke, ${fmtNum(g.catchDeg, 0)}° forward to ${fmtNum(g.exitDeg, 0)}° back. ` +
     `What you can hold: <b>×${fmtNum(f, 2)}</b> against the default stroke.`;
+}
+// From the arms: strength through this drive, from how bent or stretched
+// each arm is as the body follows the paddle.
+function drawArmStrength(r) {
+  const W = 320, H = 120, l = 34, rr = 10, t = 10, b = 26, c = r.strengthCurve || [];
+  const X = (u) => l + u * (W - l - rr), Y = (v) => t + (1 - v) * (H - t - b);
+  let svg = "";
+  for (const v of [0, 0.5, 1]) svg += `<line class="grid" x1="${l}" x2="${W - rr}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${l - 4}" y="${Y(v) + 4}" text-anchor="end">${v * 100}%</text>`;
+  svg += `<text x="${l}" y="${H - 8}">catch</text><text x="${(l + W - rr) / 2}" y="${H - 8}" text-anchor="middle">through the drive</text><text x="${W - rr}" y="${H - 8}" text-anchor="end">exit</text>`;
+  svg += `<path class="cur" d="${c.map(([u, s], i) => `${i ? "L" : "M"}${X(u).toFixed(1)},${Y(s).toFixed(1)}`).join("")}"/>`;
+  $("strength-curve").setAttribute("viewBox", `0 0 ${W} ${H}`);
+  $("strength-curve").innerHTML = svg;
+  const fr = r.body.frames, at = (k) => fr.reduce((a, f) => Math.max(a, f[k]), 0);
+  $("strength-read").innerHTML = `Arms at up to <b>${Math.round(at("low") * 100)}%</b> (lower) and <b>${Math.round(at("top") * 100)}%</b> (top) of full stretch; ` +
+    `strongest about 70%. What you can hold: <b>×${fmtNum(S.strengthFactor(r.params), 2)}</b> against the default stroke.`;
+}
+// A stroke the arms can't reach: say by how much.
+function showReach() {
+  const parts = BOATS.filter((x) => results[x] && results[x].body.short > 0.01)
+    .map((x) => `${NAME[x]}'s stroke needs ${fmtNum(results[x].body.short * 100, 0)} cm more reach than its paddler's arms have`);
+  $("reach-warn").hidden = !parts.length;
+  $("reach-warn").textContent = parts.length ? `${parts.join("; ")}. Reach less, lean the shaft less, or bring the top hand in.` : "";
 }
 // Saved profiles, in this browser.
 const PROFILES_KEY = "ppm.sim.profiles";
@@ -1098,6 +1127,7 @@ function changed(x) {
     showEfficiency();
     showBodyEffects();
     drawStrength();
+    showReach();
     paths = {};
     updateRace();
     updateHull();
@@ -2963,7 +2993,7 @@ function viewport(svg, v) {
   return { W, H, P: (p) => [ox + s * v.x(p), oy - s * v.y(p)], s };
 }
 const f2 = (q) => `${q[0].toFixed(1)},${q[1].toFixed(1)}`;
-const rad = (d) => (d * Math.PI) / 180, sub3 = (a, b) => a.map((v, k) => v - b[k]);
+const rad = (d) => (d * Math.PI) / 180, sub3 = (a, b) => a.map((v, k) => v - b[k]), add3 = (a, b) => a.map((v, k) => v + b[k]);
 
 // A USCA C1 marathon canoe: 18'6" long, 32" at its widest (just aft of
 // midships, a little above the waterline), pulled in to 17" at the gunwale
@@ -3055,7 +3085,7 @@ function stateAt(r, ph, extraLift = 0) {
 // The paddler, sitting in the boat, at phase ph: torso hinged by the engine's
 // body motion (bodyX, bodyZ), shoulders turned by rotation, hands on the
 // paddle. Boat coordinates in metres, x forward, y to the off side, z up.
-const HIP = [-0.5, 0, 0.1], LEAN0 = 15;
+const LEAN0 = 15;
 // tint: in the boat's colour, for telling two paddlers apart.
 // Shoulders about their midpoint sh (world: X to the bow, Y to port; the
 // paddle is to starboard). Trunk rotation winds up at the catch (s = 1),
@@ -3065,18 +3095,27 @@ function shoulders(sh, rotation, s, half = 0.2) {
   return { off: [sh[0] - half * Math.sin(twist), half * Math.cos(twist), sh[2]],
            pad: [sh[0] + half * Math.sin(twist), -half * Math.cos(twist), sh[2]] };
 }
+// The body fitted to the paddle (stroke-sim.js fitBody), at each moment.
+const figCache = new Map();
 function paddlerFig(P, x, ph, tint = false, lift = 0) {
   const r = results[x], c = hullCyc[x], p = r.params, st = stateAt(r, ph, lift), df = p.driveFraction;
   const i = c ? Math.min(c.t.length - 1, Math.floor(ph * c.t.length)) : 0;
   const bx = c ? c.bodyX[i] : 0, bz = c ? c.bodyZ[i] : 0;
-  // A hinge or swing of x m (whole body) turns the torso about x / (0.6 · 0.3) rad.
+  // The technique's posture: a hinge or swing of x m (whole body) turns the
+  // torso about x / (0.6 · 0.3) rad; rotation winds up at the catch.
   const lean = rad(Math.max(-20, Math.min(55, LEAN0 + (bx / 0.18) * 180 / Math.PI)));
   const s = ph < df ? Math.cos(Math.PI * ph / df) : -Math.cos(Math.PI * (ph - df) / (1 - df));
-  // Sized from the paddler profile.
-  const k = (p.heightM || 1.78) / 1.78;
-  const sh = [HIP[0] + p.torsoM * Math.sin(lean), 0, HIP[2] + p.torsoM * Math.cos(lean) + 1.6 * bz];
-  const { off, pad } = shoulders(sh, p.rotation || 0, s, p.shoulderM / 2);
-  const head = [sh[0] + 0.24 * k * Math.sin(lean), 0, sh[2] + 0.24 * k * Math.cos(lean)];
+  const grip = st.P.at(0), low = st.P.at(S.lowerHand(r.geom));
+  // One fit per boat and moment, shared by every view drawing it.
+  const key = `${x}|${ph.toFixed(4)}|${lift.toFixed(3)}|${r.body.seatX}`;
+  let b = figCache.get(key);
+  if (!b) {
+    if (figCache.size > 64) figCache.clear();
+    b = S.fitBody(r.geom, r.body.seatX, grip, low, [lean, 0, rad(25 * (p.rotation || 0) * s)], 1.6 * bz);
+    figCache.set(key, b);
+  }
+  const HIP = b.hip, sh = b.centre, off = b.off, pad = b.pad, k = (p.heightM || 1.78) / 1.78;
+  const head = add3(sh, b.up.map((v) => v * 0.24 * k));
   const legDz = 0.04 * (p.legDrive || 0) * (ph < df ? Math.sin(Math.PI * ph / df) : 0);
   const along = (a, d, len) => { const n = Math.hypot(...d); return a.map((v, j) => v + (d[j] / n) * len); };
   const knee = along(HIP, [0.42, 0, 0.16], p.thighM); knee[2] -= legDz;
@@ -3094,7 +3133,6 @@ function paddlerFig(P, x, ph, tint = false, lift = 0) {
   const sc = Math.max(...[[1, 0, 0], [0, 1, 0], [0, 0, 1]].map((e) => Math.hypot(P(e)[0] - P([0, 0, 0])[0], P(e)[1] - P([0, 0, 0])[1])));
   const ink = tint ? `color-mix(in srgb, ${COL[x]} 60%, var(--muted))` : "", ga = tint && x === "b" ? ` opacity="0.75"` : "";
   const seg = (pts, w, cls = "") => { const q = pts.filter(Boolean).map(P); return `<path class="fig-body fig-${x} ${cls}"${ink ? ` style="stroke:${ink}"` : ""}${ga} stroke-width="${(w * sc).toFixed(1)}" d="M${q.map(f2).join(" L")}"/>`; };
-  const grip = st.P.at(0), low = st.P.at(Math.min(0.55, p.pivotFromGrip + 0.45));
   const hd = P(head);
   return `${seg([HIP, knee, foot], 0.1, "fig-leg")}${seg([pad, elbow(pad, low, -1), low], 0.06)}${seg([HIP, sh], 0.15)}${seg([off, pad], 0.09)}` +
     `${seg([off, elbow(off, grip, 1), grip], 0.06)}<circle class="fig-head fig-${x}"${ink ? ` style="fill:${ink}"` : ""}${ga} cx="${hd[0].toFixed(1)}" cy="${hd[1].toFixed(1)}" r="${(0.1 * k * sc).toFixed(1)}"/>`;
