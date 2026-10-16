@@ -114,8 +114,10 @@
   // Roll. A USCA C1 is 31–32" wide at its 4" waterline; at race weight it
   // floats a little lower and narrower. Transverse waterplane inertia
   // C_IT·L·B³/12 over the displaced volume is the metacentric radius; the
-  // paddler kneeling or sitting high puts the centre of gravity KG up. The
-  // roll inertia is mostly the paddler's (radius of gyration ~0.35 m).
+  // paddler kneeling or sitting high puts the centre of gravity KG up: KG is
+  // for the default seat, and a seat Δz higher lifts the paddler's share of
+  // the weight by Δz. The roll inertia is mostly the paddler's (radius of
+  // gyration ~0.35 m).
   const ROLL_BEAM = 0.72, ROLL_CIT = 0.45, ROLL_KG = 0.45, ROLL_KB = 0.04;
   const ROLL_GYR = 0.35, BOAT_KG = 11, ROLL_ZETA = 0.2;
   // Bent-shaft marathon paddle, distances from the grip (m): throat, blade
@@ -142,6 +144,7 @@
     rateSpm: 60,
     driveFraction: DRIVE_FRACTION,  // share of each stroke spent in the drive
     massKg: 90,                // paddler + boat
+    seatZM: 0.10,              // hips above the waterline, sitting in the boat: higher is less stable
     effortW: 150,              // effort the effort-dependent results are for
     switchHeadingDeg: 3,       // switch sides when this far off course
     switchLossS: 0.3,          // time lost per switch, s (an estimate, not measured)
@@ -164,6 +167,10 @@
     strengthOn: 0,
     strengthPeakDeg: 0,        // shaft angle you pull hardest at; + = behind vertical
     strengthDrop: 0.4,
+    // Gearing (off by default): the arms hold the most power at one speed.
+    gearOn: 0,
+    armBestMs: 0.9,            // the lower hand's speed against its shoulder you hold the most power at, m/s
+    gearDrop: 0.15,            // share of the arms' power lost at half or 1.5 times it
     // The paddler's body, m, fitted to the paddle each moment (see fitBody).
     // Results change through strength by position: by angle, the arm length;
     // from the arms, every length. Otherwise it's for the drawings and the
@@ -180,7 +187,7 @@
 
   // Who's paddling, as opposed to how.
   const PROFILE_KEYS = ["heightM", "torsoM", "shoulderM", "upperArmM", "forearmM", "thighM", "shinM", "massKg", "fitnessW",
-                        "strengthOn", "strengthPeakDeg", "strengthDrop"];
+                        "strengthOn", "strengthPeakDeg", "strengthDrop", "gearOn", "armBestMs", "gearDrop"];
   const rad = (d) => (d * Math.PI) / 180;
   const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
   const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -251,13 +258,13 @@
   }
   // ------------------------------------------------------------ the body
   // The paddler sits on the centreline at a seat seatX ahead of the paddle's
-  // pivot (behind it, so negative), hips HIP_Z above the water. The torso
+  // pivot (behind it, so negative), hips seatZM above the water. The torso
   // pitches forward, rolls toward the paddle side and twists (paddle-side
   // shoulder forward) about the hips. Each moment it takes the posture
   // nearest the technique's own (its lean and rotation) that keeps both
   // hands within REACH of their shoulders: top hand on the grip, lower hand
   // lowerHandM down the shaft.
-  const HIP_Z = 0.1, LEAN0 = rad(15), REACH = 0.97, SEAT0 = -0.25;
+  const LEAN0 = rad(15), REACH = 0.97;
   const POSE_SIGMA = [rad(25), rad(15), rad(25)];
   const POSE_LIMITS = [[rad(-20), rad(60)], [rad(-10), rad(35)], [rad(-50), rad(50)]];
   const dist = (a, b) => norm(sub(a, b));
@@ -265,13 +272,18 @@
   const lowerHand = (p) => Math.max(p.pivotFromGrip + 0.1, p.lowerHandM);
   // Shoulders and hips for posture v = [pitch, roll, twist] (rad).
   function torso(p, seatX, v, dz = 0) {
-    const [pt, rl, tw] = v, hip = [seatX, 0, HIP_Z + dz];
+    const [pt, rl, tw] = v, hip = [seatX, 0, p.seatZM + dz];
     const t = [Math.sin(pt) * Math.cos(rl), -Math.sin(rl), Math.cos(pt) * Math.cos(rl)];
     const centre = add(hip, mul(t, p.torsoM));
     const across = [-Math.sin(tw), Math.cos(tw) * Math.cos(rl), Math.cos(tw) * Math.sin(rl)];   // toward the off side
     const h = p.shoulderM / 2;
     return { hip, centre, up: t, off: add(centre, mul(across, h)), pad: sub(centre, mul(across, h)) };
   }
+  // How far past its reach an arm is (m), rounded over REACH_ROUND: a sharp
+  // corner where the arm meets its reach stalls the Newton search below,
+  // leaving the posture where it started along that limit.
+  const REACH_ROUND = 0.002;
+  const beyond = (x) => 0.5 * (x + Math.sqrt(x * x + REACH_ROUND * REACH_ROUND));
   // The posture nearest `neutral` that reaches grip and low. Returns the
   // body and how stretched each arm is (shoulder to hand / arm length).
   // quick: a coarse search, good enough to choose the seat.
@@ -282,7 +294,7 @@
       let e = 0;
       for (let i = 0; i < 3; i++) e += ((v[i] - neutral[i]) / POSE_SIGMA[i]) ** 2;
       const d1 = dist(b.off, grip), d2 = dist(b.pad, low);
-      const o1 = Math.max(0, d1 - max), o2 = Math.max(0, d2 - max);
+      const o1 = beyond(d1 - max), o2 = beyond(d2 - max);
       // A mild liking for comfortably bent arms, as a paddler sits to have.
       const comfy = ((d1 / arm - ARM_BEST) / 0.3) ** 2 + ((d2 / arm - ARM_BEST) / 0.3) ** 2;
       return e + 0.3 * comfy + 1e5 * (o1 * o1 + o2 * o2);
@@ -336,23 +348,35 @@
     const D = det(A) || 1e-12;
     return [0, 1, 2].map((k) => det(A.map((row, i) => row.map((x, j) => (j === k ? b[i] : x)))) / D);
   }
-  // The technique's own posture at drive progress u: leaning LEAN0, the
+  // The technique's own posture at drive progress u: leaning LEAN0, further
+  // at the catch and less at the exit with a hinge (HINGE_TILT), and the
   // shoulders wound up at the catch by the rotation, unwinding to the exit.
-  const neutralAt = (p, u) => [LEAN0, 0, rad(25 * (p.rotation || 0) * Math.cos(Math.PI * u))];
-  // Where the paddler sits: the seat that lets the whole drive be reached
-  // with the least strain.
+  const neutralAt = (p, u) => [LEAN0 + HINGE_TILT * (p.hinge || 0) * Math.cos(Math.PI * u), 0,
+                               rad(25 * (p.rotation || 0) * Math.cos(Math.PI * u))];
+  // Where the blade leaves the water, fore and aft: the shaft-axis point level
+  // with the blade centre at the end of the drive (as in drive()).
+  const exitX = (pg) => pose(pg, 1).at(paddleOf(pg).throat + paddleOf(pg).copFromThroat)[0];
+  // Where the paddler sits is set by who they are and what's in the boat,
+  // not by the stroke: their own stroke (the default technique, with their
+  // body, paddle and seat height) leaves the water at the hip, as a C1
+  // paddler's does. That puts the top hand ahead of its shoulder. Every
+  // technique is paddled from that seat, so one that pulls behind exits
+  // behind the hip. If the whole of their own stroke can't be reached from
+  // there, the nearest seat that reaches it.
+  const SEAT_KEYS = [...PROFILE_KEYS, "paddleLenM", "bladeLenM", "bendDeg", "seatZM"];
   const seatCache = new Map();
   function seatFor(pg) {
-    const key = JSON.stringify(pg);
+    const own = paddled(Object.assign({}, DEFAULTS, Object.fromEntries(SEAT_KEYS.map((k) => [k, pg[k]]))));
+    const key = JSON.stringify(own);
     if (seatCache.has(key)) return seatCache.get(key);
     const frames = [0, 0.25, 0.5, 0.75, 1].map((u) => {
-      const P = pose(pg, u);
-      return { grip: P.at(0), low: P.at(lowerHand(pg)), n: neutralAt(pg, u) };
+      const P = pose(own, u);
+      return { grip: P.at(0), low: P.at(lowerHand(own)), n: neutralAt(own, u) };
     });
-    // Many seats can work about as well: a gentle pull toward a usual seat
-    // (SEAT0) keeps it from jumping as the settings change.
-    const total = (x) => frames.reduce((a, f) => a + fitBody(pg, x, f.grip, f.low, f.n, 0, f.n, true).cost, 0) +
-      2 * ((x - SEAT0) / 0.2) ** 2;
+    const stretchPast = (b) => Math.max(0, b.top - REACH) + Math.max(0, b.low - REACH);   // arm stretch past reach
+    const x0 = exitX(own);
+    const total = (x) => 1e4 * frames.reduce((a, f) => a + stretchPast(fitBody(own, x, f.grip, f.low, f.n, 0, f.n, true)) ** 2, 0) +
+      ((x - x0) / 0.2) ** 2;
     let lo = -1.0, hi = 0.3;
     for (let i = 0; i < 14; i++) {   // to about 2 mm
       const m1 = lo + (hi - lo) * 0.382, m2 = lo + (hi - lo) * 0.618;
@@ -362,23 +386,41 @@
     seatCache.set(key, (lo + hi) / 2);
     return (lo + hi) / 2;
   }
-  // The body through the drive: how stretched each arm is, and how far
-  // short of the hands they fall where they can't reach (m).
+  // The body through the drive: how stretched each arm is, how far forward
+  // the trunk leans (rad), how high the top hand is above the shoulders (m),
+  // and how far short of the hands the arms fall where they can't reach (m). armSpeed: the lower hand's average speed
+  // against its shoulder through the drive (m/s), what the arm's muscles
+  // move at; the trunk carries the rest of the hand's travel.
+  const bodyCache = new Map();
   function bodyThroughDrive(pg, n = 20) {
+    const key = JSON.stringify(pg);
+    if (bodyCache.has(key)) return bodyCache.get(key);
     const seatX = seatFor(pg), arm = armOf(pg), out = [];
-    let prev = null;
+    let prev = null, rel = null, path = 0;
     for (let i = 0; i <= n; i++) {
-      const u = i / n, P = pose(pg, u), nn = neutralAt(pg, u);
-      const b = fitBody(pg, seatX, P.at(0), P.at(lowerHand(pg)), nn, 0, prev || nn);
+      const u = i / n, P = pose(pg, u), nn = neutralAt(pg, u), low = P.at(lowerHand(pg));
+      const b = fitBody(pg, seatX, P.at(0), low, nn, 0, prev || nn);
       prev = b.pose;
-      out.push({ u, top: b.top, low: b.low, short: Math.max(0, (Math.max(b.top, b.low) - 1) * arm) });
+      const r = sub(low, b.pad), grip = P.at(0);
+      if (rel) path += dist(r, rel);
+      rel = r;
+      out.push({ u, top: b.top, low: b.low, lean: b.pose[0], above: grip[2] - b.centre[2],
+                 short: Math.max(0, (Math.max(b.top, b.low) - 1) * arm) });
     }
-    return { seatX, frames: out, short: Math.max(...out.map((f) => f.short)) };
+    const body = { seatX, frames: out, short: Math.max(...out.map((f) => f.short)), armSpeed: path / (60 / pg.rateSpm * pg.driveFraction) };
+    if (bodyCache.size > 60) bodyCache.clear();
+    bodyCache.set(key, body);
+    return body;
   }
   // From the arms: strongest with the arm about ARM_BEST of full stretch,
   // weaker folded up or stretched out; the lower (pulling) arm counts most.
   const ARM_BEST = 0.72, ARM_SPAN = 0.25;
   const armStrength = (p, e) => Math.max(STRENGTH_MIN, 1 - p.strengthDrop * ((Math.min(1.05, e) - ARM_BEST) / ARM_SPAN) ** 2);
+  // Leaning far forward to reach the catch is weaker too: the trunk can't
+  // brace the pull. Lean past the usual LEAN0 costs strength as the square
+  // of the excess, losing strengthDrop LEAN_SPAN past it. Assumed, not measured.
+  const LEAN_SPAN = rad(40);
+  const leanStrength = (p, pitch) => Math.max(STRENGTH_MIN, 1 - p.strengthDrop * (Math.max(0, pitch - LEAN0) / LEAN_SPAN) ** 2);
 
   // Drive progress u at each moment. Where you're weaker the paddle moves
   // slower (force ∝ speed², so speed ∝ √strength puts the force in step
@@ -401,7 +443,7 @@
       const P = pose(p, u), nn = neutralAt(p, u);
       const b = fitBody(p, seatX, P.at(0), P.at(lowerHand(p)), nn, 0, prev || nn);
       prev = b.pose;
-      return 0.75 * armStrength(p, b.low) + 0.25 * armStrength(p, b.top);
+      return (0.75 * armStrength(p, b.low) + 0.25 * armStrength(p, b.top)) * leanStrength(p, b.pose[0]);
     };
     for (let i = 1; i <= n; i++) {
       const u = (i - 0.5) / n, s = sAt(u);
@@ -600,7 +642,7 @@
   // A full hinge swings the torso about ±20° from the hips: head, arms and
   // trunk (about 60% of you) move about ±10 cm, ±6 cm for the whole body,
   // aft through the drive. It adds to any body swing set by hand.
-  const HINGE_SWING_M = 0.06;
+  const HINGE_SWING_M = 0.06, HINGE_TILT = rad(20);
   function swingVel(p, Tc, Td) {
     const a = bodySwingVel(p.swingM || 0, p.swingTiming, Tc, Td), b = bodySwingVel(HINGE_SWING_M * (p.hinge || 0), 1, Tc, Td);
     return (t) => a(t) + b(t);
@@ -789,7 +831,8 @@
       const hAvg = hv.xs.reduce((a, x) => a + x, 0) / n;
       // Roll stiffness Δ·g·GM; inertia mostly the paddler's.
       const vol = p.massKg / RHO, BM = (ROLL_CIT * HULL_L * Math.pow(ROLL_BEAM, 3)) / 12 / vol;
-      const GM = ROLL_KB + BM - ROLL_KG, Kr = p.massKg * G * GM;
+      const KG = ROLL_KG + ((p.massKg - BOAT_KG) / p.massKg) * (p.seatZM - DEFAULTS.seatZM);
+      const GM = ROLL_KB + BM - KG, Kr = p.massKg * G * GM;
       const Ir = (p.massKg - BOAT_KG) * ROLL_GYR * ROLL_GYR + BOAT_KG * 0.25 * 0.25;
       const rl = periodic(roll.map((m) => m * (1 - p.hipRock)), Ir, 2 * ROLL_ZETA * Math.sqrt(Kr * Ir), Kr);
       const rAvg = rl.xs.reduce((a, x) => a + x, 0) / n;
@@ -861,9 +904,29 @@
     const ref = Object.assign({}, DEFAULTS, Object.fromEntries(PROFILE_KEYS.map((k) => [k, q[k]])));
     return driveTiming(paddled(q)).mean / driveTiming(paddled(ref)).mean;
   }
+  // Gearing (off by default): muscles make the most power at one speed. A
+  // linear force–velocity line makes power a parabola in speed, so the arms
+  // hold less the further their speed (armSpeed, set by the stroke rate,
+  // the drive's share, the stroke's length and the hands' spacing) is from
+  // armBestMs, losing gearDrop at half or 1.5 times it. It sets the arms'
+  // share of what you hold; trunk and legs move at their own speeds.
+  // Assumed until measured: the meter's force and shaft speed at a few
+  // rates give the paddler's own line.
+  function gearFactor(p) {
+    const q = Object.assign({}, DEFAULTS, p);
+    if (!q.gearOn) return 1;
+    const x = bodyThroughDrive(paddled(q)).armSpeed / q.armBestMs - 1;
+    return Math.max(STRENGTH_MIN, 1 - 4 * q.gearDrop * x * x);
+  }
+  // The stroke rate that puts the arms at their best speed: arm speed is the
+  // arm's path over the drive's time, so it goes as the rate.
+  const bestRate = (p) => {
+    const q = Object.assign({}, DEFAULTS, p);
+    return q.rateSpm * q.armBestMs / bodyThroughDrive(paddled(q)).armSpeed;
+  };
   function capacity(p, hours = 1) {
     const q = Object.assign({}, DEFAULTS, p);
-    return q.fitnessW * (0.7 + 0.12 * q.rotation + 0.1 * q.legDrive + 0.08 * q.hinge) * strengthFactor(q) *
+    return q.fitnessW * (0.7 * gearFactor(q) + 0.12 * q.rotation + 0.1 * q.legDrive + 0.08 * q.hinge) * strengthFactor(q) *
       Math.pow(Math.max(1, hours), -0.07);
   }
 
@@ -1203,9 +1266,9 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 35;
+  const API_LEVEL = 39;
   const PADDLE = paddleOf(DEFAULTS);
-  const api = { API_LEVEL, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
+  const api = { API_LEVEL, paddled, paddleOf, gearFactor, bestRate, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.StrokeSim = api;
 })(typeof window !== "undefined" ? window : globalThis);
