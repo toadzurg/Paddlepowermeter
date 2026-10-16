@@ -393,8 +393,14 @@ console.log("\nStroke simulator physics");
     check(`${tag}: peak force has no winner, difference adds up`, peakRow.wins === 0 &&
           peakRow.d === `A pulls ${(await cellVal("peak", 2)) - (await cellVal("peak", 3))} N harder`, peakRow.d);
     check(`${tag}: winner highlighted`, (await page.$$('#cmp tr[data-row="eff"] td.win.a')).length === 1);
-    check(`${tag}: two power bars, four parts`, (await page.$$("#bars-power .bar")).length === 2 &&
-          (await page.$$("#leg-power tr")).length === 5);
+    check(`${tag}: two power bars, five parts`, (await page.$$("#bars-power .bar")).length === 2 &&
+          (await page.$$("#leg-power tr")).length === 6);
+    // Switching's slice: the extra slip against the same boat with no switch time.
+    await page.waitForTimeout(300);
+    const swRow = await page.$$eval("#leg-power tr", (rs) => { const r = rs.find((q) => /switching/.test(q.textContent));
+      return r ? [...r.querySelectorAll("td.n")].map((td) => parseFloat(td.textContent)) : null; });
+    check(`${tag}: switching slice: the wide sweep (B) loses more to switching than A`, swRow && swRow[1] > 1 && swRow[1] > 2 * swRow[0] && swRow[0] > 0,
+          swRow && `A ${swRow[0]}%, B ${swRow[1]}%`);
     await slide("#c-swingM", 0.1); await settle();
     const legA = await page.$$eval("#leg-power tr td:nth-child(2)", (ts) => ts.slice(1).reduce((a, t) => a + parseFloat(t.textContent), 0));
     check(`${tag}: power shares add to 100%, body swing included`, Math.abs(legA - 100) < 1.5, `${legA.toFixed(1)}%`);
@@ -409,7 +415,7 @@ console.log("\nStroke simulator physics");
     const tipShown = () => page.$eval("#tip", (e) => !e.hidden);
     const effInfo = '#cmp tr[data-row="eff"] button.info';
     check(`${tag}: help buttons on table rows and breakdowns`, (await page.$$("#cmp button.info")).length === 7 &&
-          (await page.$$("#leg-power button.info")).length === 4);
+          (await page.$$("#leg-power button.info")).length === 5);
     await page.click(effInfo);
     check(`${tag}: tap shows the tip`, (await tipShown()) && /actually moves the boat/.test(await text("#tip")) &&
           (await page.$eval(effInfo, (b) => b.getAttribute("aria-expanded"))) === "true");

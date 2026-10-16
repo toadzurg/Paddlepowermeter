@@ -154,6 +154,7 @@
   .bar { display: flex; height: 18px; border-radius: 5px; overflow: hidden; gap: 2px; }
   .bar > span { display: block; height: 100%; }
   .s1 { background: var(--cat-useful); } .s2 { background: var(--cat-slip); } .s3 { background: var(--cat-side); } .s4 { background: var(--cat-other); }
+  .s5 { background: color-mix(in srgb, var(--cat-slip) 45%, var(--surface-1)); }   /* slip from switching */
   table.legend { border-collapse: collapse; margin-top: 6px; font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
   table.legend td { padding: 1px 12px 1px 0; }
   table.legend td.n { text-align: right; color: var(--text-primary); font-weight: 600; }
@@ -965,9 +966,38 @@ function changed(x) {
     paths = {};
     updateRace();
     updateHull();
+    refreshNoSwitch();
   });
 }
 
+// Switching's share of each boat's power. A switch puts no push in, so to
+// hold the same average power and speed the strokes between pull harder
+// and the blade slips more: that extra slip, against the same boat with no
+// time lost switching (worked out just after each change, so dragging a
+// slider stays smooth).
+const noSwitch = { a: null, b: null };
+let noSwitchTimer = 0;
+function refreshNoSwitch() {
+  clearTimeout(noSwitchTimer);
+  noSwitchTimer = setTimeout(() => {
+    let any = false;
+    for (const x of BOATS) {
+      const r = boats[x].switchLossS > 0 ? simOf(Object.assign({}, boats[x], { switchLossS: 0 })) : null;
+      if (noSwitch[x] !== r) { noSwitch[x] = r; any = true; }
+    }
+    if (any) { showPowerBreakdown(); if (hullCyc.a) drawPower(); }
+  }, 60);
+}
+const switchSlip = (x) => {
+  const sh = results[x].at(effortW).shares;
+  return noSwitch[x] ? Math.min(sh.slip, Math.max(0, sh.slip - noSwitch[x].at(effortW).shares.slip)) : 0;
+};
+function showPowerBreakdown() {
+  const power = (x) => { const sh = results[x].at(effortW).shares, sw = switchSlip(x);
+    return [sh.hull, sh.slip - sw, sw, sh.leeway, sh.surge + sh.bounce + sh.pitch + sh.swing + sh.drop + Math.max(0, sh.sink)].map((v) => v * 100); };
+  breakdown("power", ["moves the boat", "slip", "switching", "sideways drag", "surge & bounce"], power("a"), power("b"), 1,
+            ["s1", "s2", "s5", "s3", "s4"]);
+}
 function summary(r) {
   const at = r.at(effortW);
   return {
@@ -987,6 +1017,7 @@ const HELP = {
   peak: "The hardest the blade pulls in a stroke. Not better or worse on its own.",
   "moves the boat": "Power that overcomes hull drag: the useful part.",
   slip: "Power lost pushing water backwards as the blade slips through it.",
+  switching: "Extra slip from switching sides. A switch puts no push in, so the strokes between pull harder to keep the same power and speed, and the blade slips more.",
   "sideways drag": "Drag from the hull crabbing against the stroke's sideways push.",
   "surge & bounce": "Lost to the boat speeding up and slowing within each stroke, bobbing and pitching, and to your body swinging.",
 };
@@ -1028,10 +1059,8 @@ function showEfficiency() {
       `${cell(A, k, unit, d, win === "A" ? "win a" : "")}${cell(B, k, unit, d, win === "B" ? "win b" : "")}<td class="d">${better}</td></tr>`;
   }).join("");
 
-  const power = (s) => { const sh = s.at.shares;
-    return [sh.hull, sh.slip, sh.leeway, sh.surge + sh.bounce + sh.pitch + sh.swing + sh.drop + Math.max(0, sh.sink)].map((v) => v * 100); };
+  showPowerBreakdown();
   const force = (r) => [r.forceShare.forward, r.forceShare.sideways, r.forceShare.vertical].map((v) => v * 100);
-  breakdown("power", ["moves the boat", "slip", "sideways drag", "surge & bounce"], power(A), power(B), 1);
   breakdown("force", ["forward", "sideways", "vertical"], force(results.a), force(results.b), 0);
   drawCurve();
   $("why-a").innerHTML = `<b><span class="a-dot"></span>A:</b> ${why(results.a, A.at)}`;
@@ -1194,13 +1223,13 @@ $("curve-live").addEventListener("click", () => {
 });
 addEventListener("resize", () => { if (results.a && results.b) drawCurve(); });
 
-function breakdown(id, names, a, b, digits) {
+function breakdown(id, names, a, b, digits, cls = names.map((_, i) => `s${i + 1}`)) {
   const bar = (vals) => `<div class="bar">${vals.map((v, i) => v > 0.05
-    ? `<span class="s${i + 1}" style="flex:${Math.max(0.6, v).toFixed(2)}"></span>` : "").join("")}</div>`;
+    ? `<span class="${cls[i]}" style="flex:${Math.max(0.6, v).toFixed(2)}"></span>` : "").join("")}</div>`;
   $(`bars-${id}`).innerHTML = `<span class="who">A</span>${bar(a)}<span class="who">B</span>${bar(b)}`;
   const f = (v) => `${fmtNum(v, v < 10 ? digits : 0)}%`;
   $(`leg-${id}`).innerHTML = `<tr><td></td><td class="n">A</td><td class="n">B</td></tr>` +
-    names.map((n, i) => `<tr><td><i class="s${i + 1}"></i>${n}${HELP[n] ? info(HELP[n]) : ""}</td><td class="n">${f(a[i])}</td><td class="n">${f(b[i])}</td></tr>`).join("");
+    names.map((n, i) => `<tr><td><i class="${cls[i]}"></i>${n}${HELP[n] ? info(HELP[n]) : ""}</td><td class="n">${f(a[i])}</td><td class="n">${f(b[i])}</td></tr>`).join("");
 }
 function why(r, at) {
   const yaw = r.yawAt(effortW), sh = at.shares, lift = at.meanLift;
@@ -2297,7 +2326,8 @@ function drawPower() {
   const parts = (x) => {
     const e = results[x].at(effortW), sh = e.shares, wave = 0.23 * Math.pow(e.waterSpeed / 2.5, 4);
     return [["Hull: friction", sh.hull * (1 - wave), "var(--cat-useful)"], ["Hull: waves", sh.hull * wave, "color-mix(in srgb, var(--cat-useful) 50%, var(--surface-1))"],
-            ["Blade slip", sh.slip, "var(--cat-slip)"], ["Crab", sh.leeway, "var(--cat-side)"],
+            ["Blade slip", sh.slip - switchSlip(x), "var(--cat-slip)"],
+            ["Switching", switchSlip(x), "color-mix(in srgb, var(--cat-slip) 45%, var(--surface-1))"], ["Crab", sh.leeway, "var(--cat-side)"],
             ["Speed swings", sh.surge, "var(--cat-other)"], ["Bob & pitch", sh.bounce + sh.pitch, "color-mix(in srgb, var(--cat-other) 55%, var(--surface-1))"],
             ["Body swing & drop", sh.swing + sh.drop, "color-mix(in srgb, var(--cat-other) 30%, var(--surface-1))"]];
   };
