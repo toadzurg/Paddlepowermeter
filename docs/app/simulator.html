@@ -559,6 +559,7 @@
           </div>
           <svg class="race river-only" id="river-map" role="img" aria-label="The river from above: each boat on its line" hidden></svg>
           <svg class="race" id="race-view" role="img" aria-label="Race between boat A and boat B"></svg>
+          <div class="sub" id="race-weave"></div>
           <svg class="race" id="course-view" role="img" aria-label="The race on the course map" hidden></svg>
           <div class="scrub">
             <button id="scrub-back" aria-label="Step back">◀</button>
@@ -1317,7 +1318,7 @@ const HELP = {
   "moves the boat": "Power that overcomes hull drag: the useful part.",
   slip: "Power lost pushing water backwards as the blade slips through it.",
   switching: "Extra slip from switching sides. A switch puts no push in, so the strokes between pull harder to keep the same power and speed, and the blade slips more.",
-  zigzag: "Hull drag spent on the zigzag: between switches the bow swings off course, so the boat travels further than the course.",
+  zigzag: "Hull drag spent on the zigzag: between switches the bow swings off course, so the boat travels further than the course. Switching by heading, every stroke keeps within the same angle (Switching sides), so this hardly changes: a stroke that turns more switches more often instead. A fixed strokes per side lets it grow.",
   "sideways drag": "Drag from the hull crabbing against the stroke's sideways push.",
   "surge & bounce": "Lost to the boat speeding up and slowing within each stroke, bobbing and pitching, and to your body swinging.",
 };
@@ -1880,6 +1881,15 @@ function drawRace(dA, dB, elapsed) {
     return `<path class="line-${X.toLowerCase()}" d="${dd}"/>`;
   };
   g += track("A", dA, laneY[0]) + track("B", dB, laneY[1]);
+  // The weave in words: each boat's real sideways swing (exaggerated on
+  // screen) and how often it switches. Switching by heading, every boat
+  // keeps within the same angle, so one that turns harder switches sooner
+  // and swings less to the side.
+  const cm = (X) => fmtNum(wv[X].amp * 100, 0), every = (x) => fmtNum(results[x].strokesPerSide, 1);
+  const byHeading = BOATS.every((x) => !results[x].params.switchStrokes);
+  $("race-weave").textContent = `Sideways swing, drawn ×${fmtNum(ex / ((right - left) / span), 0)}: ` +
+    `A ±${cm("A")} cm, switching every ${every("a")} strokes · B ±${cm("B")} cm, every ${every("b")} strokes.` +
+    (byHeading ? ` Switching by heading, both keep within ±${fmtNum(results.a.headingWanderDeg, 1)}° of straight, so a boat that turns harder switches sooner and swings less to the side.` : "");
   // A boat behind the view shows how far back it is.
   const canoe = (X, d, y, cls) => {
     if (x(d) < left) return `<text class="strong" x="${left + 6}" y="${y + 4}">◀ ${fmtNum(lead - d, 0)} m</text>`;
@@ -2928,6 +2938,7 @@ function showAt(t) {
   const st = stateAtT(t), L = race.metres;
   // River: the course from above. Open water: straight lanes.
   $("zoom-close").hidden = water !== "map";
+  $("race-weave").hidden = water !== "open";   // the lanes' weave: open water only
   if (water === "river") drawRiverRace(st.A.d, st.B.d); else if (water === "map") drawCourseRace(st.A.d, st.B.d); else drawRace(st.A.d, st.B.d, t);
   if (!dragging) $("scrub").value = String(Math.round(Math.min(1, t / Math.max(1e-9, sliderEnd())) * 1000));
   $("scrub-time").textContent = `${clock(t)} · ${fmtNum(Math.max(st.A.d, st.B.d) / 1000, 2)} of ${fmtNum(L / 1000, 2)} km`;
