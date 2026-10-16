@@ -775,7 +775,7 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of each engine file (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. The fit builds on the stroke engine. -->
-<script src="stroke-sim.js?v=0a077140c8"></script>
+<script src="stroke-sim.js?v=3bc80fb0ad"></script>
 <script src="fit-sim.js?v=c4843125f4"></script>
 <script>
 (() => {
@@ -819,7 +819,7 @@ function shown(el) {
 }
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 39;
+const NEEDS_API = 40;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -3163,15 +3163,14 @@ onTap($("switch-anim"), () => {
   b.setAttribute("aria-pressed", String(b.getAttribute("aria-pressed") !== "true"));
 });
 const switchAnim = () => $("switch-anim").getAttribute("aria-pressed") === "true";
-// How high the recovery lifts the blade, m (stateAt), and so how high it's carried into a switch.
-const RECOVERY_LIFT = 0.45;
 // Where boat x is at time t: its stroke phase, which side (m = 1 for the
-// right, −1 for the left, in between while switching) and how high the
-// paddle is lifted. With switching: n strokes on the right, a switch of
-// switchLossS, n on the left, a switch back; n is its strokes per side.
+// right, −1 for the left, in between while switching) and, around a
+// switch, how the recovery carries the paddle (lift, for stateAt; null for
+// an ordinary recovery). With switching: n strokes on the right, a switch
+// of switchLossS, n on the left, a switch back; n is its strokes per side.
 function timeline(x, t) {
   const r = results[x], Tc = r.cycle;
-  if (!switchAnim()) return { ph: (((t / Tc) % 1) + 1) % 1, m: 1, lift: 0, stroke: 0, n: 0 };
+  if (!switchAnim()) return { ph: (((t / Tc) % 1) + 1) % 1, m: 1, lift: null, stroke: 0, n: 0 };
   const n = Math.max(1, Math.round(r.strokesPerSide)), Tsw = Math.max(0.05, r.params.switchLossS);
   const Ts = n * Tc + Tsw, tt = (((t % (2 * Ts)) + 2 * Ts) % (2 * Ts));
   const side = tt < Ts ? 1 : -1, u = side > 0 ? tt : tt - Ts;
@@ -3180,19 +3179,37 @@ function timeline(x, t) {
     // The last recovery on a side keeps the blade up for the switch, rather
     // than setting it down at the catch only to lift it again.
     const back = (ph - r.params.driveFraction) / (1 - r.params.driveFraction);
-    const lift = stroke === n && back > 0.5 ? RECOVERY_LIFT * (1 - Math.sin(Math.PI * back)) : 0;
+    const lift = stroke === n && back > 0.5 ? { clear: recoveryClear(back, true), top: 1, over: 0 } : null;
     return { ph, m: side, lift, stroke, n };
   }
-  // The switch: the paddle swings over the boat to the other side, coming
-  // down to the catch there (no jumps in height or speed at either end).
+  // The switch: the paddle swings over the boat to the other side, higher
+  // as it passes over, and comes down to the catch there (no jumps in
+  // height or speed at either end).
   const w = (u - n * Tc) / Tsw, down = (1 + Math.cos(Math.PI * w)) / 2;
-  return { ph: 1 - 1e-6, m: side * Math.cos(Math.PI * w), lift: RECOVERY_LIFT * down + 0.2 * Math.sin(Math.PI * w) ** 2, stroke: 0, n };
+  return { ph: 1 - 1e-6, m: side * Math.cos(Math.PI * w), lift: { clear: down, top: down, over: SWITCH_OVER * Math.sin(Math.PI * w) ** 2 }, stroke: 0, n };
 }
 onTap($("slow"), () => { slow = !slow; $("slow").textContent = slow ? "Normal speed" : "Slow motion"; });
 
-// Pose and forces at cycle phase ∈ [0, 1): drive, then a recovery that lifts
-// the blade out (RECOVERY_LIFT at its highest) and swings it back to the catch.
-function stateAt(r, ph, extraLift = 0) {
+// The recovery, as a paddler does it: the top hand travels from the exit to
+// the catch, up to TOP_LIFT higher on the way, and the shaft swings about it
+// from its exit angle to its catch angle. To bring the blade out, the shaft
+// tilts toward the horizontal (the way it leans, and out by TILT_OUT) just
+// enough to carry the blade BLADE_CLEAR above the water, easing in over
+// CLEAR_RAMP of the recovery after the exit and out before the catch.
+// Lifting the whole paddle instead put the top hand out of reach, and the
+// body jerked trying to follow it. Drawing only: no forces in the recovery.
+const TOP_LIFT = 0.1, BLADE_CLEAR = 0.05, CLEAR_RAMP = 0.25, TILT_OUT = 0.3;
+// How high the paddle is carried over the boat mid-switch, m.
+const SWITCH_OVER = 0.2;
+const smoothstep = (x) => { const t = Math.min(1, Math.max(0, x)); return t * t * (3 - 2 * t); };
+// How far the blade is brought clear at recovery progress u (0: where the
+// stroke leaves it, 1: BLADE_CLEAR up); held up when carried into a switch.
+const recoveryClear = (u, hold = false) => smoothstep(u / CLEAR_RAMP) * (hold ? 1 : smoothstep((1 - u) / CLEAR_RAMP));
+// Pose and forces at cycle phase ∈ [0, 1): the drive, then the recovery.
+// lift (from timeline()): { clear, top, over } in place of the ordinary
+// recovery's, around a switch: the share of the blade's clearance and of
+// the top hand's lift, and a lift of the whole paddle (m).
+function stateAt(r, ph, lift = null) {
   const df = r.params.driveFraction;
   if (ph < df) {
     const n = r.samples.length;
@@ -3200,14 +3217,28 @@ function stateAt(r, ph, extraLift = 0) {
     const sm = r.samples[i];
     return { P: sm.P, B: sm.B, thrust: sm.thrust, F: sm.F, inDrive: true };
   }
-  const u = (ph - df) / (1 - df);             // recovery progress
-  const back = 1 - (1 - Math.cos(Math.PI * u)) / 2;
-  const P = S.pose(r.geom, back);             // reverse through the arc
-  const lift = RECOVERY_LIFT * Math.sin(Math.PI * u) + extraLift;
-  const liftAt = (s) => { const q = P.at(s); return [q[0], q[1], q[2] + lift]; };
-  const Pl = Object.assign({}, P, { at: liftAt });
-  const face = [-Math.cos(P.th), 0, Math.sin(P.th)];
-  return { P: Pl, B: S.blade(r.geom, Pl, face), thrust: [0, 0, 0], F: 0, inDrive: false };
+  const g = r.geom, u = (ph - df) / (1 - df), e = (1 - Math.cos(Math.PI * u)) / 2;
+  const L = lift || { clear: recoveryClear(u), top: Math.sin(Math.PI * u), over: 0 };
+  const exit = S.pose(g, 1), cat = S.pose(g, 0), mix = (a, b) => a + (b - a) * e;
+  const th = mix(exit.th, cat.th), d0 = S.shaftDir(th, rad(g.leanDeg), mix(exit.psi, cat.psi));
+  const ge = exit.at(0), gc = cat.at(0);
+  const grip = [mix(ge[0], gc[0]), mix(ge[1], gc[1]), mix(ge[2], gc[2]) + TOP_LIFT * L.top + L.over];
+  const face = [-Math.cos(th), 0, Math.sin(th)];
+  const paddle = (d) => { const P = { d, th, at: (s) => grip.map((v, j) => v + d[j] * s) }; return { P, B: S.blade(g, P, face) }; };
+  const lowest = ({ B }) => Math.min(B.tip[2], B.throat[2]);
+  // Tilt d0 by a toward the horizontal the way it leans (and out).
+  const toward = [d0[0], d0[1] - TILT_OUT, 0], k = toward.reduce((a, v, j) => a + v * d0[j], 0);
+  let h = toward.map((v, j) => v - k * d0[j]);
+  const hn = Math.hypot(...h); h = h.map((v) => v / hn);
+  const tilted = (a) => paddle(d0.map((v, j) => Math.cos(a) * v + Math.sin(a) * h[j]));
+  let st = paddle(d0);
+  const target = lowest(st) + (BLADE_CLEAR - lowest(st)) * L.clear;
+  if (lowest(st) < target) {
+    let lo = 0, hi = Math.PI / 2;
+    for (let i = 0; i < 30; i++) { const a = (lo + hi) / 2; if (lowest(tilted(a)) < target) lo = a; else hi = a; }
+    st = tilted(hi);
+  }
+  return { P: st.P, B: st.B, thrust: [0, 0, 0], F: 0, inDrive: false };
 }
 
 // The paddler, sitting in the boat, at phase ph: torso hinged by the engine's
@@ -3242,7 +3273,7 @@ function acrossTheBoat(j, m, at, sLow) {
     right: mix(mir(j.off), j.pad), rightHand: onPaddle(sLow * a) };
 }
 // P: the view's projection; m: the side (1 right, −1 left, between mid-switch).
-function paddlerFig(P, x, ph, tint = false, lift = 0, m = 1) {
+function paddlerFig(P, x, ph, tint = false, lift = null, m = 1) {
   const r = results[x], c = hullCyc[x], p = r.params, st = stateAt(r, ph, lift), df = p.driveFraction;
   const i = c ? Math.min(c.t.length - 1, Math.floor(ph * c.t.length)) : 0;
   const bx = c ? c.bodyX[i] : 0, bz = c ? c.bodyZ[i] : 0;
@@ -3252,7 +3283,7 @@ function paddlerFig(P, x, ph, tint = false, lift = 0, m = 1) {
   const s = ph < df ? Math.cos(Math.PI * ph / df) : -Math.cos(Math.PI * (ph - df) / (1 - df));
   const sLow = S.lowerHand(r.geom), grip = st.P.at(0), low = st.P.at(sLow);
   // One fit per boat and moment, shared by every view drawing it.
-  const key = `${x}|${ph.toFixed(4)}|${lift.toFixed(3)}|${r.body.seatX}`;
+  const key = `${x}|${ph.toFixed(4)}|${lift ? [lift.clear, lift.top, lift.over].map((v) => v.toFixed(3)).join(",") : "-"}|${r.body.seatX}`;
   let b = figCache.get(key);
   if (!b) {
     if (figCache.size > 64) figCache.clear();
@@ -3285,7 +3316,7 @@ function paddlerFig(P, x, ph, tint = false, lift = 0, m = 1) {
 }
 // One boat's paddle, blade path and push, in its colour.
 // Pp: the projection for the blade's path and pushes (always one side, even mid-switch).
-function drawBoat(name, P, x, ph, maxF, lift = 0, Pp = P) {
+function drawBoat(name, P, x, ph, maxF, lift = null, Pp = P) {
   const r = results[x], st = stateAt(r, ph, lift), sm = r.samples;
   const key = `${x}-${name}`;
   let g = "";
@@ -3609,7 +3640,7 @@ requestAnimationFrame(frame);
 window.sim = {
   boats, results, PRESETS,
   get editing() { return editing; }, get race() { return race; }, get mode() { return mode; },
-  get run() { return run; }, setTab, shoulders, timeline, get tab() { return tab; }, get score() { return lastScore && lastScore[0]; },
+  get run() { return run; }, setTab, shoulders, timeline, stateAt, get tab() { return tab; }, get score() { return lastScore && lastScore[0]; },
   raceWallS: 12,   // seconds on screen for a whole race (tests shorten it)
 };
 })();

@@ -1072,9 +1072,20 @@ console.log("\nPaddle fit");
     });
     check(`${tag}: switching sides on by default, timed by strokes per side and switch time`, sw.on === "true" &&
           sw.first.m === 1 && sw.first.stroke === 1 && sw.last.stroke === sw.n && sw.last.m === 1 &&
-          sw.mid.stroke === 0 && Math.abs(sw.mid.m) < 0.1 && sw.mid.lift > 0.3 &&
+          sw.mid.stroke === 0 && Math.abs(sw.mid.m) < 0.1 && sw.mid.lift.over > 0.1 &&
           sw.left.m === -1 && sw.left.stroke === 1 && sw.back.m === 1 && /^(\d+\/\d+ [RL]|switch)/.test(sw.readout),
           `${sw.n} per side, now "${sw.readout}"`);
+    // The recovery: the top hand travels to the catch and the shaft tilts
+    // about it to carry the blade clear, without jumps where the drive ends.
+    const rec = await page.evaluate(() => {
+      const r = window.sim.results.a, df = r.params.driveFraction, st = (ph) => window.sim.stateAt(r, ph);
+      const low = (s) => Math.min(s.B.tip[2], s.B.throat[2]), mids = [], grips = [];
+      for (let u = 0.25; u <= 0.75; u += 0.05) { const s = st(df + u * (1 - df)); mids.push(low(s)); grips.push(s.P.at(0)[2]); }
+      const a = st(df - 1e-4).P.at(0.6), b = st(df + 1e-4).P.at(0.6);
+      return { clear: Math.min(...mids), grip: Math.max(...grips), step: Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) };
+    });
+    check(`${tag}: recovery carries the blade clear, top hand within reach, no jump at the exit`,
+          rec.clear > 0.03 && rec.grip < 1.0 && rec.step < 0.02, `blade ${(rec.clear * 100).toFixed(0)} cm up, top hand ${rec.grip.toFixed(2)} m, step ${(rec.step * 1000).toFixed(0)} mm`);
     await goTab("stroke");
     await page.click("#switch-anim"); await settle();
     const off = await page.evaluate(() => [0.3, 5, 9.7, 31].every((t) => window.sim.timeline("a", t).m === 1) &&
