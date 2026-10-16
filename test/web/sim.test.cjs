@@ -234,6 +234,23 @@ console.log("\nCanoe Race Simulator physics");
   const carry = S.race(clean, clean, 0, 150, 150, { sections: [{ len: 200, kind: "portage", section: 0 }] });
   check("sections: a 200 m portage is carried (2 m/s + 30 s)", Math.abs(carry.tA - 130) < 1e-9 && carry.profileA[0].rate === 0);
   const into = (h) => S.race(clean, clean, 0, 150, 150, { windSpeed: 5, windFrom: 0, sections: [{ len: 5000, kind: "pond", heading: h, section: 0 }] }).tA;
+  // Weather hour by hour: each boat meets the hour it reaches each leg in.
+  {
+    const ponds = Array.from({ length: 20 }, (_, i) => ({ len: 2000, kind: "pond", heading: 0, section: i }));
+    const go = (env) => S.race(clean, clean, 0, 150, 150, Object.assign({ sections: ponds }, env));
+    const calm = go({}), still = go({ weather: [{ windSpeed: 0, windFrom: 0, power: 1 }] });
+    check("race: weather: one calm, cool hour is the same as none", Math.abs(still.tA - calm.tA) < 1e-6, `${still.tA} vs ${calm.tA}`);
+    const hot = go({ weather: [{ windSpeed: 0, windFrom: 0, power: 0.95 }] });
+    check("race: weather: the heat takes power, slower", hot.tA > calm.tA && hot.legsA.every((l) => Math.abs(l.watts - 142.5) < 1e-9));
+    // A headwind that comes up in the third hour slows only the legs from then on.
+    const later = go({ weather: [0, 0, 6].map((w) => ({ windSpeed: w, windFrom: 0, power: 1 })) });
+    const firstLate = later.legsA.findIndex((l) => l.hour === 2);
+    check("race: weather: a wind that comes up later slows only what's after it", firstLate > 0 &&
+          later.legsA.slice(0, firstLate).every((l, i) => Math.abs(l.t - calm.legsA[i].t) < 1e-9) &&
+          later.legsA.slice(firstLate).every((l, i) => l.t > calm.legsA[firstLate + i].t) && later.tA > calm.tA,
+          `first late leg ${firstLate}, ${later.tA.toFixed(0)} vs ${calm.tA.toFixed(0)} s`);
+    check("race: weather: the replay follows it", later.profileA.some((g) => g.watts === 150) && Math.abs(later.posA(later.tA) - 40000) < 1);
+  }
   check("sections: the wind turns with the course", Math.abs(into(0) - S.race(clean, clean, 5000, 150, 150, { windSpeed: 5, windAngle: 0 }).tA) < 1e-6 &&
         into(180) < into(90) && into(90) < into(0) && Math.abs(into(90) - into(270)) < 1e-9);
   const mixed = S.race(clean, clean, 0, 150, 150, { sections: [{ len: 3000, kind: "river", current: 0.8, depth: 1.5, width: 30, bendsDegPerKm: 300, section: 0 },
@@ -714,6 +731,22 @@ console.log("\nPaddle fit");
     check(`${tag}: fixed count in a crosswind holds course`, /switching [\d.]+ strokes windward, [\d.]+ lee to hold course, wandering ±[\d.]+°/.test(await text("#c-a")),
           await text("#c-a"));
     await slide("#c-switchStrokes", 0); await settle();
+    // Heat: WBGT from temperature and humidity; power falls 0.2% per °C over 10 °C.
+    await slide("#wind", 0);
+    await slide("#temp", 5); await slide("#humid", 50); await page.waitForTimeout(150);
+    const tCool = secs(await text("#t-a"));
+    check(`${tag}: heat: a cool day costs nothing`, /^Heat index \d+ °C: no loss\.$/.test(await text("#heat-note")) &&
+          (await text("#o-heatLoss")) === "0.20% per °C", await text("#heat-note"));
+    // 30 °C, 70%: e = 29.7 hPa, WBGT = 17.0 + 11.7 + 3.9 = 32.6 °C, 22.6 °C over: 4.5% less power.
+    await slide("#temp", 30); await slide("#humid", 70); await page.waitForTimeout(150);
+    const tHot = secs(await text("#t-a"));
+    check(`${tag}: heat: hot and humid, less power, slower`, /^Heat index 33 °C: 4\.5% less power than on a cool day\.$/.test(await text("#heat-note")) &&
+          tHot > tCool && (await text("#o-effA")) === "150 W", `${await text("#heat-note")} | ${tCool} → ${tHot}`);
+    await slide("#humid", 20); await page.waitForTimeout(150);
+    check(`${tag}: heat: drier is easier`, secs(await text("#t-a")) < tHot, await text("#heat-note"));
+    await slide("#heatLoss", 0); await page.waitForTimeout(150);
+    check(`${tag}: heat: left out`, secs(await text("#t-a")) === tCool && (await text("#o-heatLoss")) === "left out");
+    await slide("#heatLoss", 0.2); await slide("#temp", 10); await slide("#humid", 50); await slide("#wind", 20);
     await slide("#windDir", 0);
     check(`${tag}: headwind readout`, (await text("#o-windDir")) === "dead ahead" && (await text("#c-a")) === "");
     await slide("#wind", 0);
@@ -906,9 +939,44 @@ console.log("\nPaddle fit");
       await page.waitForTimeout(400);
       await page.screenshot({ path: path.join(process.argv[2], `sim-${scheme}.png`), fullPage: true });
     }
+    // Open-Meteo replies (mocked): now, or every hour from start_date to end_date. 60 km/h at 21:00
+    // on 2023-07-29, 5 km/h otherwise; 18 °C, 60%; the course's clock 4 h behind UTC.
+    const meteo = [];
+    const meteoReply = (route) => {
+      const url = new URL(route.request().url()); meteo.push(url.href);
+      const q = (k) => url.searchParams.get(k);
+      let body;
+      if (q("current")) body = { utc_offset_seconds: -14400, current: { time: "2026-10-16T12:00", wind_speed_10m: 25, wind_direction_10m: 222, temperature_2m: 28.4, relative_humidity_2m: 71 } };
+      else {
+        const time = [];
+        for (let t = Date.parse(q("start_date")); t <= Date.parse(q("end_date")) + 23 * 3600e3; t += 3600e3) time.push(new Date(t).toISOString().slice(0, 16));
+        body = { utc_offset_seconds: -14400, hourly: { time, wind_speed_10m: time.map((h) => (h === "2023-07-29T21:00" ? 60 : 5)), wind_direction_10m: time.map(() => 95),
+          temperature_2m: time.map(() => 18), relative_humidity_2m: time.map(() => 60) } };
+      }
+      route.fulfill({ status: 200, contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: JSON.stringify(body) });
+    };
+    const noGauges = (route) => route.fulfill({ status: 200, contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: '{"value":{"timeSeries":[]}}' });
+    await page.route("https://*.open-meteo.com/**", meteoReply);
+    await page.route("https://waterservices.usgs.gov/**", noGauges);
     // Real course: the AuSable preset, sections to edit, a GPX of your own.
     await page.click("#water >> text=AuSable / GPX");
     await page.waitForFunction(() => document.querySelectorAll("#cb-secs tbody tr").length > 10, null, { timeout: 10000 });
+    // It loads with the weather and flow of the 2023 race its track is from, hour by hour from the start.
+    const race = "2023-07-29";
+    await page.waitForFunction(() => /^\d{4} race start/.test(document.getElementById("cb-weather-info").textContent) &&
+      /No USGS gauges/.test(document.getElementById("cb-gauge-info").textContent), null, { timeout: 5000 });
+    check(`${tag}: real course: the AuSable loads with its race-day weather and flow`,
+          (await page.$eval("#cb-weather-time", (e) => e.value)) === `${race}T21:00` &&
+          (await text("#cb-weather-info")).startsWith(`${race.slice(0, 4)} race start, ${race} 21:00: 18 °C, 60% humidity`) &&
+          /The race meets it hour by hour \(48 h\): 18–18 °C, wind 4–48 km\/h at the paddler\.$/.test(await text("#cb-weather-info")) &&
+          (await page.$eval("#wind", (e) => e.value)) === "40" &&
+          /^Hour by hour: heat index \d+–\d+ °C/.test(await text("#heat-note")) &&
+          (await page.$eval("#temp", (e) => e.value)) === "18" && (await page.$eval("#humid", (e) => e.value)) === "60" &&
+          (await page.$eval("#cb-gauge-date", (e) => e.value)) === race,
+          `${await page.$eval("#cb-weather-time", (e) => e.value)} | ${await text("#cb-weather-info")} | ${meteo.slice(-1)}`);
+    await page.unroute("https://*.open-meteo.com/**");
+    await page.unroute("https://waterservices.usgs.gov/**");
+    await page.fill("#cb-weather-time", ""); await page.fill("#cb-gauge-date", "");
     const rows = () => page.$$eval("#cb-secs tbody tr", (r) => r.length);
     check(`${tag}: real course: the AuSable loads in sections`, (await rows()) >= 20 &&
           /^AuSable River Canoe Marathon · 180\.\d km · 6 portages/.test(await text("#cb-info")) && !(await page.isVisible("#dist")), await text("#cb-info"));
@@ -970,6 +1038,38 @@ console.log("\nPaddle fit");
     await page.waitForFunction(() => /Couldn't reach USGS/.test(document.getElementById("cb-gauge-info").textContent));
     check(`${tag}: gauges: no connection says so`, true);
     await page.unroute("https://waterservices.usgs.gov/**");
+    // Wind from Open-Meteo (replies mocked): now, a past hour from the archive, and no connection.
+    await page.route("https://*.open-meteo.com/**", meteoReply);
+    const weatherInfo = () => text("#cb-weather-info");
+    const tCalm = secs(await text("#t-a"));
+    await page.click("#cb-weather");
+    await page.waitForFunction(() => /at the paddler/.test(document.getElementById("cb-weather-info").textContent));
+    await page.waitForTimeout(250);
+    // 25 km/h at 10 m is 20 km/h at the paddler; 222° rounds to 225°, the SW.
+    check(`${tag}: weather: now sets wind, temperature and humidity`, (await page.$eval("#wind", (e) => e.value)) === "20" &&
+          (await page.$eval("#temp", (e) => e.value)) === "28" && (await page.$eval("#humid", (e) => e.value)) === "70" &&
+          (await page.$eval("#windDir", (e) => e.value)) === "225" && (await text("#o-windDir")) === "SW" &&
+          /^Now: 28 °C, 71% humidity; wind 25 km\/h from the SW at 10 m, 20 km\/h at the paddler\.$/.test(await weatherInfo()) &&
+          meteo.some((u) => u.startsWith("https://api.open-meteo.com/v1/forecast") && /latitude=4\d\.\d{4}/.test(u)) &&
+          secs(await text("#t-a")) !== tCalm, `${await weatherInfo()} | ${meteo.slice(-1)}`);
+    await page.fill("#cb-weather-time", "2023-07-29T21:00");
+    await page.click("#cb-weather");
+    await page.waitForFunction(() => /^2023/.test(document.getElementById("cb-weather-info").textContent));
+    check(`${tag}: weather: a past hour comes from the archive`, (await page.$eval("#wind", (e) => e.value)) === "40" &&
+          (await page.$eval("#windDir", (e) => e.value)) === "90" && (await page.$eval("#temp", (e) => e.value)) === "18" &&
+          /hour by hour \(48 h\): 18–18 °C, wind 4–48 km\/h at the paddler\.$/.test(await weatherInfo()) &&
+          meteo.some((u) => u.startsWith("https://archive-api.open-meteo.com/v1/archive") && u.includes("start_date=2023-07-28") && u.includes("end_date=2023-07-31")),
+          `${await weatherInfo()} | ${meteo.slice(-1)}`);
+    await slide("#wind", 0); await page.waitForTimeout(150);
+    check(`${tag}: weather: moving the wind takes it off the weather`, (await weatherInfo()) === "Weather is set by hand." &&
+          /^Heat index/.test(await text("#heat-note")));
+    await page.unroute("https://*.open-meteo.com/**");
+    await page.route("https://*.open-meteo.com/**", (route) => route.abort());
+    await page.fill("#cb-weather-time", "");
+    await page.click("#cb-weather");
+    await page.waitForFunction(() => /Couldn't get the weather/.test(document.getElementById("cb-weather-info").textContent));
+    check(`${tag}: weather: no connection says so`, (await page.$eval("#wind", (e) => e.value)) === "0");
+    await page.unroute("https://*.open-meteo.com/**");
     // An AuSable gauge the course knows: current scales from its race-week median as (Q/median)^0.55.
     for (const [cfs, want, label] of [[788, "2.7", "Average"], [1576, "4.0", "Whoa"]]) {
       await page.route("https://waterservices.usgs.gov/**", (route) => route.fulfill({ status: 200, contentType: "application/json",
@@ -985,14 +1085,28 @@ console.log("\nPaddle fit");
       await page.unroute("https://waterservices.usgs.gov/**");
     }
     // Your own GPX: a 3 km straight with a dam halfway.
-    const trk = Array.from({ length: 61 }, (_, i) => `<trkpt lat="44.0" lon="${(-84 + (i / 60) * 0.03745).toFixed(6)}"></trkpt>`).join("");
-    const gpx = `<?xml version="1.0"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><wpt lat="44.0003" lon="-83.98127"><name>TEST DAM</name></wpt>` +
+    const trk = Array.from({ length: 61 }, (_, i) => `<trkpt lat="44.0" lon="${(-84 + (i / 60) * 0.03745).toFixed(6)}">` +
+      `<time>${new Date(Date.parse("2023-07-30T01:00:00Z") + i * 60e3).toISOString()}</time></trkpt>`).join("");
+    await page.route("https://*.open-meteo.com/**", meteoReply);
+    await page.route("https://waterservices.usgs.gov/**", noGauges);
+    // Saved months later (its metadata time); the race's own time is on the track.
+    const gpx = `<?xml version="1.0"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><metadata><time>2024-01-05T12:00:00Z</time></metadata><wpt lat="44.0003" lon="-83.98127"><name>TEST DAM</name></wpt>` +
       `<wpt lat="44.0" lon="-83.99"><name>FEED: Test Dam</name></wpt><trk><name>t</name><trkseg>${trk}</trkseg></trk></gpx>`;
     await page.setInputFiles("#cb-file", { name: "mine.gpx", mimeType: "application/gpx+xml", buffer: Buffer.from(gpx) });
     await page.waitForFunction(() => /^mine\.gpx/.test(document.getElementById("cb-info").textContent), null, { timeout: 5000 });
     check(`${tag}: real course: import a GPX`, /^mine\.gpx · 3\.0 km · 1 portage from waypoints$/.test(await text("#cb-info")) &&
           JSON.stringify(await page.$$eval("#cb-secs tbody tr td:nth-child(3)", (ts) => ts.map((t) => t.textContent))) ===
           '["River to Test Dam","Test Dam portage","River to the finish"]', await text("#cb-info"));
+    // Recorded 01:00 UTC on the 30th: 21:00 on the 29th there, the hour of the 60 km/h wind.
+    await page.waitForFunction(() => /^Race start from the file/.test(document.getElementById("cb-weather-info").textContent) &&
+      /No USGS gauges/.test(document.getElementById("cb-gauge-info").textContent), null, { timeout: 5000 });
+    check(`${tag}: real course: a GPX loads with the weather from its race start, not when it was saved`,
+          (await page.$eval("#cb-weather-time", (e) => e.value)) === "2023-07-29T21:00" && (await page.$eval("#wind", (e) => e.value)) === "40" &&
+          /^Race start from the file, 2023-07-29 21:00: 18 °C/.test(await text("#cb-weather-info")) &&
+          (await page.$eval("#cb-gauge-date", (e) => e.value)) === "2023-07-29", await text("#cb-weather-info"));
+    await page.unroute("https://*.open-meteo.com/**");
+    await page.unroute("https://waterservices.usgs.gov/**");
+    await slide("#wind", 0); await slide("#windDir", 0); await slide("#temp", 10); await slide("#humid", 50);
     await page.setInputFiles("#cb-file", { name: "nope.gpx", mimeType: "text/plain", buffer: Buffer.from("hello") });
     await page.waitForFunction(() => /nope\.gpx/.test(document.getElementById("cb-info").textContent), null, { timeout: 5000 });
     check(`${tag}: real course: a bad file says so`, /^Couldn't read nope\.gpx: /.test(await text("#cb-info")), await text("#cb-info"));
@@ -1049,7 +1163,7 @@ console.log("\nPaddle fit");
     await scoreReady();
     const heads = await page.$$eval("#score-heads .big", (bs) => bs.map((b) => b.textContent));
     check(`${tag}: race score: the race's own times`, heads[0] === (await text("#t-a")) && heads[1] === (await text("#t-b")) &&
-          /^\d+(\.\d)? km (open water|river).*, (\d+ W|A \d+ W, B \d+ W)\.$/.test(await text("#score-status")) &&
+          /^\d+(\.\d)? km (open water|river).*, (\d+ W|A \d+ W, B \d+ W)(, [\d.]+% lost to heat)?\.$/.test(await text("#score-status")) &&
           /Blade slip/.test(await text("#score-bars")) && (await page.$$eval("h2", (hs) => hs.map((h) => h.textContent))).some((h) => h.startsWith("Boat A vs Boat B")),
           `${heads} | ${await text("#score-status")}`);
     // Boat score for both boats; body settings show what they do.
