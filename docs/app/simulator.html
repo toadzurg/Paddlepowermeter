@@ -2485,6 +2485,13 @@ function drawScore() {
 }
 // Side-on and end-on pictures of the C1 at s px/m, waterline at y = wl.
 const sideP = (cx, wl, s) => (q) => [cx + q[0] * s, wl - q[2] * s];
+// The paddle as the hull views draw it, in the paddler's hands: shaft, and
+// the blade (faded out of the water). P: the view's projection.
+function paddleHV(P, x, ph) {
+  const st = stateAt(results[x], ph), gp = P(st.P.at(0)), th = P(st.B.throat), tp = P(st.B.tip);
+  return `<line class="paddle-hv" stroke="${COL[x]}" stroke-width="3" x1="${gp[0]}" y1="${gp[1]}" x2="${th[0]}" y2="${th[1]}"/>` +
+    `<line stroke="${COL[x]}" stroke-width="7" stroke-linecap="round" opacity="${st.inDrive ? 1 : 0.5}" x1="${th[0]}" y1="${th[1]}" x2="${tp[0]}" y2="${tp[1]}"/>`;
+}
 const panesIn = (id) => [...document.querySelectorAll(`#${id} svg`)].map((svg) => ({ svg, bs: svg.dataset.boats.split("") }));
 // The drawings that move with the stroke views.
 function drawHullLive(ph) {
@@ -2518,8 +2525,8 @@ function drawHullLive(ph) {
     svg.setAttribute("viewBox", `0 0 ${W_HV} ${H}`);
     let g = hullDefs + `<rect class="water" x="0" y="${wlB}" width="${W_HV}" height="${H - wlB}"/><line class="wl" x1="0" x2="${W_HV}" y1="${wlB}" y2="${wlB}"/>`;
     bs.forEach((x, k) => {
-      const [c, i] = at(x), y = wlB - c.heave[i] * 50 * s;
-      g += `<path class="hull boat-${x}" d="${hullPath("side", sideP(180, y, s))}"/>`;
+      const [c, i] = at(x), y = wlB - c.heave[i] * 50 * s, P = sideP(180, y, s), two = bs.length > 1 && !sameBoats();
+      g += `<path class="hull boat-${x}" d="${hullPath("side", P)}"/>` + (k === 0 || two ? paddlerFig(P, x, ph, two) + paddleHV(P, x, ph) : "");
       if (c.up[i] > 2) g += `<line x1="${170 + k * 20}" x2="${170 + k * 20}" y1="${y + 8 + Math.min(30, c.up[i] * 0.35)}" y2="${y + 8}" stroke="${COL[x]}" stroke-width="4" marker-end="url(#ha-${x})"/>`;
       g += `<text x="8" y="${16 + k * 15}"><tspan class="strong" style="fill:${COL[x]}">${x.toUpperCase()}</tspan> ${c.heave[i] >= 0 ? "up" : "down"} ${fmtNum(Math.abs(c.heave[i]) * 1000, 1)} mm</text>`;
     });
@@ -2534,7 +2541,7 @@ function drawHullLive(ph) {
     bs.forEach((x, k) => {
       const [c, i] = at(x), deg = c.pitch[i] * 180 / Math.PI;
       g += `<g transform="rotate(${(-deg * 20).toFixed(2)} ${cx} ${wl})"><path class="hull boat-${x}" d="${hullPath("side", sideP(cx, wl, ps))}"/>` +
-        (k === 0 || !sameBoats() ? paddlerFig(sideP(cx, wl, ps), x, ph, bs.length > 1 && !sameBoats()) : "") + `</g>`;
+        (k === 0 || !sameBoats() ? paddlerFig(sideP(cx, wl, ps), x, ph, bs.length > 1 && !sameBoats()) + paddleHV(sideP(cx, wl, ps), x, ph) : "") + `</g>`;
       g += `<text x="8" y="${16 + k * 15}"><tspan class="strong" style="fill:${COL[x]}">${x.toUpperCase()}</tspan> bow ${c.pitch[i] >= 0 ? "up" : "down"} ${fmtNum(Math.abs(c.pitch[i]) * 2.8 * 1000, 1)} mm</text>`;
     });
     g += `<text x="${W_HV - 8}" y="16" text-anchor="end">tilt ×20</text>`;
@@ -2549,13 +2556,9 @@ function drawHullLive(ph) {
     const two = bs.length > 1 && !sameBoats();
     bs.slice().reverse().forEach((x) => {
       const k = bs.indexOf(x), [c, i] = at(x), deg = (c.heel[i] * 180) / Math.PI * 3;
-      // The paddle, in the paddler's hands.
-      const st = stateAt(results[x], ph), gp = P(st.P.at(0)), th = P(st.B.throat), tp = P(st.B.tip);
-      const paddle = `<line class="paddle-hv" stroke="${COL[x]}" stroke-width="3" x1="${gp[0]}" y1="${gp[1]}" x2="${th[0]}" y2="${th[1]}"/>` +
-        `<line stroke="${COL[x]}" stroke-width="7" stroke-linecap="round" opacity="${st.inDrive ? 1 : 0.5}" x1="${th[0]}" y1="${th[1]}" x2="${tp[0]}" y2="${tp[1]}"/>`;
       // + heel puts the paddle side (right, from behind) down: clockwise on the page.
       g += `<g transform="rotate(${deg.toFixed(2)} ${cx} ${wl})"${two && x === "b" ? ` opacity="0.8"` : ""}><path class="hull boat-${x}" d="${hullPath("end", P)}"/>` +
-        (k === 0 || two ? paddlerFig(P, x, ph, two) + paddle : "") + `</g>`;
+        (k === 0 || two ? paddlerFig(P, x, ph, two) + paddleHV(P, x, ph) : "") + `</g>`;
       // The blade's lift, in clear water to the right of the blade.
       if (c.up[i] > 2) g += `<line x1="${cx + 152 + k * 14}" x2="${cx + 152 + k * 14}" y1="${wl + 34}" y2="${wl + 34 - Math.min(28, 8 + c.up[i] * 0.6)}" stroke="${COL[x]}" stroke-width="4" marker-end="url(#ha-${x})"/>`;
       const d = c.heel[i] * 180 / Math.PI;
