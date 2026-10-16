@@ -6,6 +6,11 @@ dynamically, and broadcasts power and stroke rate over the standard Bluetooth
 Cycling Power profile, so a bike computer or training app can pair with it
 like a cycling power meter.
 
+**How it fits together:** [the project map](https://toadzurg.github.io/Paddlepowermeter/architecture.html)
+(`docs/architecture.html`) draws the whole system, how power is computed, the
+web app and the simulator's physics engine, with charts of where the power
+goes and how big each part of the code is.
+
 ## Hardware
 
 | Part | Role | I²C address |
@@ -332,6 +337,7 @@ tools/log2csv.py         log → CSV
 tools/replay/            re-run the power model over a log
 docs/app/index.html      web app (Bluetooth dashboard and setup)
 docs/app/simulator.html  canoe race simulator (physics in stroke-sim.js)
+docs/architecture.html   project map: system, front end, physics engine
 docs/BENCH_TEST.md       hardware bench test checklist
 test/host/               PC simulation tests
 test/web/                browser test of the web app (simulated paddle)

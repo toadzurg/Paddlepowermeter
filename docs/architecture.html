@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Paddle Power Meter Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: one reading column of prose, each part of the system as a figure
+     that may run wider; diagrams in currentColor, the app's own A-blue and
+     category colours only where a mark carries meaning. */
+  :root {
+    --bg: #f5f6f4; --panel: #ffffff; --fg: #16201f; --muted: #5a6664; --line: #cfd6d3; --soft: #e8ecea;
+    --water: #2a6f97; --a: #2a78d6; --b: #e0622e; --useful: #1b9e72; --slip: #8a5cc9; --switch: #b49ae3; --side: #c08a12; --other: #8d9491;
+    --f-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+    --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --f-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #111615; --panel: #182020; --fg: #e6ecea; --muted: #9aa6a3; --line: #2e3a38; --soft: #1f2928;
+      --water: #5aa7d4; --a: #4b93ea; --b: #ee7a48; --useful: #2bb586; --slip: #a07ae0; --switch: #6f5a99; --side: #d8a33a; --other: #6f7774;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #111615; --panel: #182020; --fg: #e6ecea; --muted: #9aa6a3; --line: #2e3a38; --soft: #1f2928;
+    --water: #5aa7d4; --a: #4b93ea; --b: #ee7a48; --useful: #2bb586; --slip: #a07ae0; --switch: #6f5a99; --side: #d8a33a; --other: #6f7774;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--fg); font: 16px/1.6 var(--f-body); }
+  main { max-width: 1040px; margin: 0 auto; padding-block: 28px 72px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  header { max-width: 68ch; display: grid; gap: 10px; margin-bottom: 28px; }
+  .eyebrow { font: 500 12px/1 var(--f-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  h1 { font: 600 clamp(30px, 5vw, 44px)/1.08 var(--f-display); margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+  h2 { font: 600 26px/1.15 var(--f-display); margin: 0; text-wrap: balance; }
+  h3 { font: 600 13px/1.3 var(--f-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 18px 0 6px; }
+  p { margin: 0; max-width: 68ch; }
+  .lede { font-size: 18px; color: var(--muted); }
+  code, .mono { font-family: var(--f-mono); font-size: 0.9em; }
+  section { display: grid; gap: 14px; padding-block: 34px; border-top: 1px solid var(--line); }
+  section > .sec-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .sec-head .where { font: 400 13px var(--f-mono); color: var(--muted); }
+  figure { margin: 6px 0 0; display: grid; gap: 10px; }
+  .frame { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; overflow-x: auto; }
+  .frame svg { display: block; width: 100%; height: auto; min-width: 680px; color: var(--fg); }
+  .frame svg.narrow { min-width: 0; }
+  figcaption { font-size: 14px; color: var(--muted); max-width: 72ch; }
+  svg text { font-family: var(--f-body); fill: currentColor; }
+  svg .t-sm { font-size: 11.5px; } svg .t-md { font-size: 13px; } svg .t-lg { font-size: 15px; font-weight: 600; }
+  svg .t-mono { font-family: var(--f-mono); font-size: 11.5px; }
+  svg .mute { fill: var(--muted); }
+  svg .box { fill: var(--panel); stroke: currentColor; stroke-width: 1.3; }
+  svg .zone { fill: var(--soft); stroke: var(--line); stroke-width: 1; }
+  svg .wire { fill: none; stroke: currentColor; stroke-width: 1.4; }
+  svg .wire.dash { stroke-dasharray: 5 4; }
+  svg .accent { stroke: var(--a); } svg .accent-fill { fill: var(--a); }
+  .grid2 { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 10px 7px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font: 600 12px var(--f-mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; font-family: var(--f-mono); }
+  .table-wrap { overflow-x: auto; }
+  .key { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); }
+  .key i { display: inline-block; width: 11px; height: 11px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+  ul.tight { margin: 0; padding-left: 20px; display: grid; gap: 4px; max-width: 70ch; }
+</style>
+</head>
+<body>
+
+<main>
+  <header>
+    <span class="eyebrow">toadzurg / Paddlepowermeter · main</span>
+    <h1>Paddle Power Meter Map</h1>
+    <p class="lede">A canoe paddle that measures its own power, a phone app that shows it live, and a race simulator that models the stroke, the boat and the course. This is how the pieces fit, drawn from the code as it is on <span class="mono">main</span>.</p>
+  </header>
+
+  <!-- ------------------------------------------------------------ system -->
+  <section>
+    <div class="sec-head"><h2>The whole system</h2></div>
+    <p>There is no server. The "back end" is firmware on two ESP32 boards: one inside the paddle, one on the hull reading the speed impeller. Everything else, the live app and the simulator with its physics engine, is static web pages that run in your browser.</p>
+    <figure>
+      <div class="frame">
+        <svg viewBox="0 0 980 470" role="img" aria-label="Sensors feed the paddle ESP32, which sends power over Bluetooth to a bike computer and the web app, logs to an SD card for the PC tools, and takes boat speed from the boat node over ESP-NOW.">
+          <defs><marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+          <!-- sensors -->
+          <text class="t-sm mute" x="20" y="22">ON THE SHAFT</text>
+          <rect class="box" x="20" y="34" width="190" height="50" rx="6"/><text class="t-md" x="34" y="56">Strain gauge</text><text class="t-mono mute" x="34" y="73">NAU7802 · blade force</text>
+          <rect class="box" x="20" y="98" width="190" height="50" rx="6"/><text class="t-md" x="34" y="120">IMU 1, top of shaft</text><text class="t-mono mute" x="34" y="137">BMI270 · gyro + accel</text>
+          <rect class="box" x="20" y="162" width="190" height="50" rx="6"/><text class="t-md" x="34" y="184">IMU 2, lower</text><text class="t-mono mute" x="34" y="201">BMI270 · gyro + accel</text>
+          <rect class="box" x="20" y="226" width="190" height="50" rx="6"/><text class="t-md" x="34" y="248">Battery gauge</text><text class="t-mono mute" x="34" y="265">MAX17048</text>
+          <!-- boat node -->
+          <text class="t-sm mute" x="20" y="332">ON THE HULL (OPTIONAL)</text>
+          <rect class="box" x="20" y="344" width="190" height="64" rx="6"/><text class="t-md" x="34" y="366">Boat node ESP32</text><text class="t-mono mute" x="34" y="383">impeller · Hall switch</text><text class="t-mono mute" x="34" y="399">src/boat/BoatNode.cpp</text>
+          <!-- firmware -->
+          <rect class="zone" x="270" y="20" width="300" height="420" rx="10"/>
+          <text class="t-lg" x="290" y="46">Paddle ESP32 firmware</text><text class="t-mono mute" x="290" y="64">src/ · C++ · PlatformIO</text>
+          <g class="t-md">
+            <rect class="box" x="290" y="80" width="260" height="34" rx="5"/><text x="302" y="102">Scale · force in newtons</text>
+            <rect class="box" x="290" y="122" width="260" height="34" rx="5"/><text x="302" y="144">IMU · both chips, axis maps</text>
+            <rect class="box" x="290" y="164" width="260" height="34" rx="5"/><text x="302" y="186">Kalman · shaft rate, pivot</text>
+            <rect class="box" x="290" y="206" width="260" height="34" rx="5"/><text x="302" y="228">Orientation · Madgwick</text>
+            <rect class="box accent" x="290" y="248" width="260" height="40" rx="5" style="stroke-width:2"/><text x="302" y="273" style="font-weight:600">PowerModel · P = F · ω · L</text>
+            <rect class="box" x="290" y="296" width="125" height="34" rx="5"/><text x="302" y="318">BLEManager</text>
+            <rect class="box" x="425" y="296" width="125" height="34" rx="5"/><text x="437" y="318">Logger · SD</text>
+            <rect class="box" x="290" y="338" width="260" height="34" rx="5"/><text x="302" y="360">BoatLink · boat speed in</text>
+          </g>
+          <text class="t-mono mute" x="290" y="400">PaddlePowerMeter.ino runs the loop:</text><text class="t-mono mute" x="290" y="416">read, filter, score each stroke, send</text>
+          <!-- sensor wires -->
+          <path class="wire" d="M210 59 H250 V97 H288" marker-end="url(#a1)"/>
+          <path class="wire" d="M210 123 H250 V139 H288" marker-end="url(#a1)"/>
+          <path class="wire" d="M210 187 H250 V139"/>
+          <path class="wire" d="M210 251 H240 V313 H288" marker-end="url(#a1)"/>
+          <path class="wire dash" d="M210 376 H250 V355 H288" marker-end="url(#a1)"/>
+          <text class="t-sm" x="218" y="430">ESP-NOW · 20 Hz</text>
+          <!-- outputs -->
+          <rect class="box" x="660" y="34" width="300" height="56" rx="6"/><text class="t-md" x="674" y="57">Bike computer or training app</text><text class="t-mono mute" x="674" y="75">standard Cycling Power profile</text>
+          <rect class="box accent" x="660" y="118" width="300" height="86" rx="6" style="stroke-width:2"/><text class="t-md" x="674" y="141" style="font-weight:600">Web app, in your browser</text>
+          <text class="t-mono mute" x="674" y="160">live 20 Hz · stroke packets</text><text class="t-mono mute" x="674" y="176">commands and replies</text><text class="t-mono mute" x="674" y="192">docs/app/index.html</text>
+          <rect class="box" x="660" y="250" width="300" height="56" rx="6"/><text class="t-md" x="674" y="273">microSD card</text><text class="t-mono mute" x="674" y="291">binary log: every raw sample</text>
+          <rect class="box" x="660" y="340" width="300" height="70" rx="6"/><text class="t-md" x="674" y="363">PC tools</text><text class="t-mono mute" x="674" y="381">log2csv.py · CSV</text><text class="t-mono mute" x="674" y="397">replay · re-run the firmware maths</text>
+          <path class="wire" d="M550 313 H600 V62 H658" marker-end="url(#a1)"/><text class="t-sm" x="604" y="54">Bluetooth</text>
+          <path class="wire" d="M600 161 H658" marker-end="url(#a1)"/>
+          <path class="wire dash" d="M658 182 H620 V330 H552" marker-end="url(#a1)"/><text class="t-sm" x="604" y="232">tare, cal,</text><text class="t-sm" x="604" y="246">pair, log</text>
+          <path class="wire" d="M550 313 H560 V278 H658" marker-end="url(#a1)"/>
+          <path class="wire" d="M810 306 V338" marker-end="url(#a1)"/><text class="t-sm" x="818" y="326">copied off</text>
+        </svg>
+      </div>
+      <figcaption>Solid arrows carry data, dashed ones control or the optional boat link. The web app and a bike computer can both be connected at once (up to three devices).</figcaption>
+    </figure>
+  </section>
+
+  <!-- --------------------------------------------------------- firmware -->
+  <section>
+    <div class="sec-head"><h2>How the paddle gets power</h2><span class="where">src/PowerModel · Kalman · Orientation</span></div>
+    <p>Power is force times speed. The strain gauge gives the force at the blade. The two gyros give how fast the shaft turns. The missing piece is the lever: how far the blade is from the point the shaft turns about (near your top hand), which moves as you paddle. The firmware estimates it live from the difference between the two accelerometers.</p>
+    <figure>
+      <div class="frame">
+        <svg viewBox="0 0 980 300" role="img" aria-label="Force, shaft rate and lever arm combine into power; the shaft angle splits it into forward impulse and, with boat speed, useful and slip power.">
+          <defs><marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+          <g class="t-md">
+            <rect class="box" x="20" y="24" width="180" height="44" rx="6"/><text x="34" y="51">Strain gauge</text>
+            <rect class="box" x="20" y="92" width="180" height="44" rx="6"/><text x="34" y="119">Both gyros</text>
+            <rect class="box" x="20" y="160" width="180" height="44" rx="6"/><text x="34" y="187">Accel difference</text>
+            <rect class="box" x="20" y="228" width="180" height="44" rx="6"/><text x="34" y="255">Gyro + accel</text>
+            <rect class="box" x="250" y="24" width="200" height="44" rx="6"/><text x="264" y="44">F</text><text class="t-sm mute" x="264" y="60">force at the blade centre</text>
+            <rect class="box" x="250" y="92" width="200" height="44" rx="6"/><text x="264" y="112">ω, α · RateKalman</text><text class="t-sm mute" x="264" y="128">shaft rate, no noisy derivative</text>
+            <rect class="box" x="250" y="160" width="200" height="44" rx="6"/><text x="264" y="180">pivot p · Kalman1D</text><text class="t-sm mute" x="264" y="196">L = d + (throat − p) · cos β</text>
+            <rect class="box" x="250" y="228" width="200" height="44" rx="6"/><text x="264" y="248">θ · Madgwick</text><text class="t-sm mute" x="264" y="264">shaft angle; forward share</text>
+          </g>
+          <path class="wire" d="M200 46 H248" marker-end="url(#a2)"/><path class="wire" d="M200 114 H248" marker-end="url(#a2)"/>
+          <path class="wire" d="M200 182 H248" marker-end="url(#a2)"/><path class="wire" d="M200 250 H248" marker-end="url(#a2)"/>
+          <rect class="box accent" x="510" y="78" width="170" height="74" rx="8" style="stroke-width:2"/>
+          <text class="t-lg" x="595" y="110" text-anchor="middle">P = F · ω · L</text><text class="t-sm mute" x="595" y="132" text-anchor="middle">every sample</text>
+          <path class="wire" d="M450 46 H480 V100 H508" marker-end="url(#a2)"/><path class="wire" d="M450 114 H508" marker-end="url(#a2)"/><path class="wire" d="M450 182 H480 V128 H508" marker-end="url(#a2)"/>
+          <g class="t-md">
+            <rect class="box" x="740" y="24" width="220" height="56" rx="6"/><text x="754" y="46">Stroke power</text><text class="t-sm mute" x="754" y="64">∫P dt over the drive ÷ stroke time</text>
+            <rect class="box" x="740" y="108" width="220" height="56" rx="6"/><text x="754" y="130">Forward impulse</text><text class="t-sm mute" x="754" y="148">∫F · cos(θ − β) dt</text>
+            <rect class="box" x="740" y="192" width="220" height="80" rx="6"/><text x="754" y="214">Useful vs slip</text><text class="t-sm mute" x="754" y="232">useful = F · cos(θ − β) · v_boat</text><text class="t-sm mute" x="754" y="248">slip = total − useful</text><text class="t-sm mute" x="754" y="264">needs the impeller</text>
+          </g>
+          <path class="wire" d="M680 100 H710 V52 H738" marker-end="url(#a2)"/>
+          <path class="wire" d="M450 250 H710 V136 H738" marker-end="url(#a2)"/>
+          <path class="wire" d="M710 232 H738" marker-end="url(#a2)"/><path class="wire" d="M680 132 H700 V232 H710"/>
+        </svg>
+      </div>
+      <figcaption>β is the bent shaft's angle (12° by default): the blade, not the shaft, sets which way the force pushes. Each finished stroke goes out as one 19-byte packet; live values go out 20 times a second.</figcaption>
+    </figure>
+  </section>
+
+  <!-- --------------------------------------------------------- front end -->
+  <section>
+    <div class="sec-head"><h2>The front end</h2><span class="where">docs/app/</span></div>
+    <p>Two pages and two scripts, all static. The app talks to the paddle with Web Bluetooth. The simulator never touches the paddle: it runs the physics engine in the page and keeps each boat's settings in your browser.</p>
+    <figure>
+      <div class="frame">
+        <svg viewBox="0 0 980 330" role="img" aria-label="The app page talks to the paddle over Web Bluetooth and links to the simulator page, which runs the physics engine and fit search, saves settings in the browser, and reads river gauges and GPX files.">
+          <defs><marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+          <rect class="zone" x="150" y="16" width="670" height="300" rx="10"/><text class="t-sm mute" x="168" y="38">YOUR BROWSER</text>
+          <!-- app -->
+          <rect class="box" x="170" y="54" width="250" height="112" rx="8"/><text class="t-lg" x="186" y="80">Paddle Power app</text><text class="t-mono mute" x="186" y="98">index.html</text>
+          <text class="t-sm" x="186" y="120">Paddle tab: power, rate, force curve</text><text class="t-sm" x="186" y="137">Setup tab: tare, calibrate, pair</text><text class="t-sm" x="186" y="154">Demo: simulated strokes</text>
+          <!-- simulator -->
+          <rect class="box accent" x="520" y="54" width="280" height="112" rx="8" style="stroke-width:2"/><text class="t-lg" x="536" y="80">Canoe Race Simulator</text><text class="t-mono mute" x="536" y="98">simulator.html</text>
+          <g class="t-sm"><rect class="box" x="536" y="112" width="58" height="26" rx="13"/><text x="565" y="129" text-anchor="middle">Stroke</text>
+            <rect class="box" x="600" y="112" width="52" height="26" rx="13"/><text x="626" y="129" text-anchor="middle">Boat</text>
+            <rect class="box" x="658" y="112" width="40" height="26" rx="13"/><text x="678" y="129" text-anchor="middle">Fit</text>
+            <rect class="box" x="704" y="112" width="52" height="26" rx="13"/><text x="730" y="129" text-anchor="middle">Race</text></g>
+          <text class="t-sm mute" x="536" y="157">Boat A vs Boat B, side by side</text>
+          <path class="wire" d="M420 110 H518" marker-end="url(#a3)"/><text class="t-sm" x="436" y="102">link</text>
+          <!-- scripts -->
+          <rect class="box" x="520" y="200" width="134" height="56" rx="6"/><text class="t-md" x="534" y="222">Physics engine</text><text class="t-mono mute" x="534" y="240">stroke-sim.js</text>
+          <rect class="box" x="666" y="200" width="134" height="56" rx="6"/><text class="t-md" x="680" y="222">Fit search</text><text class="t-mono mute" x="680" y="240">fit-sim.js</text>
+          <path class="wire" d="M587 166 V198" marker-end="url(#a3)"/><path class="wire" d="M733 166 V198" marker-end="url(#a3)"/>
+          <path class="wire" d="M666 228 H656" marker-end="url(#a3)"/><text class="t-sm" x="600" y="276">fit search runs the engine</text>
+          <rect class="box" x="170" y="200" width="250" height="56" rx="6"/><text class="t-md" x="186" y="222">Browser storage</text><text class="t-mono mute" x="186" y="240">each boat's settings, profiles</text>
+          <path class="wire dash" d="M518 150 H470 V228 H422" marker-end="url(#a3)"/><text class="t-sm" x="430" y="196">remembers</text>
+          <!-- outside -->
+          <rect class="box" x="20" y="88" width="110" height="44" rx="6"/><text class="t-md" x="34" y="115">The paddle</text>
+          <path class="wire" d="M132 110 H168" marker-end="url(#a3)" marker-start="url(#a3)"/><text class="t-sm" x="18" y="152">Web Bluetooth</text>
+          <rect class="box" x="850" y="64" width="112" height="44" rx="6"/><text class="t-md" x="864" y="91">USGS gauges</text>
+          <rect class="box" x="850" y="124" width="112" height="44" rx="6"/><text class="t-md" x="864" y="151">GPX file</text>
+          <path class="wire" d="M848 86 H802" marker-end="url(#a3)"/><text class="t-sm" x="826" y="58">river current</text>
+          <path class="wire" d="M848 146 H802" marker-end="url(#a3)"/><text class="t-sm" x="850" y="186">your course</text>
+        </svg>
+      </div>
+      <figcaption>Both scripts work in Node too, which is how the tests run the physics without a browser. The page loads each one with a hash of the file in its URL, so a changed engine is never served stale from the cache.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ----------------------------------------------------------- engine -->
+  <section>
+    <div class="sec-head"><h2>The physics engine</h2><span class="where">stroke-sim.js · fit-sim.js</span></div>
+    <p>A quasi-static model for comparing strokes: it steps the paddle through one drive, works out the water's force on the blade at each moment, then finds the boat speed at which your power is used up. Losses come off in a fixed order, and the body and its strength sit to one side, setting how much power you can hold.</p>
+    <figure>
+      <div class="frame">
+        <svg viewBox="0 0 980 640" role="img" aria-label="Settings feed the stroke's kinematics and blade forces; a speed solve gives boat speed, then losses, switching and the hull's motion; the race runs over the course. The body fit sets strength and gearing, which set the power you can hold. The fit search wraps the whole engine.">
+          <defs><marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+          <!-- inputs -->
+          <text class="t-sm mute" x="20" y="24">SETTINGS</text>
+          <g class="t-sm">
+            <rect class="box" x="20" y="34" width="170" height="40" rx="5"/><text x="32" y="51">Stroke shape</text><text class="mute" x="32" y="66">reach, exit, lean, sweep</text>
+            <rect class="box" x="20" y="82" width="170" height="40" rx="5"/><text x="32" y="99">Paddle</text><text class="mute" x="32" y="114">length, blade, bend</text>
+            <rect class="box" x="20" y="130" width="170" height="40" rx="5"/><text x="32" y="147">Technique</text><text class="mute" x="32" y="162">rate, drive share, hands</text>
+            <rect class="box" x="20" y="178" width="170" height="40" rx="5"/><text x="32" y="195">Paddler profile</text><text class="mute" x="32" y="210">body, fitness, strength</text>
+            <rect class="box" x="20" y="226" width="170" height="40" rx="5"/><text x="32" y="243">Boat and seat</text><text class="mute" x="32" y="258">mass, seat height</text>
+            <rect class="box" x="20" y="274" width="170" height="40" rx="5"/><text x="32" y="291">Switching</text><text class="mute" x="32" y="306">heading limit, 1 s lost</text>
+            <rect class="box" x="20" y="322" width="170" height="40" rx="5"/><text x="32" y="339">Course</text><text class="mute" x="32" y="354">wind, current, depth, river</text>
+          </g>
+          <!-- main column -->
+          <g class="t-md">
+            <rect class="box" x="260" y="34" width="300" height="56" rx="6"/><text x="276" y="56" style="font-weight:600">1 · Stroke kinematics</text><text class="t-sm mute" x="276" y="74">pose(u): shaft direction, pivot, throat at the water</text>
+            <rect class="box" x="260" y="110" width="300" height="56" rx="6"/><text x="276" y="132" style="font-weight:600">2 · Blade forces through the drive</text><text class="t-sm mute" x="276" y="150">drag + lift on the blade, 240 steps</text>
+            <rect class="box accent" x="260" y="186" width="300" height="56" rx="6" style="stroke-width:2"/><text x="276" y="208" style="font-weight:600">3 · Speed solve</text><text class="t-sm mute" x="276" y="226">boat speed where your power is all used</text>
+            <rect class="box" x="260" y="262" width="300" height="72" rx="6"/><text x="276" y="284" style="font-weight:600">4 · Losses at your effort</text><text class="t-sm mute" x="276" y="302">slip, sideways drag, surge, bob, pitch</text><text class="t-sm mute" x="276" y="318">switching sides, the zigzag</text>
+            <rect class="box" x="260" y="354" width="300" height="56" rx="6"/><text x="276" y="376" style="font-weight:600">5 · The hull through a stroke</text><text class="t-sm mute" x="276" y="394">surge, heave, roll (GM), pitch, heading</text>
+            <rect class="box" x="260" y="430" width="300" height="72" rx="6"/><text x="276" y="452" style="font-weight:600">6 · Race</text><text class="t-sm mute" x="276" y="470">legs, river bends and lines, wind,</text><text class="t-sm mute" x="276" y="486">current, shallow water, portages</text>
+            <rect class="box" x="260" y="522" width="300" height="56" rx="6"/><text x="276" y="544" style="font-weight:600">7 · Replay</text><text class="t-sm mute" x="276" y="562">the course piece by piece, for the views</text>
+          </g>
+          <path class="wire" d="M410 90 V108" marker-end="url(#a4)"/><path class="wire" d="M410 166 V184" marker-end="url(#a4)"/>
+          <path class="wire" d="M410 242 V260" marker-end="url(#a4)"/><path class="wire" d="M410 334 V352" marker-end="url(#a4)"/>
+          <path class="wire" d="M410 410 V428" marker-end="url(#a4)"/><path class="wire" d="M410 502 V520" marker-end="url(#a4)"/>
+          <path class="wire" d="M190 54 H258" marker-end="url(#a4)"/><path class="wire" d="M190 102 H225 V62"/><path class="wire" d="M190 150 H225 V102"/>
+          <path class="wire" d="M190 246 H240 V375 H258" marker-end="url(#a4)"/>
+          <path class="wire" d="M190 294 H230 V310 H258" marker-end="url(#a4)"/>
+          <path class="wire" d="M190 342 H215 V466 H258" marker-end="url(#a4)"/>
+          <!-- body side -->
+          <text class="t-sm mute" x="640" y="24">THE BODY</text>
+          <g class="t-md">
+            <rect class="box" x="640" y="34" width="320" height="56" rx="6"/><text x="656" y="56" style="font-weight:600">Seat and posture</text><text class="t-sm mute" x="656" y="74">hips where the blade leaves the water</text>
+            <rect class="box" x="640" y="110" width="320" height="56" rx="6"/><text x="656" y="132" style="font-weight:600">Body fit, every moment</text><text class="t-sm mute" x="656" y="150">lean and twist so both hands reach</text>
+            <rect class="box" x="640" y="186" width="152" height="72" rx="6"/><text x="654" y="208" style="font-weight:600">Strength</text><text class="t-sm mute" x="654" y="226">arm stretch,</text><text class="t-sm mute" x="654" y="242">forward lean</text>
+            <rect class="box" x="808" y="186" width="152" height="72" rx="6"/><text x="822" y="208" style="font-weight:600">Gearing</text><text class="t-sm mute" x="822" y="226">arm speed vs</text><text class="t-sm mute" x="822" y="242">its best</text>
+            <rect class="box accent" x="640" y="282" width="320" height="56" rx="6" style="stroke-width:2"/><text x="656" y="304" style="font-weight:600">Power you can hold</text><text class="t-sm mute" x="656" y="322">fitness × muscle used × strength × gearing</text>
+          </g>
+          <path class="wire" d="M800 90 V108" marker-end="url(#a4)"/><path class="wire" d="M716 166 V184" marker-end="url(#a4)"/><path class="wire" d="M884 166 V184" marker-end="url(#a4)"/>
+          <path class="wire" d="M716 258 V280" marker-end="url(#a4)"/><path class="wire" d="M884 258 V280" marker-end="url(#a4)"/>
+          <path class="wire" d="M560 62 H638" marker-end="url(#a4)"/><text class="t-sm" x="568" y="54">paddle path</text>
+          <path class="wire" d="M640 310 H600 V214 H562" marker-end="url(#a4)"/><text class="t-sm" x="572" y="262">your power</text>
+          <path class="wire" d="M640 310 H600 V466 H562" marker-end="url(#a4)"/>
+          <path class="wire dash" d="M716 226 H620 V138 H562" marker-end="url(#a4)"/><text class="t-sm" x="572" y="132">force timing</text>
+          <!-- fit -->
+          <rect class="zone" x="640" y="374" width="320" height="204" rx="10"/>
+          <text class="t-md" x="656" y="400" style="font-weight:600">Fit search · fit-sim.js</text>
+          <text class="t-sm" x="656" y="424">1. seat as high as the water allows</text>
+          <text class="t-sm" x="656" y="444">2. try paddle lengths on the same blade path</text>
+          <text class="t-sm" x="656" y="464">3. try lower-hand and top-hand positions</text>
+          <text class="t-sm" x="656" y="484">4. keep reach, top-hand height, stability</text>
+          <text class="t-sm" x="656" y="504">5. score: speed at the power you can hold</text>
+          <text class="t-sm mute" x="656" y="532">runs the whole engine once per setup,</text><text class="t-sm mute" x="656" y="548">about 100 times, in the background</text>
+          <path class="wire dash" d="M638 476 H600 V614 H130 V40 H190" />
+          <text class="t-sm mute" x="300" y="608">changes the settings and runs again</text>
+        </svg>
+      </div>
+      <figcaption>The numbers follow the stages: 1–3 give speed through the water, 4 and 5 give the losses and the hull's motion that the Stroke and Boat tabs draw, 6 and 7 give race times and the replay. Strength and gearing are off by default; when on, they change the power you can hold, which feeds the speed solve and the race.</figcaption>
+    </figure>
+
+    <h3>Where the power goes, from the engine</h3>
+    <p>The engine's own split of 150 W for the simulator's two starting boats. The rows always add to 100%; efficiency is the first one.</p>
+    <figure>
+      <div class="frame">
+        <svg class="narrow" viewBox="0 0 960 150" role="img" aria-label="At 150 W, the default stroke moves the boat with 56.9% of its power and the wide sweep with 51.4%; slip is about 41% and 38%, switching 1.6% and 9.3%.">
+          <text class="t-md" x="0" y="34" style="font-weight:600">Defaults</text>
+          <text class="t-md" x="0" y="94" style="font-weight:600">Wide sweep</text>
+          <!-- Defaults: 56.93 / 41.41 / 1.64 / 0.08 / 0.02 / 0.39  over 820 px -->
+          <g transform="translate(120 16)">
+            <rect x="0" width="466.9" height="28" fill="var(--useful)"/><rect x="466.9" width="339.6" height="28" fill="var(--slip)"/>
+            <rect x="806.5" width="13.4" height="28" fill="var(--switch)"/><rect x="819.9" width="0.7" height="28" fill="var(--other)"/>
+            <text class="t-sm" x="8" y="19" style="fill:#fff">moves the boat 56.9%</text><text class="t-sm" x="476" y="19" style="fill:#fff">slip 41.4%</text>
+          </g>
+          <!-- Wide sweep: 51.38 / 38.17 / 9.35 / 0.07 / 0.73 / 0.56 -->
+          <g transform="translate(120 76)">
+            <rect x="0" width="421.3" height="28" fill="var(--useful)"/><rect x="421.3" width="313.0" height="28" fill="var(--slip)"/>
+            <rect x="734.3" width="76.7" height="28" fill="var(--switch)"/><rect x="811.0" width="6.0" height="28" fill="var(--side)"/><rect x="817.0" width="3.0" height="28" fill="var(--other)"/>
+            <text class="t-sm" x="8" y="19" style="fill:#fff">moves the boat 51.4%</text><text class="t-sm" x="430" y="19" style="fill:#fff">slip 38.2%</text><text class="t-sm" x="742" y="19" style="fill:#fff">9.3%</text>
+          </g>
+          <text class="t-sm mute" x="120" y="134">0%</text><text class="t-sm mute" x="940" y="134" text-anchor="end">100% of 150 W</text>
+        </svg>
+      </div>
+      <div class="key"><span><i style="background:var(--useful)"></i>moves the boat</span><span><i style="background:var(--slip)"></i>blade slip</span><span><i style="background:var(--switch)"></i>switching sides</span><span><i style="background:var(--side)"></i>sideways drag</span><span><i style="background:var(--other)"></i>surge, bob, zigzag</span></div>
+      <figcaption>The wide sweep loses ground mainly to switching: it turns the boat about four times as hard, so it switches every 1.1 strokes instead of 4.3. Speeds: 2.59 against 2.51 m/s.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ------------------------------------------------------------ code -->
+  <section>
+    <div class="sec-head"><h2>Where the code is</h2><span class="where">lines, own code only</span></div>
+    <p>About 11,700 lines written for this project, plus the vendored sensor libraries in <span class="mono">lib/</span> (BMI270, NAU7802, MAX17048), which are left out here.</p>
+    <div class="grid2">
+      <figure>
+        <div class="frame">
+          <svg class="narrow" viewBox="0 0 460 300" role="img" aria-label="Lines of code: simulator page 3,787; tests 2,726; firmware 2,221; physics engine 1,413; app page 1,126; PC tools 388.">
+            <g class="t-sm">
+              <!-- scale: 3787 lines = 260 px -->
+              <text x="0" y="30">Simulator page</text><rect x="140" y="16" width="260" height="20" rx="3" fill="var(--a)"/><text class="t-mono" x="406" y="31">3,787</text>
+              <text x="0" y="74">Tests</text><rect x="140" y="60" width="187.2" height="20" rx="3" fill="var(--other)"/><text class="t-mono" x="333" y="75">2,726</text>
+              <text x="0" y="118">Firmware</text><rect x="140" y="104" width="152.5" height="20" rx="3" fill="var(--useful)"/><text class="t-mono" x="298" y="119">2,221</text>
+              <text x="0" y="162">Physics engine</text><rect x="140" y="148" width="97.0" height="20" rx="3" fill="var(--a)" opacity="0.7"/><text class="t-mono" x="243" y="163">1,413</text>
+              <text x="0" y="206">App page</text><rect x="140" y="192" width="77.3" height="20" rx="3" fill="var(--a)" opacity="0.45"/><text class="t-mono" x="223" y="207">1,126</text>
+              <text x="0" y="250">PC tools</text><rect x="140" y="236" width="26.6" height="20" rx="3" fill="var(--useful)" opacity="0.55"/><text class="t-mono" x="172" y="251">388</text>
+            </g>
+            <line x1="140" x2="140" y1="8" y2="268" stroke="currentColor" stroke-width="1"/>
+            <text class="t-sm mute" x="140" y="290">blue: runs in the browser · green: firmware and PC</text>
+          </svg>
+        </div>
+        <figcaption>The simulator page is the largest file: its tabs, controls, views and charts are all one page with one script.</figcaption>
+      </figure>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Folder</th><th>What's in it</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">src/</td><td>Paddle firmware: sensors, filters, the power model, Bluetooth, SD log, boat link. <span class="mono">src/boat/</span> is the boat node.</td></tr>
+            <tr><td class="mono">docs/app/</td><td>The app, the simulator, and the two engine scripts.</td></tr>
+            <tr><td class="mono">test/host/</td><td>C++ tests of the firmware maths against a simulated paddle (<span class="mono">StrokeSim.h</span>).</td></tr>
+            <tr><td class="mono">test/web/</td><td>Browser tests in headless Chromium: the app against recorded packets, the simulator's physics and pages.</td></tr>
+            <tr><td class="mono">tools/</td><td><span class="mono">log2csv.py</span> and <span class="mono">replay</span>, which re-runs the firmware maths on an SD log.</td></tr>
+            <tr><td class="mono">lib/</td><td>Vendored SparkFun sensor libraries.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ----------------------------------------------------------- tests -->
+  <section>
+    <div class="sec-head"><h2>How it's tested</h2><span class="where">test/host/run.sh · test/web/run.sh</span></div>
+    <p>The firmware's maths is plain C++ with no Arduino code in it, so it builds and runs on a PC against a physics simulation of a paddler. The same C++ writes real Bluetooth packets that the browser test then feeds to the app. The simulator's engine is tested in Node, its pages in Chromium at phone and desktop widths, light and dark.</p>
+    <figure>
+      <div class="frame">
+        <svg viewBox="0 0 980 190" role="img" aria-label="Host tests check the power model against a simulated paddle; a protocol test writes sample packets that the app test plays in Chromium; the simulator test runs the engine in Node and the pages in Chromium.">
+          <defs><marker id="a5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+          <g class="t-md">
+            <rect class="box" x="20" y="24" width="210" height="56" rx="6"/><text x="34" y="46">Simulated paddler</text><text class="t-mono mute" x="34" y="64">StrokeSim.h</text>
+            <rect class="box" x="290" y="24" width="210" height="56" rx="6"/><text x="304" y="46">Firmware maths</text><text class="t-mono mute" x="304" y="64">PowerModel, Kalman, log</text>
+            <rect class="box" x="560" y="24" width="190" height="56" rx="6"/><text x="574" y="46">Known answers</text><text class="t-mono mute" x="574" y="64">power, pivot, wraparound</text>
+            <rect class="box" x="20" y="110" width="210" height="56" rx="6"/><text x="34" y="132">Protocol test</text><text class="t-mono mute" x="34" y="150">writes ble_samples.json</text>
+            <rect class="box accent" x="290" y="110" width="210" height="56" rx="6" style="stroke-width:2"/><text x="304" y="132">App in Chromium</text><text class="t-mono mute" x="304" y="150">app.test.cjs</text>
+            <rect class="box accent" x="560" y="110" width="400" height="56" rx="6" style="stroke-width:2"/><text x="574" y="132">Simulator: engine in Node, pages in Chromium</text><text class="t-mono mute" x="574" y="150">sim.test.cjs · 390 px and 1200 px, light and dark</text>
+          </g>
+          <path class="wire" d="M230 52 H288" marker-end="url(#a5)"/><text class="t-sm" x="236" y="44">strokes</text>
+          <path class="wire" d="M500 52 H558" marker-end="url(#a5)"/><text class="t-sm" x="506" y="44">checked</text>
+          <path class="wire" d="M230 138 H288" marker-end="url(#a5)"/><text class="t-sm" x="236" y="130">packets</text>
+        </svg>
+      </div>
+      <figcaption>Every change in this session ran both suites before it was merged.</figcaption>
+    </figure>
+  </section>
+</main>
+</body>
+</html>
