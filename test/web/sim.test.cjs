@@ -5,6 +5,7 @@
 
 const path = require("path");
 const S = require("../../docs/app/stroke-sim.js");
+const F = require("../../docs/app/fit-sim.js");
 const { chromium } = require("playwright");
 
 let failures = 0;
@@ -14,15 +15,17 @@ function check(name, ok, detail = "") {
 }
 const pct = (x) => `${(x * 100).toFixed(1)}%`;
 
-// The page loads the engine as stroke-sim.js?v=<hash of the file>, so a
+// The page loads each engine file as <file>?v=<hash of the file>, so a
 // changed engine is never served stale from a browser cache.
 {
   const fs = require("fs"), crypto = require("crypto");
-  const hash = crypto.createHash("sha1").update(fs.readFileSync(path.resolve(__dirname, "../../docs/app/stroke-sim.js"))).digest("hex").slice(0, 10);
   const html = fs.readFileSync(path.resolve(__dirname, "../../docs/app/simulator.html"), "utf8");
   console.log("\nEngine cache tag");
-  const tagged = html.includes(`stroke-sim.js?v=${hash}`);
-  check(`simulator.html loads stroke-sim.js?v=${hash}`, tagged, tagged ? "" : "update the ?v= in simulator.html");
+  for (const file of ["stroke-sim.js", "fit-sim.js"]) {
+    const hash = crypto.createHash("sha1").update(fs.readFileSync(path.resolve(__dirname, `../../docs/app/${file}`))).digest("hex").slice(0, 10);
+    const tagged = html.includes(`${file}?v=${hash}`);
+    check(`simulator.html loads ${file}?v=${hash}`, tagged, tagged ? "" : "update the ?v= in simulator.html");
+  }
 }
 console.log("\nStroke simulator physics");
 {
@@ -409,6 +412,44 @@ console.log("\nStroke simulator physics");
   const armCurve = S.simulate(arms(LR)).strengthCurve;
   let bumpy = 0; for (let i = 2; i < armCurve.length; i++) bumpy = Math.max(bumpy, Math.abs(armCurve[i][1] - 2 * armCurve[i - 1][1] + armCurve[i - 2][1]));
   check("strength from the arms: a smooth curve through the drive (no steps)", bumpy < 0.1, bumpy.toFixed(3));
+}
+
+console.log("\nPaddle fit");
+{
+  const run = (gen) => { let st; do st = gen.next(); while (!st.done); return st.value; };
+  const D = S.DEFAULTS, chop = F.CONDITIONS.find((c) => c.id === "chop");
+  // A new paddle length keeps the blade path, sweeping less angle when longer.
+  const same = F.withBladePath(D, D), long = F.withBladePath(Object.assign({}, D, { paddleLenM: 1.372 }), D);
+  check("fit: the same paddle keeps its angles", Math.abs(same.catchDeg - D.catchDeg) < 0.05 && Math.abs(same.exitDeg - D.exitDeg) < 0.05);
+  check("fit: a longer paddle on the same blade path sweeps less angle",
+        long.catchDeg < D.catchDeg - 1 && long.exitDeg < D.exitDeg - 1 &&
+        Math.abs(F.bladeX(long, 0) - F.bladeX(D, 0)) < 1e-3 && Math.abs(F.bladeX(long, 1) - F.bladeX(D, 1)) < 1e-3,
+        `${long.catchDeg.toFixed(1)}° / ${long.exitDeg.toFixed(1)}°`);
+  check("fit: so the arms move slower: a higher gear", S.simulate(long).body.armSpeed < S.simulate(D).body.armSpeed - 0.01);
+  // The search: the seat as high as the water allows, inside every limit.
+  const plain = run(F.search(D, chop)), z = plain.best.setup.seatZM;
+  const gmAt = (seatZM) => F.measure(Object.assign({}, D, { seatZM }), chop).GM;
+  check("fit: the seat as high as the water allows", plain.best.ok && plain.best.GM >= chop.gmMin && gmAt(z + F.RANGES.seatZM[2]) < chop.gmMin,
+        `${(z * 100).toFixed(1)} cm, metacentric height ${(plain.best.GM * 100).toFixed(0)} cm`);
+  check("fit: with gearing and strength off, setups inside the limits are about as fast",
+        plain.best.speed >= plain.current.speed && plain.best.speed < plain.current.speed * 1.01,
+        `${((plain.best.speed / plain.current.speed - 1) * 100).toFixed(2)}%`);
+  // Gearing ranks them: too fast a rate wants a higher gear, too slow a lower one.
+  const fast = run(F.search(Object.assign({}, D, { gearOn: 1, rateSpm: 80 }), chop));
+  const slow = run(F.search(Object.assign({}, D, { gearOn: 1, rateSpm: 45 }), chop));
+  check("fit: at a high rate, a higher gear: slower arms, more held",
+        fast.best.armSpeed < fast.current.armSpeed - 0.05 && fast.best.watts > fast.current.watts && fast.best.speed > fast.current.speed * 1.01,
+        `arms ${fast.current.armSpeed.toFixed(2)} → ${fast.best.armSpeed.toFixed(2)} m/s, ${((fast.best.speed / fast.current.speed - 1) * 100).toFixed(1)}%`);
+  check("fit: at a low rate, a lower gear: faster arms", slow.best.armSpeed > slow.current.armSpeed + 0.05 && slow.best.speed > slow.current.speed,
+        `arms ${slow.current.armSpeed.toFixed(2)} → ${slow.best.armSpeed.toFixed(2)} m/s`);
+  const inRange = (m) => Object.entries(F.RANGES).every(([k, [a, b]]) => m.setup[k] >= a - 1e-9 && m.setup[k] <= b + 1e-9);
+  check("fit: suggestions stay in the ranges searched", [plain, fast, slow].every((r) => inRange(r.best)));
+  // The map: every seat × length, the tippy squares exactly those under the stability needed.
+  const grid = run(F.map(fast.best.setup, Object.assign({}, D, { gearOn: 1, rateSpm: 80 }), chop));
+  const atBest = grid.cells.find((c) => Math.abs(c.seatZM - 0.15) < 1e-9 && Math.abs(c.paddleLenM - fast.best.setup.paddleLenM) < 1e-6);
+  check("fit: map of seat height × paddle length", grid.cells.length === grid.seats.length * grid.lengths.length &&
+        grid.cells.every((c) => (c.past.stable > 0) === (c.GM < chop.gmMin)) && (!atBest || atBest.ok),
+        `${grid.cells.filter((c) => c.ok).length} of ${grid.cells.length} inside the limits`);
 }
 
 (async () => {
@@ -1083,7 +1124,24 @@ console.log("\nStroke simulator physics");
     check(`${tag}: gearing: arm speed, what the arms hold and the best rate`, (await visible("#c-armBestMs")) &&
           /moves [\d.]+ m\/s against its shoulder.*×0\.\d\d.*best at \d+ spm/.test(await text("#gear-read")) && /Gearing: your arms hold ×0\.\d\d/.test(await text("#engine-box")),
           await text("#gear-read"));
+    // The fit tab: a search for Boat A (gearing on, 80 spm), tried in Boat B.
+    const bWas = await page.evaluate(() => JSON.stringify(window.sim.boats.b));
+    await page.click("nav.tabs >> text=Fit");
+    await page.click("#fit-go");
+    await page.waitForFunction(() => !document.getElementById("fit-result").hidden, null, { timeout: 60000 });
+    const fitShown = await page.evaluate(() => ({ rows: document.querySelectorAll("#fit-table tbody tr").length, why: document.querySelectorAll("#fit-why li").length,
+      cells: document.querySelectorAll("#fit-map .cell").length, table: document.getElementById("fit-table").textContent }));
+    check(`${tag}: fit: a suggestion with reasons and a map`, fitShown.rows >= 10 && fitShown.why >= 3 && fitShown.cells === 45 && /\+\d+\.\d%/.test(fitShown.table),
+          `${fitShown.rows} rows, ${fitShown.why} reasons, ${fitShown.cells} squares`);
+    const aPaddle = await page.evaluate(() => window.sim.boats.a.paddleLenM);
+    await page.click("#fit-try"); await settle();
+    const tried = await page.evaluate(() => ({ tab: window.sim.tab, b: window.sim.boats.b, a: window.sim.boats.a.paddleLenM }));
+    check(`${tag}: fit: try it in Boat B`, tried.tab === "stroke" && tried.b.paddleLenM !== aPaddle && tried.b.gearOn === 1 && tried.a === aPaddle,
+          `B paddle ${(tried.b.paddleLenM / 0.0254).toFixed(0)} in`);
+    await page.evaluate((w) => Object.assign(window.sim.boats.b, JSON.parse(w)), bWas);
+    await page.click("#boats [data-boat=b]"); await slide("#c-rateSpm", JSON.parse(bWas).rateSpm); await page.click("#boats [data-boat=a]");
     await page.click("#gear-mode >> text=Off"); await slide("#c-rateSpm", 60); await settle();
+    check(`${tag}: fit: says when the boat has changed since the search`, /has changed since this search/.test(await text("#fit-status")));
     check(`${tag}: reach warning gone when in reach`, !(await visible("#reach-warn")));
     // Back to the defaults for what follows.
     await page.evaluate(() => { const S = window.StrokeSim; for (const x of ["a", "b"]) for (const k of ["heightM", "torsoM", "shoulderM", "upperArmM", "forearmM", "thighM", "shinM", "fitnessW", "strengthOn"]) window.sim.boats[x][k] = S.DEFAULTS[k]; });

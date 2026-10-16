@@ -279,6 +279,11 @@
     const h = p.shoulderM / 2;
     return { hip, centre, up: t, off: add(centre, mul(across, h)), pad: sub(centre, mul(across, h)) };
   }
+  // How far past its reach an arm is (m), rounded over REACH_ROUND: a sharp
+  // corner where the arm meets its reach stalls the Newton search below,
+  // leaving the posture where it started along that limit.
+  const REACH_ROUND = 0.002;
+  const beyond = (x) => 0.5 * (x + Math.sqrt(x * x + REACH_ROUND * REACH_ROUND));
   // The posture nearest `neutral` that reaches grip and low. Returns the
   // body and how stretched each arm is (shoulder to hand / arm length).
   // quick: a coarse search, good enough to choose the seat.
@@ -289,7 +294,7 @@
       let e = 0;
       for (let i = 0; i < 3; i++) e += ((v[i] - neutral[i]) / POSE_SIGMA[i]) ** 2;
       const d1 = dist(b.off, grip), d2 = dist(b.pad, low);
-      const o1 = Math.max(0, d1 - max), o2 = Math.max(0, d2 - max);
+      const o1 = beyond(d1 - max), o2 = beyond(d2 - max);
       // A mild liking for comfortably bent arms, as a paddler sits to have.
       const comfy = ((d1 / arm - ARM_BEST) / 0.3) ** 2 + ((d2 / arm - ARM_BEST) / 0.3) ** 2;
       return e + 0.3 * comfy + 1e5 * (o1 * o1 + o2 * o2);
@@ -368,9 +373,9 @@
       const P = pose(own, u);
       return { grip: P.at(0), low: P.at(lowerHand(own)), n: neutralAt(own, u) };
     });
-    const beyond = (b) => Math.max(0, b.top - REACH) + Math.max(0, b.low - REACH);   // arm stretch past reach
+    const stretchPast = (b) => Math.max(0, b.top - REACH) + Math.max(0, b.low - REACH);   // arm stretch past reach
     const x0 = exitX(own);
-    const total = (x) => 1e4 * frames.reduce((a, f) => a + beyond(fitBody(own, x, f.grip, f.low, f.n, 0, f.n, true)) ** 2, 0) +
+    const total = (x) => 1e4 * frames.reduce((a, f) => a + stretchPast(fitBody(own, x, f.grip, f.low, f.n, 0, f.n, true)) ** 2, 0) +
       ((x - x0) / 0.2) ** 2;
     let lo = -1.0, hi = 0.3;
     for (let i = 0; i < 14; i++) {   // to about 2 mm
@@ -382,8 +387,8 @@
     return (lo + hi) / 2;
   }
   // The body through the drive: how stretched each arm is, how far forward
-  // the trunk leans (rad), and how far short of the hands the arms fall
-  // where they can't reach (m). armSpeed: the lower hand's average speed
+  // the trunk leans (rad), how high the top hand is above the shoulders (m),
+  // and how far short of the hands the arms fall where they can't reach (m). armSpeed: the lower hand's average speed
   // against its shoulder through the drive (m/s), what the arm's muscles
   // move at; the trunk carries the rest of the hand's travel.
   const bodyCache = new Map();
@@ -396,10 +401,11 @@
       const u = i / n, P = pose(pg, u), nn = neutralAt(pg, u), low = P.at(lowerHand(pg));
       const b = fitBody(pg, seatX, P.at(0), low, nn, 0, prev || nn);
       prev = b.pose;
-      const r = sub(low, b.pad);
+      const r = sub(low, b.pad), grip = P.at(0);
       if (rel) path += dist(r, rel);
       rel = r;
-      out.push({ u, top: b.top, low: b.low, lean: b.pose[0], short: Math.max(0, (Math.max(b.top, b.low) - 1) * arm) });
+      out.push({ u, top: b.top, low: b.low, lean: b.pose[0], above: grip[2] - b.centre[2],
+                 short: Math.max(0, (Math.max(b.top, b.low) - 1) * arm) });
     }
     const body = { seatX, frames: out, short: Math.max(...out.map((f) => f.short)), armSpeed: path / (60 / pg.rateSpm * pg.driveFraction) };
     if (bodyCache.size > 60) bodyCache.clear();
@@ -1260,9 +1266,9 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 38;
+  const API_LEVEL = 39;
   const PADDLE = paddleOf(DEFAULTS);
-  const api = { API_LEVEL, gearFactor, bestRate, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
+  const api = { API_LEVEL, paddled, paddleOf, gearFactor, bestRate, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.StrokeSim = api;
 })(typeof window !== "undefined" ? window : globalThis);

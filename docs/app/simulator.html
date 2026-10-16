@@ -73,7 +73,7 @@
   .a-dot, .b-dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: 0; }
   .a-dot { background: var(--series-1); } .b-dot { background: var(--series-2); }
 
-  /* Three tabs (stroke, boat, race). The boat sliders sit beside them on a
+  /* Four tabs (stroke, boat, race, fit). The boat sliders sit beside them on a
      wide screen and follow them on a phone. */
   nav.tabs { position: sticky; top: 0; z-index: 20; display: flex; gap: 4px; padding: 4px; margin: 0 0 12px;
     background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px;
@@ -90,7 +90,26 @@
   @media (min-width: 760px) { .ctxbar { grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); align-items: center; } }
   .ctx-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
   .ctxbar .ctl { margin: 4px 0; }
-  .ctxbar[data-tab="race"] .ctx-power:not(.race-power), .ctxbar:not([data-tab="race"]) .race-power { display: none; }
+  .ctxbar[data-tab="race"] .ctx-power:not(.race-power), .ctxbar:not([data-tab="race"]) .race-power,
+  .ctxbar[data-tab="fit"] .ctx-power { display: none; }
+  /* Fit */
+  .fit-go { align-items: center; gap: 10px; margin-top: 12px; }
+  .fit-bar { flex: 1; min-width: 100px; height: 4px; border-radius: 4px; background: var(--grid); overflow: hidden; }
+  .fit-bar i { display: block; height: 100%; width: 0; background: var(--series-1); }
+  .editing-b .fit-bar i { background: var(--series-2); }
+  table.cmp.fit td.s { font-weight: 650; }
+  ul.fit-why { margin: 10px 0 0; padding-left: 18px; font-size: 14px; color: var(--text-secondary); display: grid; gap: 4px; }
+  svg#fit-map { width: 100%; max-width: 560px; height: auto; display: block; margin-top: 6px; }
+  svg#fit-map .cell { stroke: var(--surface-1); stroke-width: 2; cursor: pointer; }
+  svg#fit-map .cell:hover, svg#fit-map .cell.on { stroke: var(--text-primary); }
+  svg#fit-map .glyph { text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+  svg#fit-map .now, svg#fit-map .sug { fill: none; stroke-width: 2.5; pointer-events: none; }
+  svg#fit-map .now { stroke: var(--text-primary); } svg#fit-map .sug { stroke: var(--series-1); stroke-dasharray: 5 3; }
+  .editing-b svg#fit-map .sug { stroke: var(--series-2); }
+  .hull-legend i.fit-best { background: color-mix(in srgb, var(--cat-useful) 90%, var(--surface-1)); }
+  .hull-legend i.fit-worst { background: color-mix(in srgb, var(--cat-useful) 20%, var(--surface-1)); }
+  .hull-legend i.fit-now { background: none; border: 2px solid var(--text-primary); height: 10px; }
+  .hull-legend i.fit-sug { background: none; border: 2px dashed var(--series-1); height: 10px; }
   .race-power .ctl { margin: 2px 0; }
   @media (min-width: 560px) { .race-power { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
     .race-power .ctx-head, .race-power #effort-mode { grid-column: 1 / -1; } }
@@ -379,6 +398,7 @@
     <button type="button" role="tab" data-tab="stroke" aria-selected="true">Stroke</button>
     <button type="button" role="tab" data-tab="boat" aria-selected="false">Boat</button>
     <button type="button" role="tab" data-tab="race" aria-selected="false">Race</button>
+    <button type="button" role="tab" data-tab="fit" aria-selected="false">Fit</button>
   </nav>
 
   <!-- On every tab: which boat the sliders change, and the power. -->
@@ -651,6 +671,28 @@
       </section>
 
     </div>
+    <div class="tab-body" id="tab-fit" role="tabpanel" hidden>
+      <!-- ------------------------------------------------------ fit -->
+      <section class="card" id="fit-card">
+        <h2>Fit: seat, paddle and hands<button type="button" class="info" data-tip="The seat goes as high as your water allows (a higher seat gives leverage the model doesn't count yet, and costs stability, which it does). Then paddle length, lower hand and top hand are searched for the most speed at what you can hold, with both hands in reach and the top hand between chin and forehead. A new paddle length keeps your blade path: the blade goes in and comes out where it does now, so a longer paddle sweeps less angle and your arms move slower, like a higher gear." aria-label="What is this?">?</button></h2>
+        <div class="sub" id="fit-sub"></div>
+        <h3>Water you race in</h3>
+        <div class="row chips" id="fit-water" role="group" aria-label="Water you race in"></div>
+        <div class="help" id="fit-water-help"></div>
+        <div class="help warn" id="fit-flat"></div>
+        <div class="row fit-go"><button type="button" class="primary" id="fit-go">Find a fit</button>
+          <div class="fit-bar" aria-hidden="true"><i id="fit-bar"></i></div><span class="sub" id="fit-status"></span></div>
+        <div id="fit-result" hidden>
+          <table class="cmp fit" id="fit-table"><thead><tr><th></th><th>Now</th><th>Suggested</th></tr></thead><tbody></tbody></table>
+          <ul class="fit-why" id="fit-why"></ul>
+          <div class="row" style="margin-top:10px"><button type="button" class="small" id="fit-try"></button><button type="button" class="small" id="fit-use"></button></div>
+          <h3>Seat height × paddle length<button type="button" class="info" data-tip="Speed at what you can hold for each seat height and paddle length, with the suggested hands; each length keeps your blade path. Hatched: outside a limit. ~ too tippy for your water, ↓ top hand below the chin, ↑ above the forehead, R out of reach." aria-label="What is this?">?</button></h3>
+          <svg class="hv" id="fit-map" viewBox="0 0 360 200" role="img" aria-label="Speed for each seat height and paddle length"></svg>
+          <div class="hull-legend" id="fit-legend"></div>
+          <div class="help" id="fit-map-read"></div>
+        </div>
+      </section>
+    </div>
 
     <!-- -------------------------------------------------- controls -->
     <aside class="card controls" id="controls">
@@ -723,16 +765,18 @@
           Seat height sets how stable the boat is. Your strength is the power you can hold; with strength
           by position on (Paddler profile), also an assumed curve of how hard you can pull at each paddle
           angle or arm position. With gearing on, your arms also hold the most power moving at one speed,
-          so the stroke rate and the stroke's length matter. Absolute speeds are rough; the differences
-          are what count.</p>
+          so the stroke rate and the stroke's length matter. The Fit tab searches seat height, paddle length
+          and hand placement for the most speed at what you can hold, inside the limits of reach, the top
+          hand's height and stability. Absolute speeds are rough; the differences are what count.</p>
       </details>
   </section>
 </main>
 
 <div id="tip" role="tooltip" hidden></div>
-<!-- ?v= is a hash of stroke-sim.js (test/web/sim.test.cjs checks it), so a
-     changed engine is never served from a stale cache. -->
-<script src="stroke-sim.js?v=2da425423d"></script>
+<!-- ?v= is a hash of each engine file (test/web/sim.test.cjs checks it), so a
+     changed engine is never served from a stale cache. The fit builds on the stroke engine. -->
+<script src="stroke-sim.js?v=0a077140c8"></script>
+<script src="fit-sim.js?v=c4843125f4"></script>
 <script>
 (() => {
 "use strict";
@@ -775,7 +819,7 @@ function shown(el) {
 }
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 38;
+const NEEDS_API = 39;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -991,10 +1035,8 @@ function showBodyEffects() {
   $("e-seatZM").innerHTML = `Metacentric height <b>${fmtNum(c.GM * 100, 0)} cm</b>, rolling once every <b>${fmtNum(c.rollPeriod, 2)} s</b>: heel <b>±${fmtNum(c.heelStill * 180 / Math.PI, 1)}°</b> each stroke`;
   for (const k of ["swingM", "dropM", "heelDeg", "hipRock", "rotation", "legDrive", "hinge"]) $(`e-${k}`).hidden = !p[k];
 }
-const showValue = (c) => {
-  const v = boats[editing][c.key];
-  $(`o-${c.key}`).textContent = c.fmt ? c.fmt(v) : `${+v.toFixed(c.step < 1 ? 2 : 0)}${c.unit}`;
-};
+const fmtValue = (c, v) => (c.fmt ? c.fmt(v) : `${+v.toFixed(c.step < 1 ? 2 : 0)}${c.unit}`);
+const showValue = (c) => { $(`o-${c.key}`).textContent = fmtValue(c, boats[editing][c.key]); };
 const LIFT_MODES = [["1", "With lift"], ["0", "Drag only"]];
 function renderLift() {
   $("lift-mode").innerHTML = "";
@@ -1015,6 +1057,7 @@ function syncControls() {
   renderSwingTiming();
   renderStrength();
   renderGear();
+  showFitIntro();
   $("profile-copy").textContent = `Copy profile to ${NAME[other(editing)]}`;
   showBodyEffects();
   // A fixed stroke count replaces switching by heading.
@@ -1201,6 +1244,7 @@ function changed(x) {
     showBodyEffects();
     drawStrength();
     showGear();
+    showFitStale();
     showReach();
     paths = {};
     updateRace();
@@ -3403,7 +3447,7 @@ function redrawShown() {
 function setTab(t) {
   tab = t;
   for (const b of document.querySelectorAll("nav.tabs button")) b.setAttribute("aria-selected", String(b.dataset.tab === t));
-  for (const x of ["stroke", "boat", "race"]) $(`tab-${x}`).hidden = x !== t;
+  for (const x of ["stroke", "boat", "race", "fit"]) $(`tab-${x}`).hidden = x !== t;
   document.querySelector(".layout").dataset.tab = t;
   $("ctxbar").dataset.tab = t;
   requestAnimationFrame(redrawShown);
@@ -3425,6 +3469,137 @@ function renderHullPart() {
   }
   for (const el of document.querySelectorAll(".hull-part")) el.hidden = el.dataset.part !== hullPart;
 }
+
+// -------------------------------------------------------------------- fit
+const F = window.FitSim;
+let fitWater = F.CONDITIONS[1], fitRun = 0, fit = null;   // fit: the last search, for the boat it was for
+function renderFitWater() {
+  $("fit-water").innerHTML = "";
+  for (const c of F.CONDITIONS) {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = c.label;
+    b.setAttribute("aria-pressed", String(c === fitWater));
+    b.addEventListener("click", () => { fitWater = c; renderFitWater(); });
+    $("fit-water").append(b);
+  }
+  $("fit-water-help").textContent = fitWater.help;
+}
+function showFitIntro() {
+  const p = boats[editing];
+  $("fit-sub").textContent = `For ${NAME[editing]}, as its sliders are set now.`;
+  $("fit-flat").textContent = p.gearOn || p.strengthOn ? "" :
+    "Gearing and strength by position are off (Paddler profile), so setups inside the limits are about as fast. Turn them on to rank them; both are assumed curves until measured.";
+  $("fit-go").textContent = `Find a fit for ${NAME[editing]}`;
+  $("fit-card").classList.toggle("editing-b", (fit ? fit.x : editing) === "b");
+}
+// Runs a search a slice at a time, so the page keeps drawing; null if a
+// newer search started meanwhile.
+async function stepThrough(gen, run, onProgress) {
+  for (;;) {
+    const t0 = performance.now();
+    let s;
+    do s = gen.next(); while (!s.done && performance.now() - t0 < 40);
+    if (run !== fitRun) return null;
+    if (s.done) return s.value;
+    if (typeof s.value === "number") onProgress(s.value);
+    await new Promise((r) => setTimeout(r, 0));
+  }
+}
+onTap($("fit-go"), async () => {
+  const x = editing, p = Object.assign({}, boats[x], { effortW }), run = ++fitRun, needs = fitWater;
+  const bar = (f) => { $("fit-bar").style.width = `${Math.round(f * 100)}%`; };
+  $("fit-go").disabled = true;
+  try {
+    $("fit-status").textContent = "Searching…";
+    const found = await stepThrough(F.search(p, needs), run, (f) => bar(0.7 * f));
+    if (!found) return;
+    $("fit-status").textContent = "Mapping seat height and paddle length…";
+    const grid = await stepThrough(F.map(found.best.setup, p, needs), run, (f) => bar(0.7 + 0.3 * f));
+    if (!grid) return;
+    fit = { x, key: JSON.stringify(boats[x]), needs, found, grid };
+    showFit();
+    $("fit-status").textContent = "";
+  } finally { if (run === fitRun) { $("fit-go").disabled = false; bar(0); } }
+});
+const FIT_ROWS = ["seatZM", "paddleLenM", "lowerHandM", "handOutM", "catchDeg", "exitDeg"];
+const ctlOf = (k) => CONTROLS.find((c) => c.key === k);
+function showFit() {
+  const { x, needs, found } = fit, now = found.current, best = found.best, s = best.setup, p = now.setup;
+  const pct = (a, b) => `${a >= b ? "+" : "−"}${fmtNum(Math.abs(a / b - 1) * 100, 1)}%`;
+  const row = (label, a, b) => `<tr><td>${label}</td><td class="v">${a}</td><td class="v s">${b}</td></tr>`;
+  $("fit-table").querySelector("tbody").innerHTML = FIT_ROWS.map((k) => row(ctlOf(k).label, fmtValue(ctlOf(k), p[k]), fmtValue(ctlOf(k), s[k]))).join("") +
+    row("Speed at what you can hold", `${fmtNum(now.speed, 3)} m/s`, `${fmtNum(best.speed, 3)} m/s <small>${pct(best.speed, now.speed)}</small>`) +
+    row("10 km", clock(10000 / now.speed), clock(10000 / best.speed)) +
+    row("Metacentric height", `${fmtNum(now.GM * 100, 0)} cm`, `${fmtNum(best.GM * 100, 0)} cm`) +
+    row("Arm speed", `${fmtNum(now.armSpeed, 2)} m/s`, `${fmtNum(best.armSpeed, 2)} m/s`) +
+    row("Strokes per side", fmtNum(now.strokesPerSide, 1), fmtNum(best.strokesPerSide, 1));
+  const why = [];
+  why.push(s.seatZM < F.RANGES.seatZM[1] - 1e-6
+    ? `The seat is as high as ${needs.label.toLowerCase()} water allows: ${fmtNum(best.GM * 100, 0)} cm of metacentric height (${fmtNum(needs.gmMin * 100, 0)} cm needed).`
+    : `The seat is at the top of the range searched; ${needs.label.toLowerCase()} water would allow more.`);
+  if (Math.abs(s.paddleLenM - p.paddleLenM) > 1e-6)
+    why.push(`A ${fmtValue(ctlOf("paddleLenM"), s.paddleLenM)} paddle on the same blade path reaches ${fmtNum(s.catchDeg, 0)}° and exits at ${fmtNum(s.exitDeg, 0)}° (from ${fmtNum(p.catchDeg, 0)}° and ${fmtNum(p.exitDeg, 0)}°).`);
+  if (p.gearOn && Math.abs(best.armSpeed - now.armSpeed) > 0.01)
+    why.push(`Your arms move ${fmtNum(best.armSpeed, 2)} m/s instead of ${fmtNum(now.armSpeed, 2)} (best ${fmtNum(p.armBestMs, 2)}): you hold ${fmtNum(best.watts, 0)} W instead of ${fmtNum(now.watts, 0)}.`);
+  if (s.handOutM < p.handOutM - 1e-6)
+    why.push(`The top hand nearer the boat brings the blade in, so each stroke turns the boat less: ${fmtNum(best.strokesPerSide, 1)} strokes a side instead of ${fmtNum(now.strokesPerSide, 1)}.`);
+  why.push(`Your top hand stays ${fmtNum(best.top[0] * 100, 0)}–${fmtNum(best.top[1] * 100, 0)} cm above your shoulders, between chin and forehead, with both hands in reach.`);
+  if (!p.gearOn && !p.strengthOn) why.push(`With gearing and strength by position off, the difference is small (${pct(best.speed, now.speed)}): read it as which way to go, not how much.`);
+  if (!best.ok) why.push("No setup in range meets every limit; this one comes nearest.");
+  $("fit-why").innerHTML = why.map((w) => `<li>${w}</li>`).join("");
+  $("fit-try").textContent = `Try it in ${NAME[other(x)]}`;
+  $("fit-use").textContent = `Use it for ${NAME[x]}`;
+  $("fit-result").hidden = false;
+  showFitIntro();
+  drawFitMap();
+  showFitStale();
+}
+// The suggestion as boat settings.
+const fitSettings = () => Object.fromEntries(Object.keys(S.DEFAULTS).map((k) => [k, fit.found.best.setup[k]]));
+onTap($("fit-try"), () => { const y = other(fit.x); Object.assign(boats[y], fitSettings()); changed(y); setTab("stroke"); });
+onTap($("fit-use"), () => { Object.assign(boats[fit.x], fitSettings()); changed(fit.x); fit.key = JSON.stringify(boats[fit.x]); showFitStale(); });
+function showFitStale() {
+  if (!fit || $("fit-result").hidden) return;
+  if (JSON.stringify(boats[fit.x]) !== fit.key) $("fit-status").textContent = `${NAME[fit.x]} has changed since this search: search again to update it.`;
+}
+const FIT_MAP = { l: 58, t: 8, r: 6, b: 34, W: 360, H: 200 };
+function drawFitMap() {
+  const { grid, found } = fit, m = FIT_MAP, nx = grid.lengths.length, ny = grid.seats.length;
+  const cw = (m.W - m.l - m.r) / nx, ch = (m.H - m.t - m.b) / ny;
+  const ok = grid.cells.filter((c) => c.ok), lo = Math.min(...ok.map((c) => c.speed)), hi = Math.max(...ok.map((c) => c.speed));
+  const cx = (i) => m.l + i * cw, cy = (j) => m.t + (ny - 1 - j) * ch;
+  const near = (arr, v) => arr.reduce((b, a, i) => (Math.abs(a - v) < Math.abs(arr[b] - v) ? i : b), 0);
+  let svg = `<defs><pattern id="fit-hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">` +
+    `<rect width="6" height="6" fill="var(--surface-0)"/><line x1="0" y1="0" x2="0" y2="6" stroke="var(--grid)" stroke-width="3"/></pattern></defs>`;
+  grid.cells.forEach((c, n) => {
+    const i = near(grid.lengths, c.paddleLenM), j = near(grid.seats, c.seatZM);
+    const share = ok.length > 1 && hi > lo ? (c.speed - lo) / (hi - lo) : 1;
+    const fill = c.ok ? `color-mix(in srgb, var(--cat-useful) ${Math.round(20 + 70 * share)}%, var(--surface-1))` : "url(#fit-hatch)";
+    svg += `<rect class="cell" data-n="${n}" x="${cx(i)}" y="${cy(j)}" width="${cw}" height="${ch}" rx="3" fill="${fill}"/>`;
+    if (!c.ok) svg += `<text class="glyph" x="${cx(i) + cw / 2}" y="${cy(j) + ch / 2}">${c.past.stable ? "~" : c.past.reach > 0.01 ? "R" : c.top[0] < F.TOP_LOW ? "↓" : "↑"}</text>`;
+  });
+  grid.lengths.forEach((L, i) => { if (i % 2 === 0) svg += `<text x="${cx(i) + cw / 2}" y="${m.H - m.b + 14}" text-anchor="middle">${fmtNum(L / 0.0254, 0)} in</text>`; });
+  svg += `<text x="${(m.l + m.W - m.r) / 2}" y="${m.H - 4}" text-anchor="middle">Paddle length</text>`;
+  grid.seats.forEach((z, j) => { svg += `<text x="${m.l - 6}" y="${cy(j) + ch / 2 + 4}" text-anchor="end">${fmtNum(z * 100, 0)} cm</text>`; });
+  svg += `<text transform="translate(12 ${m.t + (m.H - m.t - m.b) / 2}) rotate(-90)" text-anchor="middle">Seat height</text>`;
+  const ring = (s, cls) => `<rect class="${cls}" x="${cx(near(grid.lengths, s.paddleLenM)) + 2}" y="${cy(near(grid.seats, s.seatZM)) + 2}" width="${cw - 4}" height="${ch - 4}" rx="3"/>`;
+  svg += ring(found.current.setup, "now") + ring(found.best.setup, "sug");
+  $("fit-map").innerHTML = svg;
+  for (const el of $("fit-map").querySelectorAll(".cell")) onTap(el, () => {
+    const c = grid.cells[+el.dataset.n];
+    for (const o of $("fit-map").querySelectorAll(".cell.on")) o.classList.remove("on");
+    el.classList.add("on");
+    $("fit-map-read").innerHTML = `${fmtNum(c.paddleLenM / 0.0254, 0)} in paddle, ${fmtNum(c.seatZM * 100, 0)} cm seat: ` + (c.ok
+      ? `<b>${fmtNum(c.speed, 3)} m/s</b> at ${fmtNum(c.watts, 0)} W, reach ${fmtNum(c.setup.catchDeg, 0)}°, arms ${fmtNum(c.armSpeed, 2)} m/s`
+      : `<b>${c.past.stable ? "too tippy for your water" : c.past.reach > 0.01 ? "out of reach" : c.top[0] < F.TOP_LOW ? "top hand below the chin" : "top hand above the forehead"}</b>`) +
+      `, metacentric height ${fmtNum(c.GM * 100, 0)} cm.`;
+  });
+  $("fit-legend").innerHTML = `<span><i class="fit-best"></i>Fastest</span><span><i class="fit-worst"></i>Slowest inside the limits</span>` +
+    `<span><i class="fit-now"></i>Your seat and paddle</span><span><i class="fit-sug"></i>Suggested</span>`;
+  $("fit-map-read").textContent = "";
+}
+renderFitWater();
+showFitIntro();
 
 renderModes();
 renderHullPart();
