@@ -1214,6 +1214,16 @@ console.log("\nPaddle fit");
         await mem.reload(); await mem.waitForTimeout(500);
         check(`${tag}: a damaged save keeps what it can`, (await val("#c-catchDeg")) === "35" && (await mem.evaluate(() => window.sim.boats.a.rateSpm)) === 66 &&
               (await mem.textContent("#nm-b")) === "Wide sweep");
+        // A save from before the switch time's default went to 1 s: its 0.3 s
+        // (the old default) follows the new one; a 0.3 s chosen since is kept.
+        await mem.evaluate(() => localStorage.setItem("ppm.sim.boats", '{"a":{"switchLossS":0.3,"rateSpm":66},"b":{"switchLossS":0.5}}'));
+        await mem.reload(); await mem.waitForTimeout(500);
+        const old = await mem.evaluate(() => [window.sim.boats.a.switchLossS, window.sim.boats.a.rateSpm, window.sim.boats.b.switchLossS]);
+        await mem.evaluate(() => localStorage.setItem("ppm.sim.boats", '{"version":2,"a":{"switchLossS":0.3},"b":{}}'));
+        await mem.reload(); await mem.waitForTimeout(500);
+        const chosen = await mem.evaluate(() => window.sim.boats.a.switchLossS);
+        check(`${tag}: an old save takes the new switch time default; one chosen since stays`,
+              old[0] === 1 && old[1] === 66 && old[2] === 0.5 && chosen === 0.3, `${old} / ${chosen}`);
         await mem.evaluate(() => localStorage.removeItem("ppm.sim.boats"));
         await mem.close();
       }

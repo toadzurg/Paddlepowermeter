@@ -73,7 +73,7 @@
   .a-dot, .b-dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: 0; }
   .a-dot { background: var(--series-1); } .b-dot { background: var(--series-2); }
 
-  /* Four tabs (stroke, boat, race, fit). The boat sliders sit beside them on a
+  /* Four tabs (stroke, boat, fit, race). The boat sliders sit beside them on a
      wide screen and follow them on a phone. */
   nav.tabs { position: sticky; top: 0; z-index: 20; display: flex; gap: 4px; padding: 4px; margin: 0 0 12px;
     background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px;
@@ -398,8 +398,8 @@
   <nav class="tabs" role="tablist" aria-label="Simulator sections">
     <button type="button" role="tab" data-tab="stroke" aria-selected="true">Stroke</button>
     <button type="button" role="tab" data-tab="boat" aria-selected="false">Boat</button>
-    <button type="button" role="tab" data-tab="race" aria-selected="false">Race</button>
     <button type="button" role="tab" data-tab="fit" aria-selected="false">Fit</button>
+    <button type="button" role="tab" data-tab="race" aria-selected="false">Race</button>
   </nav>
 
   <!-- On every tab: which boat the sliders change, and the power. -->
@@ -854,22 +854,29 @@ const STARTING = {
   b: () => Object.assign({}, S.DEFAULTS, PRESETS["Wide sweep"]),
 };
 const BOATS_KEY = "ppm.sim.boats";
+// Saves carry SAVE_VERSION. A default changed since a save was made: the
+// saved value that was the old default follows the new one (it was never
+// chosen); any other value is kept. Saves before versions were added are 1.
+const SAVE_VERSION = 2;
+const RETIRED_DEFAULTS = [{ key: "switchLossS", was: 0.3, until: 2 }];   // the default was 0.3 s before version 2
 // Saved settings, on top of the starting ones: a setting added since they
 // were saved keeps its default, and anything unknown or not a number is dropped.
 function loadBoats() {
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(BOATS_KEY)); } catch {}
+  const version = saved && typeof saved.version === "number" ? saved.version : 1;
+  const retired = (k, v) => RETIRED_DEFAULTS.some((d) => d.key === k && version < d.until && Math.abs(v - d.was) < 1e-9);
   const out = {};
   for (const x of ["a", "b"]) {
     out[x] = STARTING[x]();
     const sv = saved && saved[x];
     if (sv && typeof sv === "object")
-      for (const k of Object.keys(S.DEFAULTS)) if (typeof sv[k] === "number" && isFinite(sv[k])) out[x][k] = sv[k];
+      for (const k of Object.keys(S.DEFAULTS)) if (typeof sv[k] === "number" && isFinite(sv[k]) && !retired(k, sv[k])) out[x][k] = sv[k];
   }
   return out;
 }
 function saveBoats() {
-  try { localStorage.setItem(BOATS_KEY, JSON.stringify({ a: boats.a, b: boats.b })); } catch {}
+  try { localStorage.setItem(BOATS_KEY, JSON.stringify({ version: SAVE_VERSION, a: boats.a, b: boats.b })); } catch {}
 }
 const boats = loadBoats();
 let editing = "a", effortW = 150;
