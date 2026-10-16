@@ -372,6 +372,14 @@ console.log("\nStroke simulator physics");
     await slide("#c-effortW", 150); await settle();
     await goTab("stroke");
 
+    // Resizing the window redraws the charts at their new width, so their text keeps its size.
+    {
+      const fit = () => page.$eval("#curve", (e) => Math.abs(+e.getAttribute("viewBox").split(" ")[2] - e.getBoundingClientRect().width));
+      await page.setViewportSize({ width: width + 300, height: 900 }); await page.waitForTimeout(400);
+      const wide = await fit();
+      await page.setViewportSize({ width, height: 900 }); await page.waitForTimeout(400);
+      check(`${tag}: a resized window redraws the force curve at its width`, wide < 2 && (await fit()) < 2, `${wide.toFixed(0)} px off`);
+    }
     // Efficiency comparison
     check(`${tag}: A and B efficiencies`, (await cellVal("eff", 2)) > 50 && (await cellVal("eff", 3)) > 50);
     // With lift, the wide sweep slices sideways and wins; drag only, the defaults win.

@@ -718,8 +718,9 @@ let resized = 0;
 const widths = new WeakMap(), sizeObs = new ResizeObserver((es) => {
   let changed = false;
   for (const e of es) { if (Math.abs((widths.get(e.target) || 0) - e.contentRect.width) > 0.5) changed = true; widths.set(e.target, e.contentRect.width); }
-  // A view that was hidden when first drawn (or the window resized): draw the race again at its size.
-  if (changed && !resized) resized = requestAnimationFrame(() => { resized = 0; if (race && !run) showAt(shownT); });
+  // A chart that was hidden when first drawn, or the window resized: draw
+  // the charts again at their new size, so their text stays its size.
+  if (changed && !resized) resized = requestAnimationFrame(() => { resized = 0; redrawShown(); });
 });
 function widthOf(el) {
   if (!widths.has(el)) { widths.set(el, el.getBoundingClientRect().width); sizeObs.observe(el); }
