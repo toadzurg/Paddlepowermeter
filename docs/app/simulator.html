@@ -175,6 +175,7 @@
   svg.view { display: block; width: 100%; height: auto; border-radius: 8px; }
   svg.view text { fill: var(--text-secondary); font-size: 12px; }
   svg.view text.tag { font-weight: 700; font-size: 13px; }
+  svg.view text.switch-read { font-variant-numeric: tabular-nums; }
   svg.view text.tag.a { fill: var(--series-1); } svg.view text.tag.b { fill: var(--series-2); }
   svg.view .water { fill: var(--water); }
   svg.view .water-line { stroke: var(--water-line); stroke-width: 1.5; }
@@ -457,7 +458,7 @@
             <div class="sub">From the paddle side, bow to the right.</div>
             <div class="pair" data-view="side"></div></div>
           <div class="view-block"><h4>End view</h4>
-            <div class="sub">From behind, paddle on the right: lean and reach.</div>
+            <div class="sub">From behind: lean and reach.</div>
             <div class="pair" data-view="end"></div></div>
           <div class="view-block"><h4>Top view</h4>
             <div class="sub">Bow up. Faint lines: the push on the boat along the stroke.</div>
@@ -466,6 +467,7 @@
         <div class="row" style="margin-top:10px">
           <button class="small" id="play">Pause</button>
           <button class="small" id="slow">Slow motion</button>
+          <span class="row chips"><button type="button" class="small" id="switch-anim" aria-pressed="true">Switching sides</button><button type="button" class="info" data-tip="Each boat strokes on one side, switches, then strokes on the other: its strokes per side (rounded) and its time lost per switch, at its own stroke rate." aria-label="What is this?">?</button></span>
           <span class="sub">Lines: blade path through the drive · arrow: the push on the boat</span>
         </div>
       </section>
@@ -2843,12 +2845,33 @@ function hullPath(view, P) {
 
 let paths = {};  // cached blade path per boat and view
 let playing = true, slow = false, phase = 0, lastT = performance.now();
+let simT = 0;   // animation clock, s of simulated time
 onTap($("play"), () => { playing = !playing; $("play").textContent = playing ? "Pause" : "Play"; });
+onTap($("switch-anim"), () => {
+  const b = $("switch-anim");
+  b.setAttribute("aria-pressed", String(b.getAttribute("aria-pressed") !== "true"));
+});
+const switchAnim = () => $("switch-anim").getAttribute("aria-pressed") === "true";
+// Where boat x is at time t: its stroke phase, which side (m = 1 for the
+// right, −1 for the left, in between while switching) and how high the
+// paddle is lifted. With switching: n strokes on the right, a switch of
+// switchLossS, n on the left, a switch back; n is its strokes per side.
+function timeline(x, t) {
+  const r = results[x], Tc = r.cycle;
+  if (!switchAnim()) return { ph: (((t / Tc) % 1) + 1) % 1, m: 1, lift: 0, stroke: 0, n: 0 };
+  const n = Math.max(1, Math.round(r.strokesPerSide)), Tsw = Math.max(0.05, r.params.switchLossS);
+  const Ts = n * Tc + Tsw, tt = (((t % (2 * Ts)) + 2 * Ts) % (2 * Ts));
+  const side = tt < Ts ? 1 : -1, u = side > 0 ? tt : tt - Ts;
+  if (u < n * Tc) return { ph: (u % Tc) / Tc, m: side, lift: 0, stroke: Math.floor(u / Tc) + 1, n };
+  // The switch: the paddle lifts and swings over the boat to the other side.
+  const w = (u - n * Tc) / Tsw;
+  return { ph: 1 - 1e-6, m: side * Math.cos(Math.PI * w), lift: 0.35 * Math.sin(Math.PI * w), stroke: 0, n };
+}
 onTap($("slow"), () => { slow = !slow; $("slow").textContent = slow ? "Normal speed" : "Slow motion"; });
 
 // Pose and forces at cycle phase ∈ [0, 1): drive, then a recovery that lifts
 // the blade out and swings it back to the catch.
-function stateAt(r, ph) {
+function stateAt(r, ph, extraLift = 0) {
   const df = r.params.driveFraction;
   if (ph < df) {
     const n = r.samples.length;
@@ -2859,7 +2882,7 @@ function stateAt(r, ph) {
   const u = (ph - df) / (1 - df);             // recovery progress
   const back = 1 - (1 - Math.cos(Math.PI * u)) / 2;
   const P = S.pose(r.geom, back);             // reverse through the arc
-  const lift = 0.45 * Math.sin(Math.PI * u);
+  const lift = 0.45 * Math.sin(Math.PI * u) + extraLift;
   const liftAt = (s) => { const q = P.at(s); return [q[0], q[1], q[2] + lift]; };
   const Pl = Object.assign({}, P, { at: liftAt });
   const face = [-Math.cos(P.th), 0, Math.sin(P.th)];
@@ -2879,8 +2902,8 @@ function shoulders(sh, rotation, s) {
   return { off: [sh[0] - 0.2 * Math.sin(twist), 0.2 * Math.cos(twist), sh[2]],
            pad: [sh[0] + 0.2 * Math.sin(twist), -0.2 * Math.cos(twist), sh[2]] };
 }
-function paddlerFig(P, x, ph, tint = false) {
-  const r = results[x], c = hullCyc[x], p = r.params, st = stateAt(r, ph), df = p.driveFraction;
+function paddlerFig(P, x, ph, tint = false, lift = 0) {
+  const r = results[x], c = hullCyc[x], p = r.params, st = stateAt(r, ph, lift), df = p.driveFraction;
   const i = c ? Math.min(c.t.length - 1, Math.floor(ph * c.t.length)) : 0;
   const bx = c ? c.bodyX[i] : 0, bz = c ? c.bodyZ[i] : 0;
   // A hinge or swing of x m (whole body) turns the torso about x / (0.6 · 0.3) rad.
@@ -2908,17 +2931,18 @@ function paddlerFig(P, x, ph, tint = false) {
     `${seg([off, elbow(off, grip, 1), grip], 0.06)}<circle class="fig-head fig-${x}"${ink ? ` style="fill:${ink}"` : ""}${ga} cx="${hd[0].toFixed(1)}" cy="${hd[1].toFixed(1)}" r="${(0.1 * sc).toFixed(1)}"/>`;
 }
 // One boat's paddle, blade path and push, in its colour.
-function drawBoat(name, P, x, ph, maxF) {
-  const r = results[x], st = stateAt(r, ph), sm = r.samples;
+// Pp: the projection for the blade's path and pushes (always one side, even mid-switch).
+function drawBoat(name, P, x, ph, maxF, lift = 0, Pp = P) {
+  const r = results[x], st = stateAt(r, ph, lift), sm = r.samples;
   const key = `${x}-${name}`;
   let g = "";
   if (!paths[key]) paths[key] = sm.filter((q) => q.B.wet > 0.05).map((q) => q.B.cop);
-  g += `<path class="path ${x}" d="M${paths[key].map((c) => f2(P(c))).join(" L")}"/>`;
+  g += `<path class="path ${x}" d="M${paths[key].map((c) => f2(Pp(c))).join(" L")}"/>`;
   if (name === "top")
     for (let i = 8; i < sm.length - 4; i += 16) {
       const q = sm[i]; if (q.F < maxF * 0.05) continue;
-      const a = P(q.B.cop), k = 0.35 / maxF;
-      const b = P([q.B.cop[0] + q.thrust[0] * k, q.B.cop[1] + q.thrust[1] * k, 0]);
+      const a = Pp(q.B.cop), k = 0.35 / maxF;
+      const b = Pp([q.B.cop[0] + q.thrust[0] * k, q.B.cop[1] + q.thrust[1] * k, 0]);
       g += `<line class="push ${x}" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}"/>`;
     }
   const grip = P(st.P.at(0)), throat = P(st.B.throat), tip = P(st.B.tip), pv = P(st.P.at(r.params.pivotFromGrip));
@@ -2941,8 +2965,13 @@ function drawBoat(name, P, x, ph, maxF) {
 }
 // Both boats on the same settings.
 const sameBoats = () => Object.keys(S.DEFAULTS).every((k) => boats.a[k] === boats.b[k]);
-function drawView(svg, name, ph) {
-  const v = VIEWS[name], vp = viewport(svg, v), P = vp.P;
+// tl: each boat's place in its timeline (see timeline()).
+function drawView(svg, name, tl) {
+  // Switching sides: the end and top views need room on both sides.
+  const v0 = VIEWS[name], v = switchAnim() && name !== "side" ? Object.assign({}, v0, { xr: [-1.3, 1.3] }) : v0;
+  const vp = viewport(svg, v), P = vp.P;
+  // A boat paddling on the left is the mirror image across the centreline.
+  const Pm = (x, m = tl[x].m) => (q) => P([q[0], m * q[1], q[2]]);
   const bs = svg.dataset.boats.split("");
   // Arrows on one scale across both boats, so their forces compare.
   const maxF = Math.max(1, ...BOATS.flatMap((x) => results[x].samples.map((q) => q.F)));
@@ -2964,13 +2993,20 @@ function drawView(svg, name, ph) {
   const order = same ? ["a", "b"] : bs;
   // Paddlers: one when both boats are set the same, else both, B under A, each in its colour.
   const two = bs.length > 1 && !same;
-  for (const x of two ? ["b", "a"] : [bs[0]]) g += paddlerFig(P, x, ph, two);
+  for (const x of two ? ["b", "a"] : [bs[0]]) g += paddlerFig(Pm(x), x, tl[x].ph, two, tl[x].lift);
   for (const x of order)
-    g += `<g class="${bs.length > 1 && x === "b" ? (same ? "blend-b" : "overlay-b") : ""}">${drawBoat(name, P, x, ph, maxF)}</g>`;
-  const label = { side: "bow →", end: "paddle side →", top: "↑ bow" }[name];
+    g += `<g class="${bs.length > 1 && x === "b" ? (same ? "blend-b" : "overlay-b") : ""}">` +
+      `${drawBoat(name, Pm(x), x, tl[x].ph, maxF, tl[x].lift, Pm(x, tl[x].m < 0 ? -1 : 1))}</g>`;
+  const label = { side: "bow →", end: switchAnim() ? "right →" : "paddle side →", top: "↑ bow" }[name];
   g += `<text x="${vp.W - 8}" y="16" text-anchor="end">${label}</text>`;
   g += same ? `<text class="tag a" x="8" y="17">A</text><text x="21" y="17">=</text><text class="tag b" x="31" y="17">B</text>`
     : bs.slice().sort().map((x, i) => `<text class="tag ${x}" x="${8 + i * 18}" y="17">${x.toUpperCase()}</text>`).join("");
+  // Where each boat is in its side: stroke k of n, or switching.
+  if (switchAnim()) {
+    const ws = same ? ["a"] : bs.slice().sort();
+    g += `<text class="switch-read" x="8" y="${vp.H - 8}">${ws.map((x) => `${ws.length > 1 ? `${x.toUpperCase()} ` : ""}` +
+      (tl[x].stroke ? `${tl[x].stroke}/${tl[x].n} ${tl[x].m > 0 ? "R" : "L"}` : "switch")).join(" · ")}</text>`;
+  }
   svg.innerHTML = g;
 }
 
@@ -2980,9 +3016,12 @@ function frame(now) {
   const dt = Math.max(0, Math.min(0.1, (now - lastT) / 1000));
   lastT = now;
   if (results.a && results.b) {
-    // Both boats share one phase (each over its own drive and recovery), timed by the boat being edited.
-    if (playing) phase = (((phase + dt / (results[editing].cycle * (slow ? 4 : 1))) % 1) + 1) % 1;
-    for (const svg of document.querySelectorAll("svg.view")) if (shown(svg)) drawView(svg, svg.closest(".pair").dataset.view, phase);
+    // One clock; each boat strokes (and switches) at its own timing. The
+    // force curve and the hull follow the boat being edited.
+    if (playing) simT += dt / (slow ? 4 : 1);
+    const tl = { a: timeline("a", simT), b: timeline("b", simT) };
+    phase = tl[editing].ph;
+    for (const svg of document.querySelectorAll("svg.view")) if (shown(svg)) drawView(svg, svg.closest(".pair").dataset.view, tl);
     if (shown($("curve-live-g").closest("svg"))) drawCurveLive(phase);
     drawHullLive(phase);
   }
@@ -3082,7 +3121,7 @@ requestAnimationFrame(frame);
 window.sim = {
   boats, results, PRESETS,
   get editing() { return editing; }, get race() { return race; }, get mode() { return mode; },
-  get run() { return run; }, setTab, shoulders, get tab() { return tab; }, get score() { return lastScore && lastScore[0]; },
+  get run() { return run; }, setTab, shoulders, timeline, get tab() { return tab; }, get score() { return lastScore && lastScore[0]; },
   raceWallS: 12,   // seconds on screen for a whole race (tests shorten it)
 };
 })();

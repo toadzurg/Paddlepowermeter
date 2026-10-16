@@ -905,6 +905,26 @@ console.log("\nStroke simulator physics");
           `${rowsGap[0].toFixed(1)} vs ${rowsGap[1].toFixed(1)} s`);
     await page.click("#effort-mode >> text=Set by hand"); await slide("#c-rotation", 0); await page.waitForTimeout(300);
     check(`${tag}: effort: back to set by hand`, !(await page.isDisabled("#effA")) && !/what A can hold/.test(await text("#o-effA")));
+    // Switching sides in the views: n strokes right, a switch lasting switchLossS, n strokes left.
+    const sw = await page.evaluate(() => {
+      const r = window.sim.results.a, Tc = r.cycle, n = Math.max(1, Math.round(r.strokesPerSide)), Ts = r.params.switchLossS;
+      const tl = window.sim.timeline;
+      return { on: document.querySelector("#switch-anim").getAttribute("aria-pressed"), n,
+        first: tl("a", 0.5 * Tc), last: tl("a", (n - 0.5) * Tc), mid: tl("a", n * Tc + Ts / 2),
+        left: tl("a", n * Tc + Ts + 0.5 * Tc), back: tl("a", 2 * n * Tc + 2 * Ts + 0.5 * Tc),
+        readout: document.querySelector(".pair[data-view=top] .switch-read").textContent };
+    });
+    check(`${tag}: switching sides on by default, timed by strokes per side and switch time`, sw.on === "true" &&
+          sw.first.m === 1 && sw.first.stroke === 1 && sw.last.stroke === sw.n && sw.last.m === 1 &&
+          sw.mid.stroke === 0 && Math.abs(sw.mid.m) < 0.1 && sw.mid.lift > 0.3 &&
+          sw.left.m === -1 && sw.left.stroke === 1 && sw.back.m === 1 && /^(\d+\/\d+ [RL]|switch)/.test(sw.readout),
+          `${sw.n} per side, now "${sw.readout}"`);
+    await goTab("stroke");
+    await page.click("#switch-anim"); await settle();
+    const off = await page.evaluate(() => [0.3, 5, 9.7, 31].every((t) => window.sim.timeline("a", t).m === 1) &&
+      !document.querySelector(".switch-read"));
+    check(`${tag}: switching sides off: always the right side`, off);
+    await page.click("#switch-anim"); await settle();
     const sh = await page.evaluate(() => [window.sim.shoulders([0, 0, 0], 1, 1), window.sim.shoulders([0, 0, 0], 1, -1)]);
     check(`${tag}: trunk rotation: paddle-side shoulder forward at the catch, back at the exit`,
           sh[0].pad[0] > sh[0].off[0] && sh[1].pad[0] < sh[1].off[0] && sh[0].pad[1] < 0);
