@@ -628,6 +628,10 @@
             <button type="button" class="info" data-tip="Uses USGS river gauges on the course. Each river section gets its current from the nearest gauge's flow, its width and its depth. Leave the date empty for the latest reading, or pick a race day." aria-label="What is this?">?</button></div>
           <div class="sub" id="cb-gauge-info">Current is set by hand.</div>
           <table class="secs" id="cb-gauge-list" hidden><tbody></tbody></table>
+          <div class="row" style="margin-top:8px"><button id="cb-weather">Wind from weather</button>
+            <input type="datetime-local" id="cb-weather-time" aria-label="Hour for the wind, local time on the course (empty: now)">
+            <button type="button" class="info" data-tip="Uses Open-Meteo's wind at the middle of the course: now, the forecast, or the record for a past hour (local time there). Its wind is measured 10 m up; near the water it's about 80% of that." aria-label="What is this?">?</button></div>
+          <div class="sub" id="cb-weather-info">Wind is set by hand.</div>
           <svg class="cmap" id="cb-map" role="img" aria-label="Course map: tap a section to edit it"></svg>
           <div class="note">Colour: current. Tap a section to edit it.</div>
           <svg class="strip" id="cb-strip" role="img" aria-label="Current and depth along the course"></svg>
@@ -766,7 +770,7 @@
             bobs the boat.</li>
           <li><b>Race:</b> wind (a crosswind turns the bow), current, shallow water, portages, and in a
             river the current across the channel and the inside of bends. Load the AuSable or your own
-            GPX, with current from USGS gauges.</li>
+            GPX, with current from USGS gauges and wind from Open-Meteo.</li>
         </ul>
         <p>A simplified model for comparing strokes. It treats the flow as steady and ignores chop and
           wakes. The paddler sits with the hips where the blade leaves the water on a plain stroke, paddles
@@ -2337,6 +2341,50 @@ $("cb-gauge-list").addEventListener("change", (e) => {
   cb.gauges[+i].use = e.target.checked;
   renderBuilder(); updateSoon();
 });
+// Wind from the weather (Open-Meteo): the wind at the middle of the course,
+// now or at an hour you pick (local time there). The weather's wind is at
+// 10 m; over open water the log profile gives about 80% of it at 1 m, where
+// the paddler is.
+const METEO = "https://api.open-meteo.com/v1/forecast", METEO_PAST = "https://archive-api.open-meteo.com/v1/archive";
+const WIND_AT_PADDLER = 0.8;
+async function weatherWind(when) {
+  const [lat, lon] = cb.points[Math.floor(cb.points.length / 2)];
+  const q = `latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}&wind_speed_unit=kmh&timezone=auto`;
+  const get = (url) => fetch(url).then(async (r) => {
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.error) throw new Error(j.reason || `Open-Meteo said ${r.status}`);
+    return j;
+  });
+  if (!when) {
+    const c = (await get(`${METEO}?${q}&current=wind_speed_10m,wind_direction_10m`)).current;
+    return { speed: c.wind_speed_10m, from: c.wind_direction_10m };
+  }
+  // The forecast covers the last two months and two weeks ahead; older days are in the archive.
+  const day = when.slice(0, 10), hour = `${when.slice(0, 13)}:00`;
+  const old = Date.now() - Date.parse(day) > 60 * 864e5;
+  const h = (await get(`${old ? METEO_PAST : METEO}?${q}&hourly=wind_speed_10m,wind_direction_10m&start_date=${day}&end_date=${day}`)).hourly;
+  const i = h.time.indexOf(hour);
+  if (i < 0 || h.wind_speed_10m[i] === null) throw new Error(`no wind for ${hour.replace("T", " ")}`);
+  return { speed: h.wind_speed_10m[i], from: h.wind_direction_10m[i] };
+}
+$("cb-weather").addEventListener("click", async () => {
+  if (!cb) return;
+  const when = $("cb-weather-time").value, info = $("cb-weather-info");
+  info.textContent = "Asking Open-Meteo…";
+  try {
+    const w = await weatherWind(when), near = w.speed * WIND_AT_PADDLER;
+    $("wind").value = Math.min(40, Math.round(near));
+    $("windDir").value = (Math.round(w.from / 15) * 15) % 360;
+    info.textContent = `${when ? when.replace("T", " ") : "Now"}: ${fmtNum(w.speed, 0)} km/h from the ${compass(w.from)} at 10 m, ` +
+      `${fmtNum(near, 0)} km/h at the paddler${near > 40.5 ? " (the slider stops at 40)" : ""}.`;
+  } catch (err) {
+    info.textContent = `Couldn't get the wind (${err.message}). Set it by hand.`;
+    return;
+  }
+  updateSoon();
+});
+for (const id of ["wind", "windDir"])
+  $(id).addEventListener("input", () => { if (cb) $("cb-weather-info").textContent = "Wind is set by hand."; });
 // The race on the real course, from above: north up, a fixed scale centred
 // between the boats (zoom sets it), or the whole course zoomed out.
 function drawCourseRace(dA, dB) {

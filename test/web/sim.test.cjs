@@ -970,6 +970,42 @@ console.log("\nPaddle fit");
     await page.waitForFunction(() => /Couldn't reach USGS/.test(document.getElementById("cb-gauge-info").textContent));
     check(`${tag}: gauges: no connection says so`, true);
     await page.unroute("https://waterservices.usgs.gov/**");
+    // Wind from Open-Meteo (replies mocked): now, a past hour from the archive, and no connection.
+    const meteo = [];
+    const hours = Array.from({ length: 24 }, (_, h) => `2023-07-29T${String(h).padStart(2, "0")}:00`);
+    await page.route("https://*.open-meteo.com/**", (route) => {
+      const url = route.request().url(); meteo.push(url);
+      const body = url.includes("current=") ? { current: { time: "2026-10-16T12:00", wind_speed_10m: 25, wind_direction_10m: 222 } } :
+        { hourly: { time: hours, wind_speed_10m: hours.map((_, h) => (h === 21 ? 60 : 5)), wind_direction_10m: hours.map(() => 95) } };
+      route.fulfill({ status: 200, contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: JSON.stringify(body) });
+    });
+    const weatherInfo = () => text("#cb-weather-info");
+    const tCalm = secs(await text("#t-a"));
+    await page.click("#cb-weather");
+    await page.waitForFunction(() => /at the paddler/.test(document.getElementById("cb-weather-info").textContent));
+    await page.waitForTimeout(250);
+    // 25 km/h at 10 m is 20 km/h at the paddler; 222° rounds to 225°, the SW.
+    check(`${tag}: weather: wind now sets the sliders`, (await page.$eval("#wind", (e) => e.value)) === "20" &&
+          (await page.$eval("#windDir", (e) => e.value)) === "225" && (await text("#o-windDir")) === "SW" &&
+          /^Now: 25 km\/h from the SW at 10 m, 20 km\/h at the paddler\.$/.test(await weatherInfo()) &&
+          meteo.some((u) => u.startsWith("https://api.open-meteo.com/v1/forecast") && /latitude=4\d\.\d{4}/.test(u)) &&
+          secs(await text("#t-a")) !== tCalm, `${await weatherInfo()} | ${meteo.slice(-1)}`);
+    await page.fill("#cb-weather-time", "2023-07-29T21:00");
+    await page.click("#cb-weather");
+    await page.waitForFunction(() => /^2023/.test(document.getElementById("cb-weather-info").textContent));
+    check(`${tag}: weather: a past hour comes from the archive`, (await page.$eval("#wind", (e) => e.value)) === "40" &&
+          (await page.$eval("#windDir", (e) => e.value)) === "90" && /slider stops at 40/.test(await weatherInfo()) &&
+          meteo.some((u) => u.startsWith("https://archive-api.open-meteo.com/v1/archive") && u.includes("start_date=2023-07-29")),
+          `${await weatherInfo()} | ${meteo.slice(-1)}`);
+    await slide("#wind", 0);
+    check(`${tag}: weather: moving the wind takes it off the weather`, (await weatherInfo()) === "Wind is set by hand.");
+    await page.unroute("https://*.open-meteo.com/**");
+    await page.route("https://*.open-meteo.com/**", (route) => route.abort());
+    await page.fill("#cb-weather-time", "");
+    await page.click("#cb-weather");
+    await page.waitForFunction(() => /Couldn't get the wind/.test(document.getElementById("cb-weather-info").textContent));
+    check(`${tag}: weather: no connection says so`, (await page.$eval("#wind", (e) => e.value)) === "0");
+    await page.unroute("https://*.open-meteo.com/**");
     // An AuSable gauge the course knows: current scales from its race-week median as (Q/median)^0.55.
     for (const [cfs, want, label] of [[788, "2.7", "Average"], [1576, "4.0", "Whoa"]]) {
       await page.route("https://waterservices.usgs.gov/**", (route) => route.fulfill({ status: 200, contentType: "application/json",
