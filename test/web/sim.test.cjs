@@ -249,6 +249,9 @@ console.log("\nCanoe Race Simulator physics");
           later.legsA.slice(0, firstLate).every((l, i) => Math.abs(l.t - calm.legsA[i].t) < 1e-9) &&
           later.legsA.slice(firstLate).every((l, i) => l.t > calm.legsA[firstLate + i].t) && later.tA > calm.tA,
           `first late leg ${firstLate}, ${later.tA.toFixed(0)} vs ${calm.tA.toFixed(0)} s`);
+    const each = go({ weather: [{ windSpeed: 0, windFrom: 0, power: 0.95, powerB: 0.9 }] });
+    check("race: weather: each boat its own heat (powerB)", Math.abs(each.tA - hot.tA) < 1e-6 && each.tB > each.tA &&
+          each.legsB.every((l) => Math.abs(l.watts - 135) < 1e-9));
     check("race: weather: the replay follows it", later.profileA.some((g) => g.watts === 150) && Math.abs(later.posA(later.tA) - 40000) < 1);
   }
   check("sections: the wind turns with the course", Math.abs(into(0) - S.race(clean, clean, 5000, 150, 150, { windSpeed: 5, windAngle: 0 }).tA) < 1e-6 &&
@@ -1279,6 +1282,34 @@ console.log("\nPaddle fit");
     page.once("dialog", (d) => d.accept());
     await page.click("#profile-delete"); await settle();
     check(`${tag}: profile: deleted`, (await page.$$("#profile-pick option")).length === 1);
+    // Age and sex: female reshapes the shoulders and forearms; lengths from height follow it.
+    await slide("#c-heightM", 1.78); await page.click("#profile-fit"); await settle();
+    const body = () => page.evaluate(() => ["shoulderM", "forearmM", "torsoM"].map((k) => window.sim.boats.a[k]));
+    const male = await body();
+    await page.click("#sex >> text=Female"); await settle();
+    const fem = await body();
+    check(`${tag}: profile: female, narrower shoulders and shorter forearms for the height`,
+          JSON.stringify(male) === "[0.4,0.3,0.55]" && JSON.stringify(fem) === "[0.386,0.29,0.55]" &&
+          (await page.$eval('#sex [data-value="1"]', (e) => e.getAttribute("aria-pressed"))) === "true", `${male} → ${fem}`);
+    await slide("#c-heightM", 1.6); await page.click("#profile-fit"); await settle();
+    check(`${tag}: profile: lengths from height for a woman`, JSON.stringify(await body()) === "[0.347,0.26,0.494]", `${await body()}`);
+    // Typical fitness: 200 W × (kg / 79)^⅔ × 0.8 for a woman × 0.85 at 60 (0.6% a year from 35).
+    await slide("#c-ageY", 60); await settle();
+    const kg = await page.evaluate(() => window.sim.boats.a.massKg - 11);
+    const want = Math.round((200 * Math.pow(kg / 79, 2 / 3) * 0.8 * 0.85) / 5) * 5;
+    check(`${tag}: profile: typical fitness for age, sex and weight`,
+          (await text("#fitness-typical")) === `Typical for a woman of 60, ${kg} kg: ${want} W`, await text("#fitness-typical"));
+    await page.click("#fitness-typical"); await settle();
+    check(`${tag}: profile: typical fitness sets it`, (await page.evaluate(() => window.sim.boats.a.fitnessW)) === want);
+    // At 60, A loses 20% more to the heat: 30 °C, 70% is 4.5% for B (35), 5.4% for A.
+    await slide("#temp", 30); await slide("#humid", 70); await page.waitForTimeout(200);
+    check(`${tag}: heat: an older paddler loses more`, /^Heat index 33 °C: A 5\.4%, B 4\.5% less power than on a cool day\.$/.test(await text("#heat-note")),
+          await text("#heat-note"));
+    await slide("#temp", 10); await slide("#humid", 50);
+    await page.click("#sex >> text=Male"); await slide("#c-ageY", 35); await slide("#c-heightM", 1.95); await slide("#c-fitnessW", 260); await settle();
+    const back = await body();
+    check(`${tag}: profile: back to male restores the lengths`, Math.abs(back[0] / (0.4 * 1.95 / 1.78) - 1) < 0.01 &&
+          Math.abs(back[1] / (0.3 * 1.95 / 1.78) - 1) < 0.01, `${back}`);
     // A stroke the arms can't reach is flagged; strength from the arms shows its curve.
     await page.click("#boats [data-boat=a]");
     await slide("#c-handOutM", 0.85); await slide("#c-catchDeg", 60); await settle();

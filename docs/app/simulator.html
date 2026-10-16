@@ -618,7 +618,7 @@
               <input type="range" id="temp" min="-5" max="40" step="1" value="10" aria-label="Air temperature"></div>
             <div class="ctl"><label class="top"><span>Humidity</span><output id="o-humid"></output></label>
               <input type="range" id="humid" min="10" max="100" step="5" value="50" aria-label="Relative humidity"></div>
-            <div class="ctl"><label class="top"><span>Heat costs<button type="button" class="info" data-tip="Power you can hold drops as the heat index (WBGT: temperature and humidity) rises past 10 °C. 0.2% per °C is what heat cost fit marathoners in race results (Ely 2007); about 0.7% is unacclimatized riders in a lab time trial (Tatterson 2000). Humidity counts most when it's warm. 0 leaves the heat out." aria-label="What is this?">?</button></span><output id="o-heatLoss"></output></label>
+            <div class="ctl"><label class="top"><span>Heat costs<button type="button" class="info" data-tip="Power you can hold drops as the heat index (WBGT: temperature and humidity) rises past 10 °C. 0.2% per °C is what heat cost fit marathoners in race results (Ely 2007); about 0.7% is unacclimatized riders in a lab time trial (Tatterson 2000). Humidity counts most when it's warm. Past 40 each paddler loses 1% more a year (their age in the profile): heat loss slows with age. Sex isn't counted: studies don't show a difference once size and fitness are matched. 0 leaves the heat out." aria-label="What is this?">?</button></span><output id="o-heatLoss"></output></label>
               <input type="range" id="heatLoss" min="0" max="1" step="0.05" value="0.2" aria-label="Power lost per degree of heat index">
               <div class="help" id="heat-note"></div></div>
             <div class="ctl simple-only"><label class="top"><span id="l-current">Current</span><output id="o-current"></output></label>
@@ -753,7 +753,7 @@
         <h4 class="sub-h">Gearing<button type="button" class="info" data-tip="Off: you hold the same power at any stroke rate. On: your arms hold the most power moving at one speed, like a cyclist's best cadence. Arm speed is your lower hand against its shoulder through the drive: a higher rate, a longer stroke or wider hands move it faster. Trunk rotation and a hinge don't, as your trunk carries that travel. It changes what you can hold. Assumed until measured: your paddle can find your best speed from strokes at a few rates." aria-label="What is this?">?</button></h4>
         <div class="row chips" id="gear-mode" role="group" aria-label="Gearing"></div>
         <div id="gear-ctl"><div id="ctl-gear"></div><div class="help" id="gear-read"></div></div>
-        <h4 class="sub-h">Body<button type="button" class="info" data-tip="Height scales every length; then set any one. You sit with your hips where the blade leaves the water on the Defaults stroke (further forward only if you can't reach it from there); every technique is paddled from that seat, and the body leans and twists at each moment so both hands are within reach. With strength from the arms, every length changes results; by paddle angle, only the arms do." aria-label="What is this?">?</button></h4>
+        <h4 class="sub-h">Body<button type="button" class="info" data-tip="Height scales every length; then set any one. Female: shoulders 3.4% and forearms 3.5% shorter for the same height (ANSUR II, radius lengths); the rest scales alike. You sit with your hips where the blade leaves the water on the Defaults stroke (further forward only if you can't reach it from there); every technique is paddled from that seat, and the body leans and twists at each moment so both hands are within reach. With strength from the arms, every length changes results; by paddle angle, only the arms do." aria-label="What is this?">?</button></h4>
         <div id="ctl-body-size"></div>
         <button type="button" class="small" id="profile-fit">Lengths from height</button>
       </details>
@@ -796,7 +796,7 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of each engine file (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. The fit builds on the stroke engine. -->
-<script src="stroke-sim.js?v=413bbb5e50"></script>
+<script src="stroke-sim.js?v=7bc20f0da1"></script>
 <script src="fit-sim.js?v=c4843125f4"></script>
 <script>
 (() => {
@@ -840,7 +840,7 @@ function shown(el) {
 }
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 43;
+const NEEDS_API = 44;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -865,7 +865,7 @@ const PRESETS = {
 };
 // The paddler profile: who's paddling, not how. Presets never change it.
 const BODY = ["torsoM", "shoulderM", "upperArmM", "forearmM", "thighM", "shinM"];
-const PROFILE = ["heightM", ...BODY, "massKg", "fitnessW", "strengthOn", "strengthPeakDeg", "strengthDrop", "gearOn", "armBestMs", "gearDrop"];
+const PROFILE = ["ageY", "female", "heightM", ...BODY, "massKg", "fitnessW", "strengthOn", "strengthPeakDeg", "strengthDrop", "gearOn", "armBestMs", "gearDrop"];
 // Presets set the technique; the profile, the paddle, the seat and the blade force model stay.
 const KEEP = ["effortW", ...PROFILE, "bladeLift", "paddleLenM", "bladeLenM", "bladeWidthM", "seatZM"];
 // Each boat's settings are remembered in this browser; Reset goes back to these.
@@ -969,6 +969,8 @@ const CONTROLS = [
     fmt: (v) => `${Math.round(v * 100)}% weaker`, help: "How much of your arms' power you lose at half or 1.5 times your best arm speed." },
   { group: "ctl-paddler", key: "lowerHandM", label: "Lower hand on the shaft", min: 0.35, max: 0.85, step: 0.01, unit: "",
     fmt: (v) => `${fmtNum(v * 100, 0)} cm below the grip`, help: "Hands further apart: more leverage on the blade, and a longer reach for the lower arm." },
+  { group: "ctl-body-size", key: "ageY", label: "Age", min: 16, max: 85, step: 1, unit: "", fmt: (v) => `${v}`,
+    help: "Past 40 the heat costs you more. Also sets the fitness suggestion." },
   { group: "ctl-body-size", key: "heightM", label: "Height", min: 1.4, max: 2.1, step: 0.01, unit: "",
     fmt: (v) => `${fmtNum(v * 100, 0)} cm (${Math.floor(v / 0.3048)}′${Math.round((v / 0.0254) % 12)}″)`, help: "Scales all the lengths below." },
   { group: "ctl-body-size", key: "upperArmM", label: "Upper arm", min: 0.2, max: 0.42, step: 0.005, unit: "", fmt: (v) => cmIn(v),
@@ -1085,6 +1087,8 @@ function syncControls() {
   renderSwingTiming();
   renderStrength();
   renderGear();
+  renderSex();
+  renderTypical();
   showFitIntro();
   $("profile-copy").textContent = `Copy profile to ${NAME[other(editing)]}`;
   showBodyEffects();
@@ -1247,11 +1251,72 @@ $("profile-delete").addEventListener("click", () => {
   delete all[name]; saveProfiles(all); renderProfiles("");
 });
 $("profile-copy").addEventListener("click", () => { Object.assign(boats[other(editing)], profileOf(boats[editing])); changed(other(editing)); });
+// Women's lengths against men's of the same height: shoulders about 3.4%
+// narrower (ANSUR II: biacromial 366 vs 409 mm at statures of 1626 vs 1755
+// mm) and the forearm about 3.5% shorter (radius 13.9% vs 14.4% of stature).
+// Upper arm (acromion–radiale 309 vs 332 mm), trunk and legs scale with
+// height alike. The defaults are a man's.
+const FEMALE_SHAPE = { shoulderM: 0.966, forearmM: 0.965 };
 $("profile-fit").addEventListener("click", () => {
   const b = boats[editing], k = b.heightM / S.DEFAULTS.heightM;
-  for (const key of BODY) b[key] = Math.round(S.DEFAULTS[key] * k * 1000) / 1000;
+  for (const key of BODY) b[key] = Math.round(S.DEFAULTS[key] * k * (b.female ? FEMALE_SHAPE[key] || 1 : 1) * 1000) / 1000;
   changed(editing);
 });
+const SEXES = [["0", "Male"], ["1", "Female"]];
+{
+  const row = document.createElement("div");
+  row.className = "row chips"; row.id = "sex"; row.setAttribute("role", "group"); row.setAttribute("aria-label", "Sex");
+  $("ctl-body-size").prepend(row);
+}
+function renderSex() {
+  const el = $("sex"), b = boats[editing];
+  el.innerHTML = "";
+  el.classList.toggle("b", editing === "b");
+  for (const [v, label] of SEXES) {
+    const btn = document.createElement("button");
+    btn.type = "button"; btn.textContent = label; btn.dataset.value = v;
+    btn.setAttribute("aria-pressed", String(String(b.female || 0) === v));
+    // Switching reshapes the lengths that differ, as height scales them all.
+    btn.addEventListener("click", () => {
+      if ((b.female || 0) === +v) return;
+      for (const [key, f] of Object.entries(FEMALE_SHAPE)) b[key] = Math.round((+v ? b[key] * f : b[key] / f) * 1000) / 1000;
+      b.female = +v;
+      changed(editing);
+    });
+    el.append(btn);
+  }
+}
+// A typical racer's one-hour power for age, sex and weight. The 200 W
+// default is a 79 kg man of 35. It scales with muscle as body mass^⅔;
+// a woman holds about 80% of a man's at the same weight (assumed: the gap is
+// widest in the upper body, and women's kayak race speeds run 12–14% behind
+// men's); and from 35 it falls 0.6% a year to 60, 1.2% to 70 and 2% after
+// (masters records: 0.5–1% a year from 35, steeper after 60–70).
+function ageShare(a) {
+  if (a <= 35) return 1;
+  if (a <= 60) return 1 - 0.006 * (a - 35);
+  if (a <= 70) return 0.85 - 0.012 * (a - 60);
+  return Math.max(0.3, 0.73 - 0.02 * (a - 70));
+}
+function typicalFitness(b) {
+  const kg = Math.max(30, b.massKg - S.BOAT_KG);
+  return Math.round((200 * Math.pow(kg / 79, 2 / 3) * (b.female ? 0.8 : 1) * ageShare(b.ageY)) / 5) * 5;
+}
+{
+  const row = document.createElement("div");
+  row.className = "row"; row.style.marginTop = "4px";
+  row.innerHTML = `<button type="button" class="small" id="fitness-typical"></button>`;
+  $("c-fitnessW").closest(".ctl").append(row);
+}
+$("fitness-typical").addEventListener("click", () => {
+  const b = boats[editing];
+  b.fitnessW = Math.min(400, Math.max(80, typicalFitness(b)));
+  changed(editing);
+});
+function renderTypical() {
+  const b = boats[editing];
+  $("fitness-typical").textContent = `Typical for ${b.female ? "a woman" : "a man"} of ${b.ageY}, ${fmtNum(b.massKg - S.BOAT_KG, 0)} kg: ${typicalFitness(b)} W`;
+}
 renderProfiles();
 
 // -------------------------------------------------------------- results
@@ -1656,22 +1721,28 @@ function wbgt(t, rh) {
   const e = (rh / 100) * 6.105 * Math.exp((17.27 * t) / (237.7 + t));   // vapour pressure, hPa
   return 0.567 * t + 0.393 * e + 3.94;
 }
-function heatFactor(t = parseFloat($("temp").value), rh = parseFloat($("humid").value)) {
-  return Math.max(0, 1 - (parseFloat($("heatLoss").value) / 100) * Math.max(0, wbgt(t, rh) - HEAT_FROM));
+// Past 40 the heat costs more: 1% more a year (heat loss falls from about
+// 40, most by 56–70, when older women stored 16–29% more heat than young
+// ones; marathon times slow with heat from the 35–40 age group up).
+const heatAge = (age) => 1 + 0.01 * Math.max(0, (age || 35) - 40);
+function heatFactor(t = parseFloat($("temp").value), rh = parseFloat($("humid").value), age = 35) {
+  return Math.max(0, 1 - (parseFloat($("heatLoss").value) / 100) * heatAge(age) * Math.max(0, wbgt(t, rh) - HEAT_FROM));
 }
 // A real course with the weather hour by hour: the race meets each hour's
 // wind and heat (the engine applies the heat to each boat's power).
 const hourly = () => (water === "map" && cb && cb.hourly ? cb.hourly : null);
-const raceWeather = (hs) => hs.map((h) => ({ windSpeed: h.wind / 3.6, windFrom: h.from, power: heatFactor(h.temp, h.humid) }));
+// Each hour's power share for A (power) and B (powerB), by their ages; or for one boat alone.
+const raceWeather = (hs, only) => hs.map((h) => ({ windSpeed: h.wind / 3.6, windFrom: h.from,
+  power: heatFactor(h.temp, h.humid, boats[only || "a"].ageY), powerB: heatFactor(h.temp, h.humid, boats[only || "b"].ageY) }));
 function updateRace() {
   if (!results.a || !results.b) return;
   chips("effort-mode", EFFORT_MODES, () => effortMode, (v) => { effortMode = v; });
   const kmIn = parseFloat($("dist").value), mapIn = water === "map";
   const hs = hourly(), weather = hs ? raceWeather(hs) : null;
-  const heat = hs ? 1 : heatFactor();
+  const heatA = hs ? 1 : heatFactor(undefined, undefined, boats.a.ageY), heatB = hs ? 1 : heatFactor(undefined, undefined, boats.b.ageY);
   // The effort sliders are a cool day's power; the race is at that less the heat.
   const baseA = raceWatts("a", mapIn ? 0 : kmIn * 1000), baseB = raceWatts("b", mapIn ? 0 : kmIn * 1000);
-  const effA = baseA * heat, effB = baseB * heat;
+  const effA = baseA * heatA, effB = baseB * heatB;
   for (const id of ["effA", "effB"]) $(id).disabled = effortMode === "hold";
   const km = parseFloat($("dist").value), depth = parseFloat($("depth").value);
   const wind = parseFloat($("wind").value), dir = parseFloat($("windDir").value), current = parseFloat($("current").value);
@@ -1687,12 +1758,17 @@ function updateRace() {
   $("o-temp").textContent = `${fmtNum(temp, 0)} °C`;
   $("o-humid").textContent = `${humid}%`;
   $("o-heatLoss").textContent = loss === 0 ? "left out" : `${fmtNum(loss, 2)}% per °C`;
+  // A loss for both boats, or each's when their ages make them differ.
+  const lossText = (a, b) => Math.abs(a - b) < 0.0005 ? `${fmtNum(a * 100, 1)}%` : `A ${fmtNum(a * 100, 1)}%, B ${fmtNum(b * 100, 1)}%`;
+  const lossA = hs ? 1 - Math.min(...weather.map((w) => w.power)) : 1 - heatA;
+  const lossB = hs ? 1 - Math.min(...weather.map((w) => w.powerB)) : 1 - heatB;
+  const lost = Math.max(lossA, lossB) > 0.0005;
   if (hs) {
-    const wb = hs.map((h) => wbgt(h.temp, h.humid)), worst = 1 - Math.min(...weather.map((w) => w.power));
+    const wb = hs.map((h) => wbgt(h.temp, h.humid));
     $("heat-note").textContent = `Hour by hour: heat index ${fmtNum(Math.min(...wb), 0)}–${fmtNum(Math.max(...wb), 0)} °C, ` +
-      (worst > 0.0005 ? `up to ${fmtNum(worst * 100, 1)}% less power than on a cool day.` : "no loss.");
+      (lost ? `up to ${lossText(lossA, lossB)} less power than on a cool day.` : "no loss.");
   } else $("heat-note").textContent = `Heat index ${fmtNum(wbgt(temp, humid), 0)} °C: ` +
-    (heat < 0.9995 ? `${fmtNum((1 - heat) * 100, 1)}% less power than on a cool day.` : "no loss.");
+    (lost ? `${lossText(lossA, lossB)} less power than on a cool day.` : "no loss.");
   $("o-current").textContent = current === 0 ? "none" :
     `${fmtNum(Math.abs(current), 1)} km/h ${current > 0 ? "with you" : "against you"}${out}`;
   const riverOn = water === "river";
@@ -1706,8 +1782,8 @@ function updateRace() {
   raceSetup = {
     map, metres: map ? 0 : km * 1000, eff: { a: effA, b: effB },
     label: `${map ? cb.name : `${fmtNum(km, km < 10 ? 1 : 0)} km ${water === "river" ? "river" : "open water"}${course === "outback" ? ", there and back" : ""}`}, ` +
-      (baseA === baseB ? `${fmtNum(baseA, 0)} W` : `A ${fmtNum(baseA, 0)} W, B ${fmtNum(baseB, 0)} W`) + (effortMode === "hold" ? " (what each can hold)" : "") + (hs ? ", weather hour by hour" : heat < 0.9995 ? `, ${fmtNum((1 - heat) * 100, 1)}% lost to heat` : ""),
-    envFor: (x) => map ? { windSpeed: wind / 3.6, windFrom: dir, weather, sections: legsNow, lines: { A: lines[x], B: lines[x] } } :
+      (baseA === baseB ? `${fmtNum(baseA, 0)} W` : `A ${fmtNum(baseA, 0)} W, B ${fmtNum(baseB, 0)} W`) + (effortMode === "hold" ? " (what each can hold)" : "") + (hs ? ", weather hour by hour" : lost ? `, ${lossText(lossA, lossB)} lost to heat` : ""),
+    envFor: (x) => map ? { windSpeed: wind / 3.6, windFrom: dir, weather: hs ? raceWeather(hs, x) : null, sections: legsNow, lines: { A: lines[x], B: lines[x] } } :
       { windSpeed: wind / 3.6, windAngle: dir, current: current / 3.6, depth: depth >= 5 ? (riverOn ? 5 : Infinity) : depth, course,
         river: riverOn ? { width, bendsDegPerKm: bends, lineA: lines[x], lineB: lines[x] } : null },
   };
