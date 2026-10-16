@@ -52,6 +52,7 @@
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; }
+  html { scroll-padding-top: 64px; }   /* clear of the sticky tabs */
   body {
     background: var(--surface-0); color: var(--text-primary);
     font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -72,14 +73,23 @@
   .a-dot, .b-dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: 0; }
   .a-dot { background: var(--series-1); } .b-dot { background: var(--series-2); }
 
-  /* Phones: results, views, then the sliders right below them, then the race.
-     Wide screens: sliders in a sticky column beside everything. */
-  .layout { display: grid; gap: 12px; grid-template-areas: "eff" "curve" "views" "ctl" "hull" "race"; grid-template-columns: minmax(0, 1fr); }
-  #eff-card { grid-area: eff; } #curve-card { grid-area: curve; } #views-card { grid-area: views; } #controls { grid-area: ctl; } #hull-card { grid-area: hull; } #race-card { grid-area: race; }
+  /* Three tabs (stroke, boat, race). The boat sliders sit beside them on a
+     wide screen and follow them on a phone. */
+  nav.tabs { position: sticky; top: 0; z-index: 20; display: flex; gap: 4px; padding: 4px; margin: 0 0 12px;
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: 0 1px 0 var(--surface-0), 0 -12px 0 var(--surface-0); }
+  nav.tabs button { flex: 1; border: 0; background: transparent; color: var(--text-secondary); min-height: 40px; }
+  nav.tabs button[aria-selected="true"] { background: var(--surface-0); color: var(--text-primary); }
+  .layout { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+  .tab-body { display: grid; gap: 12px; min-width: 0; }
   @media (min-width: 960px) {
-    .layout { grid-template-columns: minmax(0, 1fr) 360px; grid-template-areas: "eff ctl" "curve ctl" "views ctl" "hull ctl" "race ctl";
-              grid-template-rows: auto auto auto auto 1fr; align-items: start; }
-    .controls { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow: auto; } }
+    .layout { grid-template-columns: minmax(0, 1fr) 360px; }
+    .controls { grid-column: 2; grid-row: 1; position: sticky; top: 64px; max-height: calc(100vh - 76px); overflow: auto; } }
+  .how { margin-top: 12px; }
+  .how details { margin-top: 0; }
+  h3.first { margin-top: 4px; }
+  .subnav { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .hull-part > h3:first-child { margin-top: 12px; }
 
   /* Boat switcher: which boat the sliders edit. */
   .boats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -283,7 +293,6 @@
   .cb-editor .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
   .cb-editor .head b { font-size: 15px; }
   .warn { color: var(--cat-side); }
-  #score { border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 4px; }
   #score .heads { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
   #score .head { border: 1px solid var(--border); border-radius: 12px; padding: 8px 12px; }
   #score .head .lab { font-size: 13px; font-weight: 600; } #score .head.a .lab { color: var(--series-1); } #score .head.b .lab { color: var(--series-2); }
@@ -332,7 +341,7 @@
   .hull-read b { color: var(--text-primary); font-weight: 600; }
   .hull-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
   .hull-legend i { display: inline-block; width: 12px; height: 3px; vertical-align: 3px; margin-right: 4px; }
-  .hull-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 4px 24px; }
+  .hull-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 4px 24px; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -343,7 +352,14 @@
     <a href="./">← Paddle Power app</a>
   </header>
 
-  <div class="layout">
+  <nav class="tabs" role="tablist" aria-label="Simulator sections">
+    <button type="button" role="tab" data-tab="stroke" aria-selected="true">Stroke</button>
+    <button type="button" role="tab" data-tab="boat" aria-selected="false">Boat</button>
+    <button type="button" role="tab" data-tab="race" aria-selected="false">Race</button>
+  </nav>
+
+  <div class="layout" data-tab="stroke">
+    <div class="tab-body" id="tab-stroke" role="tabpanel">
       <!-- ------------------------------------------------ efficiency -->
       <section class="card" id="eff-card">
         <div class="card-head">
@@ -417,7 +433,8 @@
           <span class="sub">Lines: blade path through the drive · arrow: the push on the boat</span>
         </div>
       </section>
-
+    </div>
+    <div class="tab-body" id="tab-boat" role="tabpanel" hidden>
       <!-- ----------------------------------------------------- hull -->
       <section class="card" id="hull-card">
         <div class="card-head">
@@ -427,47 +444,74 @@
         <div class="sub" id="hull-sub"></div>
         <h3>Boat score<button type="button" class="info" data-tip="How much of the push on the hull becomes steady forward speed. 100 is a boat gliding at an even speed that never turns and never stops for a switch. Blade slip isn't counted: that's in Efficiency." aria-label="What is this?">?</button></h3>
         <div class="score" id="boat-score"></div>
-        <div class="hull-grid">
-          <section><h3>Through one stroke</h3>
-            <div class="hpair" id="hp-surge" data-what="The boat against a steady boat, with push and drag"></div>
-            <div class="hull-legend"><span><i></i>Blade push</span><span><i class="dash"></i>Hull drag</span><span><i class="dot"></i>Speed</span><span><i class="ghost"></i>Steady boat, same average speed</span></div>
-            <div class="hpair" id="hp-chart" data-what="Push, drag and speed through one stroke"></div>
-            <div class="hull-read" id="hull-surge-read"></div></section>
-          <section><h3>Bob</h3>
-            <div class="hpair" id="hp-bob" data-what="The boat rising and sinking"></div>
-            <div class="hull-read" id="hull-bob-read"></div>
-            <h3>Pitch<button type="button" class="info" data-tip="Your body moving fore and aft, and the hips swinging the torso, rock the bow up and down. So does the push on the hull, which sits a little above the drag." aria-label="What is this?">?</button></h3>
-            <div class="hpair" id="hp-pitch" data-what="The boat pitching, from the side"></div>
-            <div class="hull-read" id="hull-pitch-read"></div>
-            <h3>Roll<button type="button" class="info" data-tip="The blade's push up and sideways rolls the boat. From a C1's shape (31–32 in wide at the 4 in waterline) and a paddler sitting high; the stability is an estimate." aria-label="What is this?">?</button></h3>
-            <div class="hpair" id="hp-roll" data-what="The boat rolling, from behind"></div>
-            <div class="hull-read" id="hull-roll-read"></div></section>
-          <section><h3>Heading</h3>
-            <div class="hpair" id="hp-heading" data-what="The bow's heading over strokes, switching sides"></div>
-            <div class="hull-read" id="hull-heading-read"></div></section>
-          <section><h3>Where your power goes</h3>
-            <svg class="hv" id="hull-power" viewBox="0 0 360 170" role="img" aria-label="Shares of each boat's power"></svg></section>
-          <section><h3>Shallow water<button type="button" class="info" data-tip="Extra hull drag from the bottom being near: the boat's wave slows down and grows. Biggest near the wave speed for that depth." aria-label="What is this?">?</button></h3>
-            <svg class="hv" id="hull-shallow" viewBox="0 0 360 230" role="img" aria-label="Extra drag by speed and depth"></svg>
-            <div class="hull-read" id="hull-shallow-read"></div></section>
-        </div>
+        <div class="row chips subnav" id="hull-part" role="group" aria-label="Part of the hull shown"></div>
+        <section class="hull-part" data-part="surge"><h3>Through one stroke</h3>
+          <div class="hull-grid">
+            <div><div class="hpair" id="hp-surge" data-what="The boat against a steady boat, with push and drag"></div>
+              <div class="hull-legend"><span><i></i>Blade push</span><span><i class="dash"></i>Hull drag</span><span><i class="dot"></i>Speed</span><span><i class="ghost"></i>Steady boat, same average speed</span></div></div>
+            <div><div class="hpair" id="hp-chart" data-what="Push, drag and speed through one stroke"></div>
+              <div class="hull-read" id="hull-surge-read"></div></div>
+          </div></section>
+        <section class="hull-part" data-part="motion" hidden>
+          <div class="hull-grid">
+            <div><h3>Bob</h3>
+              <div class="hpair" id="hp-bob" data-what="The boat rising and sinking"></div>
+              <div class="hull-read" id="hull-bob-read"></div>
+              <h3>Pitch<button type="button" class="info" data-tip="Your body moving fore and aft, and the hips swinging the torso, rock the bow up and down. So does the push on the hull, which sits a little above the drag." aria-label="What is this?">?</button></h3>
+              <div class="hpair" id="hp-pitch" data-what="The boat pitching, from the side"></div>
+              <div class="hull-read" id="hull-pitch-read"></div></div>
+            <div><h3>Roll<button type="button" class="info" data-tip="The blade's push up and sideways rolls the boat. From a C1's shape (31–32 in wide at the 4 in waterline) and a paddler sitting high; the stability is an estimate." aria-label="What is this?">?</button></h3>
+              <div class="hpair" id="hp-roll" data-what="The boat rolling, from behind"></div>
+              <div class="hull-read" id="hull-roll-read"></div></div>
+          </div></section>
+        <section class="hull-part" data-part="heading" hidden><h3>Heading</h3>
+          <div class="hpair" id="hp-heading" data-what="The bow's heading over strokes, switching sides"></div>
+          <div class="hull-read" id="hull-heading-read"></div></section>
+        <section class="hull-part" data-part="power" hidden><h3>Where your power goes</h3>
+          <svg class="hv" id="hull-power" viewBox="0 0 360 188" role="img" aria-label="Shares of each boat's power"></svg></section>
+        <section class="hull-part" data-part="shallow" hidden><h3>Shallow water<button type="button" class="info" data-tip="Extra hull drag from the bottom being near: the boat's wave slows down and grows. Biggest near the wave speed for that depth." aria-label="What is this?">?</button></h3>
+          <svg class="hv" id="hull-shallow" viewBox="0 0 360 230" role="img" aria-label="Extra drag by speed and depth"></svg>
+          <div class="hull-read" id="hull-shallow-read"></div></section>
       </section>
 
+    </div>
+    <div class="tab-body" id="tab-race" role="tabpanel" hidden>
       <!-- ----------------------------------------------------- race -->
       <section class="card" id="race-card">
         <h2>Race</h2>
         <div class="sub" id="race-sub">A against B in the same conditions.</div>
-        <section id="score" data-ready="0">
-          <h3>Race score<button type="button" class="info" data-tip="Each boat's stroke, body and boat as time on the race below. Each cost is what that boat would save without it, found by racing it again." aria-label="What is this?">?</button></h3>
-          <div class="sub" id="score-status"></div>
-          <div class="heads" id="score-heads"></div>
-          <div class="score-verdict" id="score-verdict"></div>
-          <h3>Where the time goes</h3>
-          <div class="sub">Each loss taken away in turn, top to bottom, so they add up: the difference between the boats' rows is the gap.</div>
-          <svg class="bars" id="score-bars" role="img" aria-label="Time each loss costs each boat over the race"></svg>
-          <div class="note">Faded: set by the course (portages) or by physics: a blade has to move water to push, so slip is never zero. A bigger blade or a longer drive cuts it.</div>
-          <div class="score-find" id="score-find"></div>
-        </section>
+        <div class="result">
+          <div class="times">
+            <div><div class="sub"><span class="a-dot"></span>Boat A finishes in</div><div class="time" id="t-a">—</div>
+              <div class="sub" id="s-a"></div><div class="cond" id="c-a"></div></div>
+            <div><div class="sub"><span class="b-dot"></span>Boat B finishes in</div><div class="time" id="t-b">—</div>
+              <div class="sub" id="s-b"></div><div class="cond" id="c-b"></div></div>
+          </div>
+          <div class="verdict" id="verdict"></div>
+          <div class="row chips" id="race-zoom" role="group" aria-label="Zoom">
+            <button type="button" id="zoom-out" aria-label="Zoom out">−</button><button type="button" id="zoom-in" aria-label="Zoom in">+</button><button type="button" id="zoom-fit">Fit</button><button type="button" id="zoom-close" hidden>Close-up</button><button type="button" class="info" data-tip="Zoom the race view. Fit shows the finishing gap. Pinch works too (Ctrl + scroll on a computer)." aria-label="What is this?">?</button>
+          </div>
+          <svg class="race river-only" id="river-map" role="img" aria-label="The river from above: each boat on its line" hidden></svg>
+          <svg class="race" id="race-view" role="img" aria-label="Race between boat A and boat B"></svg>
+          <svg class="race" id="course-view" role="img" aria-label="The race on the course map" hidden></svg>
+          <div class="scrub">
+            <button id="scrub-back" aria-label="Step back">◀</button>
+            <input type="range" id="scrub" min="0" max="1000" step="1" value="1000" aria-label="Race time: drag to replay">
+            <button id="scrub-fwd" aria-label="Step forward">▶</button>
+          </div>
+          <div class="sub scrub-info"><span id="scrub-time"></span><span id="scrub-where"></span></div>
+          <div class="row" style="margin-top:8px">
+            <button class="primary" id="race-start">Start race</button>
+            <button id="race-pause" disabled>Pause</button>
+            <button id="race-stop" disabled>Stop</button>
+            <span class="row chips"><button type="button" id="race-slow" aria-pressed="false">Slow motion</button></span>
+          </div>
+          <div class="note" id="race-status"></div>
+        </div>
+      </section>
+
+      <section class="card" id="conditions-card">
+        <h2>Conditions</h2>
         <div class="race-cols">
           <section>
             <h3>Paddlers</h3>
@@ -541,39 +585,32 @@
           <h3>Sections</h3>
           <div class="cb-scroll"><table class="secs" id="cb-secs"><thead><tr><th>#</th><th>km</th><th>Section</th><th>km/h</th><th>Depth m</th></tr></thead><tbody></tbody></table></div>
         </div>
-        <div class="result">
-          <div class="times">
-            <div><div class="sub"><span class="a-dot"></span>Boat A finishes in</div><div class="time" id="t-a">—</div>
-              <div class="sub" id="s-a"></div><div class="cond" id="c-a"></div></div>
-            <div><div class="sub"><span class="b-dot"></span>Boat B finishes in</div><div class="time" id="t-b">—</div>
-              <div class="sub" id="s-b"></div><div class="cond" id="c-b"></div></div>
-          </div>
-          <div class="verdict" id="verdict"></div>
-          <div class="row chips" id="race-zoom" role="group" aria-label="Zoom">
-            <button type="button" id="zoom-out" aria-label="Zoom out">−</button><button type="button" id="zoom-in" aria-label="Zoom in">+</button><button type="button" id="zoom-fit">Fit</button><button type="button" id="zoom-close" hidden>Close-up</button><button type="button" class="info" data-tip="Zoom the race view. Fit shows the finishing gap. Pinch works too (Ctrl + scroll on a computer)." aria-label="What is this?">?</button>
-          </div>
-          <svg class="race river-only" id="river-map" role="img" aria-label="The river from above: each boat on its line" hidden></svg>
-          <svg class="race" id="race-view" role="img" aria-label="Race between boat A and boat B"></svg>
-          <svg class="race" id="course-view" role="img" aria-label="The race on the course map" hidden></svg>
-          <div class="scrub">
-            <button id="scrub-back" aria-label="Step back">◀</button>
-            <input type="range" id="scrub" min="0" max="1000" step="1" value="1000" aria-label="Race time: drag to replay">
-            <button id="scrub-fwd" aria-label="Step forward">▶</button>
-          </div>
-          <div class="sub scrub-info"><span id="scrub-time"></span><span id="scrub-where"></span></div>
-          <div class="row" style="margin-top:8px">
-            <button class="primary" id="race-start">Start race</button>
-            <button id="race-pause" disabled>Pause</button>
-            <button id="race-stop" disabled>Stop</button>
-            <span class="row chips"><button type="button" id="race-slow" aria-pressed="false">Slow motion</button></span>
-          </div>
-          <div class="note" id="race-status"></div>
-          <h3>Speed along the course<button type="button" class="info" data-tip="Each boat's speed over the ground at each point. Shaded: bends. Drag the slider above to move the marker." aria-label="What is this?">?</button></h3>
+      </section>
+
+      <section class="card" id="score-card">
+        <h2>Race score</h2>
+        <section id="score" data-ready="0">
+          <h3 class="first">Who loses time where<button type="button" class="info" data-tip="Each boat's stroke, body and boat as time on the race below. Each cost is what that boat would save without it, found by racing it again." aria-label="What is this?">?</button></h3>
+          <div class="sub" id="score-status"></div>
+          <div class="heads" id="score-heads"></div>
+          <div class="score-verdict" id="score-verdict"></div>
+          <h3>Where the time goes</h3>
+          <div class="sub">Each loss taken away in turn, top to bottom, so they add up: the difference between the boats' rows is the gap.</div>
+          <svg class="bars" id="score-bars" role="img" aria-label="Time each loss costs each boat over the race"></svg>
+          <div class="note">Faded: set by the course (portages), by physics (a blade has to move water to push, so slip is never zero; a bigger blade or a longer drive cuts it), or by the hull and the power you put in.</div>
+          <div class="score-find" id="score-find"></div>
+        </section>
+      </section>
+
+      <section class="card" id="along-card">
+        <h2>Along the course</h2>
+          <h3 class="first">Speed along the course<button type="button" class="info" data-tip="Each boat's speed over the ground at each point. Shaded: bends. Drag the slider above to move the marker." aria-label="What is this?">?</button></h3>
           <svg class="curve" id="race-speed" role="img" aria-label="Each boat's speed along the course"></svg>
           <h3>At this point<button type="button" class="info" data-tip="Where each boat is at the time on the slider, and how it got there. Drag to replay any part of the race." aria-label="What is this?">?</button></h3>
           <table class="cmp stats" id="race-stats"><thead><tr><th></th><th><span class="a-dot"></span>A</th><th><span class="b-dot"></span>B</th></tr></thead><tbody></tbody></table>
-        </div>
       </section>
+
+    </div>
 
     <!-- -------------------------------------------------- controls -->
     <aside class="card controls" id="controls">
@@ -597,6 +634,9 @@
       <details class="group"><summary>Paddler</summary><div id="ctl-paddler"></div><div class="engine-box" id="engine-box"></div></details>
       <details class="group"><summary>Body</summary><div id="ctl-body"></div></details>
       <details class="group"><summary>Switching sides</summary><div id="ctl-switch"></div></details>
+    </aside>
+  </div>
+  <section class="card how" id="how">
       <details>
         <summary>How this works</summary>
         <ul>
@@ -616,14 +656,13 @@
           wakes, your body moving and your strength in each position. Absolute speeds are rough; the
           differences are what count.</p>
       </details>
-    </aside>
-  </div>
+  </section>
 </main>
 
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of stroke-sim.js (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. -->
-<script src="stroke-sim.js?v=8e61568233"></script>
+<script src="stroke-sim.js?v=0e23ff567c"></script>
 <script>
 (() => {
 "use strict";
@@ -820,7 +859,7 @@ function showBodyEffects() {
   const r0 = p.heelDeg ? bodyRef[editing].r : r;
   $("e-heelDeg").innerHTML = p.heelDeg ? `Switch every <b>${fmtNum(r.strokesPerSide, 1)}</b> strokes (from ${fmtNum(r0.strokesPerSide, 1)}), ` +
     `<b>${fmtNum(Math.abs(r0.switchDuty - r.switchDuty) * 100, 1)}%</b> ${r.switchDuty >= r0.switchDuty ? "less" : "more"} time lost switching` : "";
-  $("e-hipRock").innerHTML = p.hipRock ? `Heel <b>±${fmtNum(Math.max(...c.heel.map(Math.abs)) * 180 / Math.PI, 1)}°</b> instead of ±${fmtNum(c.heelStill * 180 / Math.PI, 1)}°, hips moving up to <b>${fmtNum(c.hipMax * 1000, 0)} mm</b>` : "";
+  $("e-hipRock").innerHTML = p.hipRock ? `Heel <b>±${fmtNum((Math.max(...c.heel) - Math.min(...c.heel)) / 2 * 180 / Math.PI, 1)}°</b> instead of ±${fmtNum(c.heelStill * 180 / Math.PI, 1)}°, hips moving up to <b>${fmtNum(c.hipMax * 1000, 0)} mm</b>` : "";
   for (const k of ["swingM", "dropM", "heelDeg", "hipRock", "rotation", "legDrive", "hinge"]) $(`e-${k}`).hidden = !p[k];
 }
 const showValue = (c) => {
@@ -922,7 +961,7 @@ const HELP = {
   "moves the boat": "Power that overcomes hull drag: the useful part.",
   slip: "Power lost pushing water backwards as the blade slips through it.",
   "sideways drag": "Drag from the hull crabbing against the stroke's sideways push.",
-  "surge & bounce": "Lost to the boat speeding up and slowing within each stroke, and bobbing up and down.",
+  "surge & bounce": "Lost to the boat speeding up and slowing within each stroke, bobbing and pitching, and to your body swinging.",
 };
 const info = (t) => `<button type="button" class="info" data-tip="${t.replace(/"/g, "&quot;")}" aria-label="What is this?">?</button>`;
 // label, key, unit, digits, higher is better
@@ -963,7 +1002,7 @@ function showEfficiency() {
   }).join("");
 
   const power = (s) => { const sh = s.at.shares;
-    return [sh.hull, sh.slip, sh.leeway, sh.surge + sh.bounce + sh.pitch + Math.max(0, sh.sink)].map((v) => v * 100); };
+    return [sh.hull, sh.slip, sh.leeway, sh.surge + sh.bounce + sh.pitch + sh.swing + sh.drop + Math.max(0, sh.sink)].map((v) => v * 100); };
   const force = (r) => [r.forceShare.forward, r.forceShare.sideways, r.forceShare.vertical].map((v) => v * 100);
   breakdown("power", ["moves the boat", "slip", "sideways drag", "surge & bounce"], power(A), power(B), 1);
   breakdown("force", ["forward", "sideways", "vertical"], force(results.a), force(results.b), 0);
@@ -1025,6 +1064,8 @@ function curveOf(r, watts = effortW) {
   const peak = (k) => pts.reduce((m, p) => Math.max(m, p[k]), 0);
   return { pts, Td, impulse, peakForce: peak("force"), peakForward: peak("forward") };
 }
+// Decimals a tick step needs: 0.25 → 2, 2.5 → 1, 5 → 0.
+const stepDigits = (st) => { let d = 0; while (d < 4 && Math.abs(st * 10 ** d - Math.round(st * 10 ** d)) > 1e-9) d++; return d; };
 const niceStep = (max, n) => {
   const raw = max / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
   return [1, 2, 2.5, 5, 10].map((m) => m * mag).find((v) => v >= raw);
@@ -1060,7 +1101,7 @@ function drawCurve() {
   for (let t = 0; t <= tMax + 1e-9; t += xs) {
     const end = Math.abs(t - lastX) < 1e-9;
     g += `<text x="${end ? Math.min(X(t), W - m.r) : X(t)}" y="${H - 10}" text-anchor="${end ? "end" : "middle"}">` +
-      `${fmtNum(t, xs < 0.1 ? 2 : 1)}${end ? " s" : ""}</text>`;
+      `${fmtNum(t, Math.max(1, stepDigits(xs)))}${end ? " s" : ""}</text>`;
   }
   // B's dashed line over A's solid one: where the curves coincide (same
   // settings), the gaps in B's dashes show A, so the line reads as both
@@ -1740,7 +1781,7 @@ function drawStrip() {
   });
   g += `<line class="axis" x1="${l}" x2="${r}" y1="36.5" y2="36.5"/><line class="axis" x1="${l}" x2="${r}" y1="80.5" y2="80.5"/>`;
   const step = niceStep(cb.L / 1000 / 4, 1);
-  for (let k = 0; k <= cb.L / 1000 + 1e-9; k += step) g += `<text x="${X(k * 1000)}" y="${H - 2}" text-anchor="middle">${k}</text>`;
+  for (let k = 0; k <= cb.L / 1000 + 1e-9; k += step) g += `<text x="${X(k * 1000)}" y="${H - 2}" text-anchor="middle">${+k.toFixed(3)}</text>`;
   g += `<rect x="${l}" y="0" width="${r - l}" height="82" fill="transparent" id="cb-strip-hit"/>`;
   svg.innerHTML = g;
 }
@@ -1764,7 +1805,7 @@ function drawEditor() {
     s.gauge === null && cb.gauges ? "Current set by hand" : "";
   $("o-cb-depth").textContent = depthText(s.depth);
   $("o-cb-depth").classList.toggle("warn", s.depth < 1);
-  $("cb-split").disabled = len < 200;
+  $("cb-split").disabled = len < 200 || s.kind === "portage";   // each carry pays its 30 s setup once
   $("cb-merge").disabled = cbSel >= cb.sections.length - 1;
 }
 function drawSecTable() {
@@ -2185,7 +2226,7 @@ function hullReadouts() {
   $("hull-bob-read").innerHTML = lines((x, c, e) => `Rides <b>${fmtNum(Math.abs(e.sinkMm), 1)} mm ${e.sinkMm < 0 ? "higher" : "lower"}</b> (${fmtNum(Math.abs(e.shares.sink) * 100, 1)}% ${e.shares.sink < 0 ? "less" : "more"} drag), bobs <b>±${fmtNum(e.bounceMm, 1)} mm</b> (${fmtNum(e.shares.bounce * 100, 1)}%)`);
   $("hull-pitch-read").innerHTML = lines((x, c, e) => `Pitches <b>±${fmtNum(e.pitchDeg, 2)}°</b>, the bow moving <b>±${fmtNum(e.bowMm, 1)} mm</b>, costing <b>${fmtNum(e.shares.pitch * 100, 1)}%</b>`);
   $("hull-roll-read").innerHTML = lines((x, c) => {
-    const heel = Math.max(...c.heel.map(Math.abs)) * 180 / Math.PI, inStep = Math.abs(c.rollPeriod / c.cycle - 1) < 0.15;
+    const heel = (Math.max(...c.heel) - Math.min(...c.heel)) / 2 * 180 / Math.PI, inStep = Math.abs(c.rollPeriod / c.cycle - 1) < 0.15;
     const rock = results[x].params.hipRock;
     return `Lifts the paddle side up to <b>${fmtNum(-Math.min(...c.roll), 0)} N·m</b>; balance with hips <b>${fmtNum(Math.abs(c.hipShift) * 1000, 0)} mm</b> toward the ${c.hipShift >= 0 ? "paddle" : "off"} side. ` +
       (rock ? `Hip rock ${Math.round(rock * 100)}%: <b>±${fmtNum(heel, 1)}°</b> (from ±${fmtNum(c.heelStill * 180 / Math.PI, 1)}°)` :
@@ -2224,7 +2265,8 @@ function drawPower() {
     const e = results[x].at(effortW), sh = e.shares, wave = 0.23 * Math.pow(e.waterSpeed / 2.5, 4);
     return [["Hull: friction", sh.hull * (1 - wave), "var(--cat-useful)"], ["Hull: waves", sh.hull * wave, "color-mix(in srgb, var(--cat-useful) 50%, var(--surface-1))"],
             ["Blade slip", sh.slip, "var(--cat-slip)"], ["Crab", sh.leeway, "var(--cat-side)"],
-            ["Speed swings", sh.surge, "var(--cat-other)"], ["Bob & pitch", sh.bounce + sh.pitch, "color-mix(in srgb, var(--cat-other) 55%, var(--surface-1))"]];
+            ["Speed swings", sh.surge, "var(--cat-other)"], ["Bob & pitch", sh.bounce + sh.pitch, "color-mix(in srgb, var(--cat-other) 55%, var(--surface-1))"],
+            ["Body swing & drop", sh.swing + sh.drop, "color-mix(in srgb, var(--cat-other) 30%, var(--surface-1))"]];
   };
   let g = "";
   BOATS.forEach((x, k) => {
@@ -2238,7 +2280,7 @@ function drawPower() {
     g += `<rect x="${tx}" y="${ty - 9}" width="10" height="10" fill="${c}"/><text x="${tx + 14}" y="${ty}">${nm} <tspan style="fill:var(--text-primary);font-weight:600">${fmtNum(v * 100, v < 0.01 ? 1 : 0)}%</tspan></text>`;
   });
   const sink = results[hullFocus()].at(effortW).shares.sink;
-  g += `<text x="${x0}" y="162">${NAME[hullFocus()]}'s figures. Riding ${sink < 0 ? "higher saves" : "lower costs"} ${fmtNum(Math.abs(sink) * 100, 1)}% more.</text>`;
+  g += `<text x="${x0}" y="${104 + 4 * 18}">${NAME[hullFocus()]}'s figures. Riding ${sink < 0 ? "higher saves" : "lower costs"} ${fmtNum(Math.abs(sink) * 100, 1)}% more.</text>`;
   $("hull-power").innerHTML = g;
 }
 function drawShallow() {
@@ -2294,7 +2336,13 @@ const FIXABLE = { "Muscle not used": "Use more rotation, leg drive and hinge", "
   "Switching": "Pull nearer the hull, or heel toward the paddle, to switch less", "Drop": "Drop less at the catch",
   "Crab": "Pull straight back, not out to the side", "Surge, bob & pitch": "Smooth the pull: a longer drive, an even force", "Heel": "" };
 const FIX_MIN = 20;   // s: less than this isn't worth naming
-const span = (s) => { s = Math.abs(s); return s >= 3600 ? `${Math.floor(s / 3600)}:${String(Math.round((s % 3600) / 60)).padStart(2, "0")} h` : `${Math.floor(s / 60)}:${String(Math.round(s % 60) % 60).padStart(2, "0")}`; };
+// Round once, then split, so 59.6 s reads 1:00 (not 0:00) and 1:59:40 reads 2:00 h (not 1:60 h).
+const span = (s) => {
+  const t = Math.round(Math.abs(s));
+  if (t < 3600) return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
+  const m = Math.round(t / 60);
+  return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")} h`;
+};
 function scheduleScore() {
   const gen = ++scoreGen;
   $("score").dataset.ready = "0";
@@ -2331,6 +2379,11 @@ async function runScore(gen) {
     if (!(await step("Surge, bob & pitch", intoHull(["surge", "bounce", "swing", "drop", "pitch"])))) return;
     if (setup.map) rows.push(["Portages", race[`legs${x.toUpperCase()}`].filter((l) => l.kind === "portage").reduce((a, l) => a + l.t, 0)]);
     if (!(await step("Blade slip", intoHull("slip")))) return;
+    // What's left: the bare hull at this boat's power (and the carries, on a
+    // map). Without it the rows only add up to the gap when both boats share
+    // the same power and hull.
+    const carry = setup.map ? rows.find((q) => q[0] === "Portages")[1] : 0;
+    rows.push(["Hull at this power", isFinite(t) ? t - carry : NaN]);
     out[x] = { t: t0, rows };
   }
   drawScoreCard(out, setup);
@@ -2355,7 +2408,7 @@ function drawScoreCard(out, setup) {
   // Bars: technique first, biggest first; then what technique can't remove.
   const sorted = tech.filter((k) => BOATS.some((x) => Math.abs(val(x, k)) >= 0.5))   // what costs neither boat anything stays out
     .sort((p, q) => Math.max(val("a", q), val("b", q)) - Math.max(val("a", p), val("b", p)));
-  const rows = [...sorted, ...(setup.map ? ["Portages"] : []), "Blade slip"];
+  const rows = [...sorted, ...(setup.map ? ["Portages"] : []), "Blade slip", "Hull at this power"];
   // Drawn at the width it shows at, so the text stays its size on a wide screen.
   const W = Math.max(300, Math.round(widthOf($("score-bars"))) || 360), l = 132, r = 56, rowH = 30, H = rows.length * rowH + 22;
   const top = Math.max(1, ...sorted.flatMap((k) => BOATS.map((x) => Math.abs(val(x, k)) || 0))), step = niceStep(top, 2), max = Math.ceil(top / step) * step;
@@ -2504,7 +2557,7 @@ function drawSpeed(st) {
   for (const s of race.profileA) if (band(s)) g += `<rect class="bendband" x="${X(s.d0)}" y="${m.t}" width="${Math.max(1, X(s.d1) - X(s.d0))}" height="${ph}"${s.kind === "portage" ? ' style="fill:var(--muted);opacity:.5"' : ""}/>`;
   for (let f = 0; f <= yTop + 1e-9; f += ys)
     g += `<line class="${f === 0 ? "axis" : "grid"}" x1="${m.l}" x2="${W - m.r}" y1="${Y(f)}" y2="${Y(f)}"/>` +
-      `<text x="${m.l - 6}" y="${Y(f) + 4}" text-anchor="end">${fmtNum(f, 0)}${f + ys > yTop + 1e-9 ? " km/h" : ""}</text>`;
+      `<text x="${m.l - 6}" y="${Y(f) + 4}" text-anchor="end">${fmtNum(f, stepDigits(ys))}${f + ys > yTop + 1e-9 ? " km/h" : ""}</text>`;
   if (race.legsA.length > 1 && water !== "map") g += `<line class="turn" x1="${X(L / 2)}" x2="${X(L / 2)}" y1="${m.t}" y2="${m.t + ph}"/>` +
     `<text x="${X(L / 2) + 4}" y="${m.t + 10}">turn</text>`;
   g += `<text x="${m.l}" y="${H - 6}">0</text><text x="${W - m.r}" y="${H - 6}" text-anchor="end">${fmtNum(L / 1000, L < 1000 ? 2 : 1)} km</text>`;
@@ -2934,17 +2987,61 @@ function frame(now) {
     } else if (!tip.hidden) hide();
   }, true);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") hide(); });
-  addEventListener("scroll", () => { if (!tip.hidden && !pinned) hide(); }, { passive: true });
+  // Scrolling hides a hover tip, unless the pointer is still on its button
+  // (the page can scroll itself, e.g. keeping its place as content resizes):
+  // then the tip just follows the button.
+  addEventListener("scroll", () => {
+    if (tip.hidden || pinned) return;
+    if (owner && owner.matches(":hover")) show(owner); else hide();
+  }, { passive: true });
 })();
 
+// ----------------------------------------------------------------- tabs
+// One topic at a time. A section drawn while hidden had no width, so it is
+// drawn again once it shows.
+let tab = "stroke";
+function redrawShown() {
+  if (!results.a || !results.b) return;
+  drawCurve();
+  updateHull();
+  if (water === "map" && cb) renderBuilder();
+  if (lastScore && $("score").dataset.ready === "1") drawScoreCard(...lastScore);
+  if (race && !run) showAt(shownT);
+}
+function setTab(t) {
+  tab = t;
+  for (const b of document.querySelectorAll("nav.tabs button")) b.setAttribute("aria-selected", String(b.dataset.tab === t));
+  for (const x of ["stroke", "boat", "race"]) $(`tab-${x}`).hidden = x !== t;
+  document.querySelector(".layout").dataset.tab = t;
+  requestAnimationFrame(redrawShown);
+}
+for (const b of document.querySelectorAll("nav.tabs button")) b.addEventListener("click", () => setTab(b.dataset.tab));
+// On the hull: one part at a time.
+const HULL_PARTS = [["surge", "Through a stroke"], ["motion", "Bob, pitch, roll"], ["heading", "Heading"], ["power", "Power"], ["shallow", "Shallow water"]];
+let hullPart = "surge";
+function renderHullPart() {
+  $("hull-part").innerHTML = "";
+  for (const [v, label] of HULL_PARTS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    b.dataset.value = v;
+    b.setAttribute("aria-pressed", String(hullPart === v));
+    b.addEventListener("click", () => { hullPart = v; renderHullPart(); requestAnimationFrame(redrawShown); });
+    $("hull-part").append(b);
+  }
+  for (const el of document.querySelectorAll(".hull-part")) el.hidden = el.dataset.part !== hullPart;
+}
+
 renderModes();
+renderHullPart();
 layoutViews();
 changed();
 requestAnimationFrame(frame);
 window.sim = {
   boats, results, PRESETS,
   get editing() { return editing; }, get race() { return race; }, get mode() { return mode; },
-  get run() { return run; },
+  get run() { return run; }, setTab, get tab() { return tab; }, get score() { return lastScore && lastScore[0]; },
   raceWallS: 12,   // seconds on screen for a whole race (tests shorten it)
 };
 })();

@@ -33,7 +33,7 @@ console.log("\nStroke simulator physics");
   check("thrust·speed = hull + leeway",
         Math.abs(base.usefulPower - base.hullPower - base.leewayPower) < 1e-3 * base.paddlerPower);
   const sh = base.at(150).shares;
-  const total = sh.hull + sh.slip + sh.leeway + sh.surge + sh.sink + sh.bounce;
+  const total = sh.hull + sh.slip + sh.leeway + sh.surge + sh.sink + sh.bounce + sh.swing + sh.drop + sh.pitch;
   check("shares at 150 W add to 1", Math.abs(total - 1) < 1e-4, total.toFixed(6));
   check("efficiency is the hull share at the comparison effort", Math.abs(base.efficiency - sh.hull) < 1e-12);
   check("surge costs a little", sh.surge > 0.0005 && sh.surge < 0.02, pct(sh.surge));
@@ -50,6 +50,10 @@ console.log("\nStroke simulator physics");
         `${pct(shortDrive.efficiency)} / ${pct(base.efficiency)} / ${pct(longDrive.efficiency)}`);
   const peakAt = (r) => r.peakForce * Math.pow(150 / r.paddlerPower, 2 / 3);
   check("longer drive: lower peak force at the same effort", peakAt(longDrive) < peakAt(base) && peakAt(base) < peakAt(shortDrive));
+  // A faster boat turns more per stroke (moment ∝ V², damping ∝ V), so it switches more often.
+  check("harder effort: fewer strokes per side", base.at(400).switching.perSide < base.at(150).switching.perSide - 0.5 &&
+        Math.abs(base.at(150).switching.perSide - base.strokesPerSide) < 1e-9,
+        `${base.at(150).switching.perSide.toFixed(2)} at 150 W, ${base.at(400).switching.perSide.toFixed(2)} at 400 W`);
   check("hull calibrated near a measured C-1 (k 4.26 at 109 kg)", base.speedAt(150) > 2.5 && base.speedAt(150) < 2.85,
         `${base.speedAt(150).toFixed(2)} m/s at 150 W`);
   check("plausible C1 speed at 150 W", base.speedAt(150) > 2.0 && base.speedAt(150) < 3.2, `${base.speedAt(150).toFixed(2)} m/s`);
@@ -339,12 +343,19 @@ console.log("\nStroke simulator physics");
     const slide = (sel, v) => page.$eval(sel, (el, v) => { el.value = v; el.dispatchEvent(new Event("input")); }, v);
     const secs = (t) => t.split(":").reduce((a, x) => a * 60 + +x, 0);
     const labels0 = () => page.$$eval("#race-stats tbody tr td:first-child", (ts) => ts.map((t) => t.firstChild.textContent));
+    const goTab = async (t) => { await page.click(`nav.tabs button[data-tab=${t}]`); await page.waitForTimeout(250); };
+    const visible = (sel) => page.isVisible(sel);
 
-    // Layout: phones put the sliders after the views, wide screens beside them.
+    // Layout: one tab at a time; phones put the sliders after it, wide screens beside it.
     const box = async (sel) => (await page.$(sel)).boundingBox();
-    const [views, ctl, raceBox] = [await box("#views-card"), await box("#controls"), await box("#race-card")];
-    if (width < 900) check(`${tag}: sliders between views and race`, ctl.y > views.y && ctl.y < raceBox.y);
+    check(`${tag}: stroke tab first, the others hidden`, (await visible("#eff-card")) && !(await visible("#hull-card")) && !(await visible("#race-card")));
+    const [views, ctl] = [await box("#views-card"), await box("#controls")];
+    if (width < 900) check(`${tag}: sliders after the tab`, ctl.y > views.y + views.height - 1);
     else check(`${tag}: sliders in a column beside the results`, ctl.x > views.x + views.width - 1);
+    await goTab("race");
+    check(`${tag}: race tab: race, conditions, score`, (await visible("#race-card")) && (await visible("#conditions-card")) &&
+          (await visible("#score-card")) && !(await visible("#eff-card")) && (await visible("#controls")));
+    await goTab("stroke");
 
     // Efficiency comparison
     check(`${tag}: A and B efficiencies`, (await cellVal("eff", 2)) > 50 && (await cellVal("eff", 3)) > 50);
@@ -369,6 +380,10 @@ console.log("\nStroke simulator physics");
     check(`${tag}: winner highlighted`, (await page.$$('#cmp tr[data-row="eff"] td.win.a')).length === 1);
     check(`${tag}: two power bars, four parts`, (await page.$$("#bars-power .bar")).length === 2 &&
           (await page.$$("#leg-power tr")).length === 5);
+    await slide("#c-swingM", 0.1); await settle();
+    const legA = await page.$$eval("#leg-power tr td:nth-child(2)", (ts) => ts.slice(1).reduce((a, t) => a + parseFloat(t.textContent), 0));
+    check(`${tag}: power shares add to 100%, body swing included`, Math.abs(legA - 100) < 1.5, `${legA.toFixed(1)}%`);
+    await slide("#c-swingM", 0); await settle();
     check(`${tag}: details for both boats`, /switch|turning/i.test(await text("#why-a")) && /B:/.test(await text("#why-b")));
     const s150 = await cellVal("speed", 2);
     await slide("#c-effortW", 300); await settle();
@@ -482,6 +497,7 @@ console.log("\nStroke simulator physics");
     await page.click("#view-mode >> text=Split");
 
     // Race
+    await goTab("race");
     const verdict = () => text("#verdict");
     check(`${tag}: race verdict`, /^Boat [AB] wins by (\d+(\.\d)? s|\d+:\d\d), \d+ m ahead/.test(await verdict()), await verdict());
     check(`${tag}: point to point by default`, JSON.stringify(await pressed("#course")) === '["point"]');
@@ -789,6 +805,12 @@ console.log("\nStroke simulator physics");
     await page.click("#water >> text=Open water");
     check(`${tag}: back from the real course`, (await page.isVisible("#dist")) && (await page.isVisible("#race-view")) && !(await page.isVisible("#builder")));
     // On the hull: Overlay by default (both boats in each picture), Split, one boat; power, shallow water.
+    await goTab("boat");
+    check(`${tag}: hull: one part at a time`, (await visible("#hp-surge")) && !(await visible("#hp-roll")) &&
+          JSON.stringify(await pressed("#hull-part")) === '["surge"]');
+    await page.click("#hull-part >> text=Bob, pitch, roll"); await settle();
+    check(`${tag}: hull: pick a part`, (await visible("#hp-roll")) && !(await visible("#hp-surge")));
+    await page.click("#hull-part >> text=Through a stroke"); await settle();
     check(`${tag}: hull: overlay by default, both boats in each picture`, JSON.stringify(await pressed("#hull-mode")) === '["overlay"]' &&
           (await page.$$("#hp-chart svg")).length === 1 && (await page.$$("#hp-chart path.ln")).length === 6 &&
           (await page.$$("#hp-surge path.hull")).length === 2 && (await page.$$("#hp-roll path.hull")).length === 2 &&
@@ -847,17 +869,25 @@ console.log("\nStroke simulator physics");
           (await page.$$("#hp-chart path.ln.still")).length >= 1, await text("#e-hinge"));
     check(`${tag}: pitch readout and the paddler`, /^A Pitches ±[\d.]+°, the bow moving ±[\d.]+ mm, costing [\d.]+%/.test(await text("#hull-pitch-read")) &&
           (await page.$$("#hp-pitch .fig-head")).length >= 1 && (await page.$$("svg.view .fig-head")).length >= 3, await text("#hull-pitch-read"));
+    await goTab("stroke");
     await page.click("#view-mode >> text=Overlay"); await page.waitForTimeout(200);
     check(`${tag}: overlay: both paddlers, each in its colour`, await page.$$eval("svg.view", (ss) => ss.every((s) =>
           s.querySelectorAll(".fig-head").length === 2 && /series-1/.test(s.querySelector(".fig-head.fig-a").getAttribute("style")))) &&
           (await page.$$("#hp-pitch .fig-head")).length === 2 && (await page.$$("#hp-roll .fig-head")).length === 2 && (await page.$$("#hp-roll .paddler")).length === 0);
     await page.click("#view-mode >> text=Split");
     await slide("#c-hinge", 0);
+    await goTab("race");
     await page.click("#effort-mode >> text=What each can hold"); await page.waitForTimeout(300);
     await scoreReady();
     check(`${tag}: effort: what each can hold`, (await page.isDisabled("#effA")) && (await page.isDisabled("#effB")) &&
           /^\d+ W · what A can hold$/.test(await text("#o-effA")) && /Muscle not used/.test(await text("#score-bars")) &&
           /^Boat A is faster by [\d:]+\. .+ costs Boat [AB] [\d:]+ more/.test(await text("#score-verdict")), `${await text("#o-effA")} | ${await text("#score-verdict")}`);
+    const rowsGap = await page.evaluate(() => {
+      const o = window.sim.score, sum = (x) => o[x].rows.reduce((a, q) => a + (q[0] === "Portages" ? 0 : q[1]), 0);
+      return [sum("a") - sum("b"), o.a.t - o.b.t];
+    });
+    check(`${tag}: race score rows add up to the gap, at different efforts`, Math.abs(rowsGap[0] - rowsGap[1]) < 0.5,
+          `${rowsGap[0].toFixed(1)} vs ${rowsGap[1].toFixed(1)} s`);
     await page.click("#effort-mode >> text=Set by hand"); await slide("#c-rotation", 0); await page.waitForTimeout(300);
     check(`${tag}: effort: back to set by hand`, !(await page.isDisabled("#effA")) && !/what A can hold/.test(await text("#o-effA")));
     // The C1 shape in the stroke views: a gunwale line inside the hull from above.
@@ -883,6 +913,7 @@ console.log("\nStroke simulator physics");
       const mob = await phone.newPage();
       await mob.goto("file://" + path.resolve(__dirname, "../../docs/app/simulator.html"));
       await mob.waitForTimeout(500);
+      await mob.tap("nav.tabs button[data-tab=race]"); await mob.waitForTimeout(300);
       await mob.tap("#water >> text=AuSable / GPX"); await mob.waitForTimeout(800);
       await mob.$eval("#race-start", (e) => e.scrollIntoView({ block: "center" }));
       const barKm = async () => { const m = (await mob.textContent("#course-view")).match(/([\d.]+) (k?m)N/); return m ? +m[1] * (m[2] === "km" ? 1 : 0.001) : 0; };
@@ -911,6 +942,7 @@ console.log("\nStroke simulator physics");
       const lp = await ctx.newPage();
       await lp.goto("file://" + path.resolve(__dirname, "../../docs/app/simulator.html"));
       await lp.waitForTimeout(500);
+      await lp.click("nav.tabs button[data-tab=race]"); await lp.waitForTimeout(300);
       await lp.$eval("#scrub", (el) => { el.value = 500; el.dispatchEvent(new Event("input")); });
       await lp.click("#zoom-out"); await lp.waitForTimeout(100);
       check(`${tag}: open water: each boat's weave`, (await lp.$$("#race-view path.line-a")).length === 1 && (await lp.$$("#race-view path.line-b")).length === 1);

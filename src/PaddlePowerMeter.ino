@@ -291,8 +291,9 @@ void sendAppPackets(uint32_t nowMs, const BoatSpeed &b) {
     p.shaftAngleMrad = ble::toI16(model.shaftAngle() * 1000);
     sendLive(p);
   }
-  if (model.strokeCount() != lastStrokeSent) {
-    lastStrokeSent = model.strokeCount();
+  // Sent again when a second force peak re-scores the same stroke.
+  if (model.strokeUpdates() != lastStrokeSent) {
+    lastStrokeSent = model.strokeUpdates();
     ble::StrokePacket p;
     p.count = model.strokeCount();
     p.powerW = ble::toI16(model.strokePower());

@@ -35,7 +35,7 @@ PowerModel::PowerModel()
     inDrive_(false), driveStartMs_(0), driveEnergy_(0),
     havePrev_(false), prevDriveStartMs_(0),
     strokePower_(0), strokeRate_(0), lastEnergy_(0),
-    strokeCount_(0), lastStrokeMs_(0),
+    strokeCount_(0), strokeUpdates_(0), lastStrokeMs_(0), lastCycleMs_(0),
     driveUseful_(0), lastUseful_(0),
     driveImpulse_(0), lastImpulse_(0), lastDriveS_(0), dutyFactor_(0), meanForward_(0),
     driveUsefulValid_(false), lastUsefulValid_(false), splitValid_(false),
@@ -201,14 +201,19 @@ void PowerModel::updateStrokes(const PaddleSample &s, float instP,
     if (now - driveStartMs_ >= cfg::MIN_DRIVE_MS) {
       uint32_t cycle = havePrev_ ? driveStartMs_ - prevDriveStartMs_ : 0;
       if (havePrev_ && cycle < cfg::MIN_CYCLE_MS) {
-        // A second force peak inside the same stroke: fold it in.
+        // A second force peak inside the same stroke: fold it in, then
+        // score the whole stroke again over the cycle its first peak used.
         driveEnergy_ += lastEnergy_;
         driveUseful_ += lastUseful_;
         driveImpulse_ += lastImpulse_;
         driveUsefulValid_ = driveUsefulValid_ && lastUsefulValid_;
         driveStartMs_ = prevDriveStartMs_;
         strokeCount_--;
-      } else if (havePrev_ && cycle <= cfg::MAX_CYCLE_MS) {
+        cycle = lastCycleMs_;   // 0 if the first peak wasn't scored
+      }
+      lastCycleMs_ = 0;
+      if (cycle >= cfg::MIN_CYCLE_MS && cycle <= cfg::MAX_CYCLE_MS) {
+        lastCycleMs_ = cycle;
         // Average power over the full cycle (drive + recovery), which is
         // what a paddler's sustained output actually is.
         strokePower_ = fmaxf(0.0f, driveEnergy_ / (cycle * 0.001f));
@@ -230,6 +235,7 @@ void PowerModel::updateStrokes(const PaddleSample &s, float instP,
       prevDriveStartMs_ = driveStartMs_;
       havePrev_ = true;
       strokeCount_++;
+      strokeUpdates_++;
       lastStrokeMs_ = driveStartMs_;
     }
   }

@@ -333,6 +333,48 @@ int main() {
     CHECK_NEAR("mean forward push drops to 0", model.meanForwardForce(), 0, 0);
   }
 
+  // A stroke whose force dips below the end threshold and rises again
+  // (a double peak): the second peak is folded into the first, and the
+  // stroke's power must count both.
+  std::printf("\nDouble-peak stroke\n");
+  {
+    SimConfig c;
+    c.forceNoise = 0;
+    c.seconds = 13;
+    const double cyc = c.driveS + c.recoveryS, w = M_PI / c.driveS;
+    PowerModel model;
+    bool first = true;
+    double trueE = 0, sumP = 0, sumDuty = 0;
+    int n = 0;
+    uint16_t updates = 0, sends = 0;
+    generateStroke(c, 1, [&](const PaddleSample &s0, double t) {
+      PaddleSample s = s0;
+      double F = 0;
+      if (t >= 1.0) {
+        double tau = std::fmod(t - 1.0, cyc);
+        if (tau < 0.25) F = 200 * std::sin(M_PI * tau / 0.25);
+        else if (tau >= 0.30 && tau < 0.60) F = 200 * std::sin(M_PI * (tau - 0.30) / 0.30);
+        double omega = tau < c.driveS ? c.amplitude * w * std::sin(w * tau) : 0;
+        if (t >= 4.6) trueE += F * omega * PowerModel::leverArmFor(c.pivotPos) * 0.01;
+      }
+      s.forceN = (float)F;
+      if (first) model.begin(s);
+      first = false;
+      model.update(s);
+      if (model.strokeUpdates() != updates) { updates = model.strokeUpdates(); sends++; }
+      if (t > 4 && std::fabs(std::fmod(t - 1.0, cyc) - 0.9) < 0.005) {
+        sumP += model.strokePower();
+        sumDuty += model.dutyFactor();
+        n++;
+      }
+    });
+    double trueP = trueE / (c.seconds - 4.6);   // 7 whole cycles
+    CHECK_NEAR("power counts both peaks", sumP / n, trueP, 0.05 * trueP);
+    CHECK_NEAR("duty covers the whole drive", sumDuty / n, 0.49, 0.03);
+    CHECK_NEAR("one stroke per cycle", model.strokeCount(), std::floor((c.seconds - 1.0) / cyc), 1);
+    CHECK_NEAR("re-scored stroke is sent again", sends, 2 * model.strokeCount(), 2);
+  }
+
   std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "PASSED",
               failures, failures == 1 ? "" : "s");
   return failures ? 1 : 0;
