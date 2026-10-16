@@ -85,6 +85,19 @@
   @media (min-width: 960px) {
     .layout { grid-template-columns: minmax(0, 1fr) 360px; }
     .controls { grid-column: 2; grid-row: 1; position: sticky; top: 64px; max-height: calc(100vh - 76px); overflow: auto; } }
+  /* The bar on every tab: the boat the sliders change, and the power. */
+  .ctxbar { display: grid; gap: 4px 20px; margin-bottom: 12px; padding: 10px 14px; }
+  @media (min-width: 760px) { .ctxbar { grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); align-items: center; } }
+  .ctx-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  .ctxbar .ctl { margin: 4px 0; }
+  .ctxbar[data-tab="race"] .ctx-power:not(.race-power), .ctxbar:not([data-tab="race"]) .race-power { display: none; }
+  .race-power .ctl { margin: 2px 0; }
+  @media (min-width: 560px) { .race-power { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+    .race-power .ctx-head, .race-power #effort-mode { grid-column: 1 / -1; } }
+  .to-sliders { font-size: 13px; font-weight: 600; text-decoration: none; }
+  @media (min-width: 960px) { .to-sliders { display: none; } }
+  h2.ctl-title { font-size: 15px; }
+  h2.ctl-title + h3 { margin-top: 8px; }
   .how { margin-top: 12px; }
   .how details { margin-top: 0; }
   h3.first { margin-top: 4px; }
@@ -98,7 +111,7 @@
   .boats button.a { --chip: var(--series-1); } .boats button.b { --chip: var(--series-2); }
   .boats button[aria-pressed="true"] { border: 2px solid var(--chip); padding: 7px 9px;
     background: color-mix(in srgb, var(--chip) 14%, var(--surface-1)); }
-  .boat-actions { margin-top: 8px; }
+  .boat-actions { margin: 0 0 10px; }
 
   button {
     font: inherit; font-weight: 600; cursor: pointer; border-radius: 10px; padding: 8px 12px; min-height: 40px;
@@ -358,16 +371,37 @@
     <button type="button" role="tab" data-tab="race" aria-selected="false">Race</button>
   </nav>
 
+  <!-- On every tab: which boat the sliders change, and the power. -->
+  <section class="card ctxbar" id="ctxbar" data-tab="stroke">
+    <div class="ctx-boats">
+      <div class="sub ctx-head"><span>Sliders change<button type="button" class="info" data-tip="Pick a boat, then the presets and sliders change only that boat." aria-label="What is this?">?</button></span><a class="to-sliders" href="#controls">Sliders ↓</a></div>
+      <div class="boats" role="group" aria-label="Boat to edit" id="boats">
+        <button class="a" data-boat="a"><span><span class="a-dot"></span>Boat A</span><span class="nm" id="nm-a"></span></button>
+        <button class="b" data-boat="b"><span><span class="b-dot"></span>Boat B</span><span class="nm" id="nm-b"></span></button>
+      </div>
+    </div>
+    <div class="ctx-power" data-tabs="stroke boat">
+          <div class="ctl">
+            <label class="top"><span>Power<button type="button" class="info" data-tip="The paddler power used for the speed and force numbers, so both strokes are compared at the same effort." aria-label="What is this?">?</button></span><output id="o-effortW"></output></label>
+            <input type="range" id="c-effortW" min="50" max="400" step="10" value="150" aria-label="Effort for comparing">
+          </div>
+    </div>
+    <div class="ctx-power race-power" data-tabs="race">
+      <div class="sub ctx-head"><span>Race power</span></div>
+            <div class="row chips" id="effort-mode" role="group" aria-label="Effort" style="margin-top:6px"></div>
+            <div class="ctl"><label class="top"><span><span class="a-dot"></span>Boat A effort</span><output id="o-effA"></output></label>
+              <input type="range" id="effA" min="50" max="400" step="10" value="150" aria-label="Boat A effort"></div>
+            <div class="ctl"><label class="top"><span><span class="b-dot"></span>Boat B effort</span><output id="o-effB"></output></label>
+              <input type="range" id="effB" min="50" max="400" step="10" value="150" aria-label="Boat B effort"></div>
+    </div>
+  </section>
+
   <div class="layout" data-tab="stroke">
     <div class="tab-body" id="tab-stroke" role="tabpanel">
       <!-- ------------------------------------------------ efficiency -->
       <section class="card" id="eff-card">
         <div class="card-head">
           <h2>Stroke efficiency: A vs B</h2>
-          <div class="ctl" style="margin:0;min-width:220px;flex:0 1 280px">
-            <label class="top"><span>Compare at<button type="button" class="info" data-tip="The paddler power used for the speed and force numbers, so both strokes are compared at the same effort." aria-label="What is this?">?</button></span><output id="o-effortW"></output></label>
-            <input type="range" id="c-effortW" min="50" max="400" step="10" value="150" aria-label="Effort for comparing">
-          </div>
         </div>
         <table class="cmp" id="cmp">
           <thead><tr><th></th><th><span class="a-dot"></span>A</th><th><span class="b-dot"></span>B</th><th>Better</th></tr></thead>
@@ -514,13 +548,8 @@
         <h2>Conditions</h2>
         <div class="race-cols">
           <section>
-            <h3>Paddlers</h3>
-            <div class="row chips" id="effort-mode" role="group" aria-label="Effort" style="margin-top:6px"></div>
-            <div class="ctl"><label class="top"><span><span class="a-dot"></span>Boat A effort</span><output id="o-effA"></output></label>
-              <input type="range" id="effA" min="50" max="400" step="10" value="150" aria-label="Boat A effort"></div>
-            <div class="ctl"><label class="top"><span><span class="b-dot"></span>Boat B effort</span><output id="o-effB"></output></label>
-              <input type="range" id="effB" min="50" max="400" step="10" value="150" aria-label="Boat B effort"></div>
             <div class="river-only map-too" hidden>
+              <h3>Lines</h3>
               <div class="ctl"><div class="top"><span><span class="a-dot"></span>Boat A line</span></div>
                 <div class="row chips" id="line-a" role="group" aria-label="Boat A line" style="margin-top:6px"></div></div>
               <div class="ctl"><div class="top"><span><span class="b-dot"></span>Boat B line</span></div>
@@ -614,16 +643,12 @@
 
     <!-- -------------------------------------------------- controls -->
     <aside class="card controls" id="controls">
-      <div class="sub" style="margin-bottom:6px">Sliders change<button type="button" class="info" data-tip="Pick a boat, then the presets and sliders below change only that boat." aria-label="What is this?">?</button></div>
-      <div class="boats" role="group" aria-label="Boat to edit" id="boats">
-        <button class="a" data-boat="a"><span><span class="a-dot"></span>Boat A</span><span class="nm" id="nm-a"></span></button>
-        <button class="b" data-boat="b"><span><span class="b-dot"></span>Boat B</span><span class="nm" id="nm-b"></span></button>
-      </div>
       <div class="row boat-actions">
         <button class="small" id="copy">Copy to B</button>
         <button class="small" id="swap">Swap A and B</button>
       </div>
-      <h3>Presets for <span id="editing-name">Boat A</span></h3>
+      <h2 class="ctl-title">Settings for <span id="editing-name">Boat A</span></h2>
+      <h3>Presets</h3>
       <div class="row chips" id="presets" role="group" aria-label="Presets"></div>
       <details class="group" open><summary>Stroke shape</summary><div id="ctl-stroke"></div></details>
       <details class="group" open><summary>Paddle</summary><div id="ctl-paddle"></div>
@@ -3013,6 +3038,7 @@ function setTab(t) {
   for (const b of document.querySelectorAll("nav.tabs button")) b.setAttribute("aria-selected", String(b.dataset.tab === t));
   for (const x of ["stroke", "boat", "race"]) $(`tab-${x}`).hidden = x !== t;
   document.querySelector(".layout").dataset.tab = t;
+  $("ctxbar").dataset.tab = t;
   requestAnimationFrame(redrawShown);
 }
 for (const b of document.querySelectorAll("nav.tabs button")) b.addEventListener("click", () => setTab(b.dataset.tab));
