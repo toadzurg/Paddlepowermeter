@@ -637,7 +637,7 @@
           <table class="secs" id="cb-gauge-list" hidden><tbody></tbody></table>
           <div class="row" style="margin-top:8px"><button id="cb-weather">Weather on the course</button>
             <input type="datetime-local" id="cb-weather-time" aria-label="Hour for the weather, local time on the course (empty: now)">
-            <button type="button" class="info" data-tip="Uses Open-Meteo's weather at the middle of the course: now, the forecast, or the record for a past hour (local time there). Sets wind, temperature and humidity. A course loads with its race's: the AuSable at its start (last Saturday in July, 9 pm), a GPX when it was recorded, else now; the gauges follow the same day. Its wind is measured 10 m up; near the water it's about 80% of that." aria-label="What is this?">?</button></div>
+            <button type="button" class="info" data-tip="Uses Open-Meteo's weather at the middle of the course: now, the forecast, or the record for a past hour (local time there). Sets wind, temperature and humidity. A course loads with its race's: the AuSable's last race from its start (last Saturday in July, 9 pm), a GPX from when it was recorded, hour by hour through the race; else now. The gauges follow the same day. Moving a weather slider sets one value for the whole race. Its wind is measured 10 m up; near the water it's about 80% of that." aria-label="What is this?">?</button></div>
           <div class="sub" id="cb-weather-info">Weather is set by hand.</div>
           <svg class="cmap" id="cb-map" role="img" aria-label="Course map: tap a section to edit it"></svg>
           <div class="note">Colour: current. Tap a section to edit it.</div>
@@ -796,7 +796,7 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of each engine file (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. The fit builds on the stroke engine. -->
-<script src="stroke-sim.js?v=205a0389c6"></script>
+<script src="stroke-sim.js?v=413bbb5e50"></script>
 <script src="fit-sim.js?v=c4843125f4"></script>
 <script>
 (() => {
@@ -840,7 +840,7 @@ function shown(el) {
 }
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 42;
+const NEEDS_API = 43;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -1656,15 +1656,19 @@ function wbgt(t, rh) {
   const e = (rh / 100) * 6.105 * Math.exp((17.27 * t) / (237.7 + t));   // vapour pressure, hPa
   return 0.567 * t + 0.393 * e + 3.94;
 }
-function heatFactor() {
-  const w = wbgt(parseFloat($("temp").value), parseFloat($("humid").value));
-  return Math.max(0, 1 - (parseFloat($("heatLoss").value) / 100) * Math.max(0, w - HEAT_FROM));
+function heatFactor(t = parseFloat($("temp").value), rh = parseFloat($("humid").value)) {
+  return Math.max(0, 1 - (parseFloat($("heatLoss").value) / 100) * Math.max(0, wbgt(t, rh) - HEAT_FROM));
 }
+// A real course with the weather hour by hour: the race meets each hour's
+// wind and heat (the engine applies the heat to each boat's power).
+const hourly = () => (water === "map" && cb && cb.hourly ? cb.hourly : null);
+const raceWeather = (hs) => hs.map((h) => ({ windSpeed: h.wind / 3.6, windFrom: h.from, power: heatFactor(h.temp, h.humid) }));
 function updateRace() {
   if (!results.a || !results.b) return;
   chips("effort-mode", EFFORT_MODES, () => effortMode, (v) => { effortMode = v; });
   const kmIn = parseFloat($("dist").value), mapIn = water === "map";
-  const heat = heatFactor();
+  const hs = hourly(), weather = hs ? raceWeather(hs) : null;
+  const heat = hs ? 1 : heatFactor();
   // The effort sliders are a cool day's power; the race is at that less the heat.
   const baseA = raceWatts("a", mapIn ? 0 : kmIn * 1000), baseB = raceWatts("b", mapIn ? 0 : kmIn * 1000);
   const effA = baseA * heat, effB = baseB * heat;
@@ -1683,7 +1687,11 @@ function updateRace() {
   $("o-temp").textContent = `${fmtNum(temp, 0)} °C`;
   $("o-humid").textContent = `${humid}%`;
   $("o-heatLoss").textContent = loss === 0 ? "left out" : `${fmtNum(loss, 2)}% per °C`;
-  $("heat-note").textContent = `Heat index ${fmtNum(wbgt(temp, humid), 0)} °C: ` +
+  if (hs) {
+    const wb = hs.map((h) => wbgt(h.temp, h.humid)), worst = 1 - Math.min(...weather.map((w) => w.power));
+    $("heat-note").textContent = `Hour by hour: heat index ${fmtNum(Math.min(...wb), 0)}–${fmtNum(Math.max(...wb), 0)} °C, ` +
+      (worst > 0.0005 ? `up to ${fmtNum(worst * 100, 1)}% less power than on a cool day.` : "no loss.");
+  } else $("heat-note").textContent = `Heat index ${fmtNum(wbgt(temp, humid), 0)} °C: ` +
     (heat < 0.9995 ? `${fmtNum((1 - heat) * 100, 1)}% less power than on a cool day.` : "no loss.");
   $("o-current").textContent = current === 0 ? "none" :
     `${fmtNum(Math.abs(current), 1)} km/h ${current > 0 ? "with you" : "against you"}${out}`;
@@ -1698,13 +1706,13 @@ function updateRace() {
   raceSetup = {
     map, metres: map ? 0 : km * 1000, eff: { a: effA, b: effB },
     label: `${map ? cb.name : `${fmtNum(km, km < 10 ? 1 : 0)} km ${water === "river" ? "river" : "open water"}${course === "outback" ? ", there and back" : ""}`}, ` +
-      (baseA === baseB ? `${fmtNum(baseA, 0)} W` : `A ${fmtNum(baseA, 0)} W, B ${fmtNum(baseB, 0)} W`) + (effortMode === "hold" ? " (what each can hold)" : "") + (heat < 0.9995 ? `, ${fmtNum((1 - heat) * 100, 1)}% lost to heat` : ""),
-    envFor: (x) => map ? { windSpeed: wind / 3.6, windFrom: dir, sections: legsNow, lines: { A: lines[x], B: lines[x] } } :
+      (baseA === baseB ? `${fmtNum(baseA, 0)} W` : `A ${fmtNum(baseA, 0)} W, B ${fmtNum(baseB, 0)} W`) + (effortMode === "hold" ? " (what each can hold)" : "") + (hs ? ", weather hour by hour" : heat < 0.9995 ? `, ${fmtNum((1 - heat) * 100, 1)}% lost to heat` : ""),
+    envFor: (x) => map ? { windSpeed: wind / 3.6, windFrom: dir, weather, sections: legsNow, lines: { A: lines[x], B: lines[x] } } :
       { windSpeed: wind / 3.6, windAngle: dir, current: current / 3.6, depth: depth >= 5 ? (riverOn ? 5 : Infinity) : depth, course,
         river: riverOn ? { width, bendsDegPerKm: bends, lineA: lines[x], lineB: lines[x] } : null },
   };
   race = map ? S.race(results.a, results.b, 0, effA, effB, {
-    windSpeed: wind / 3.6, windFrom: dir, sections: legsNow, lines: { A: lines.a, B: lines.b },
+    windSpeed: wind / 3.6, windFrom: dir, weather, sections: legsNow, lines: { A: lines.a, B: lines.b },
   }) : S.race(results.a, results.b, km * 1000, effA, effB, {
     windSpeed: wind / 3.6, windAngle: dir, current: current / 3.6,
     // A river's mid-channel shallows toward the banks, so "deep" there is 5 m.
@@ -2399,11 +2407,17 @@ async function courseWeather(when, utc) {
   const day = when ? when.slice(0, 10) : new Date(utc).toISOString().slice(0, 10);
   const shift = (n) => new Date(Date.parse(day) + n * 864e5).toISOString().slice(0, 10);
   const old = Date.now() - Date.parse(day) > 60 * 864e5;
-  const j = await get(`${old ? METEO_PAST : METEO}?${q}&hourly=wind_speed_10m,wind_direction_10m,temperature_2m,relative_humidity_2m&start_date=${shift(-1)}&end_date=${shift(1)}`);
+  // Two days on from the start, so even a slow boat's race is covered hour by hour.
+  const j = await get(`${old ? METEO_PAST : METEO}?${q}&hourly=wind_speed_10m,wind_direction_10m,temperature_2m,relative_humidity_2m&start_date=${shift(-1)}&end_date=${shift(2)}`);
   const local = when || new Date(utc + (j.utc_offset_seconds || 0) * 1000).toISOString().slice(0, 16);
-  const h = j.hourly, hour = `${local.slice(0, 13)}:00`, i = h.time.indexOf(hour);
-  if (i < 0 || h.wind_speed_10m[i] === null) throw new Error(`no wind for ${hour.replace("T", " ")}`);
-  return { speed: h.wind_speed_10m[i], from: h.wind_direction_10m[i], temp: h.temperature_2m[i], humid: h.relative_humidity_2m[i], when: local };
+  // The hour nearest the start, then each hour after it that has a reading.
+  const near = new Date(Date.parse(`${local}Z`) + 1800e3).toISOString().slice(0, 13) + ":00";
+  const h = j.hourly, i = h.time.indexOf(near);
+  if (i < 0 || h.wind_speed_10m[i] === null) throw new Error(`no wind for ${near.replace("T", " ")}`);
+  const hours = [];
+  for (let k = i; k < h.time.length && k < i + 48 && h.wind_speed_10m[k] !== null; k++)
+    hours.push({ speed: h.wind_speed_10m[k], from: h.wind_direction_10m[k], temp: h.temperature_2m[k], humid: h.relative_humidity_2m[k] });
+  return Object.assign({}, hours[0], { when: local, hours });
 }
 async function fetchWeather(when, utc, what = "") {
   const at = cb, info = $("cb-weather-info");
@@ -2412,11 +2426,13 @@ async function fetchWeather(when, utc, what = "") {
     const w = await courseWeather(when, utc), near = w.speed * WIND_AT_PADDLER;
     if (cb !== at) return;
     if (w.when) when = $("cb-weather-time").value = w.when;
+    cb.hourly = w.hours ? w.hours.map((x) => ({ wind: x.speed * WIND_AT_PADDLER, from: x.from, temp: x.temp, humid: x.humid })) : null;
     $("wind").value = Math.min(40, Math.round(near));
     $("windDir").value = (Math.round(w.from / 15) * 15) % 360;
     $("temp").value = Math.round(w.temp); $("humid").value = Math.round(w.humid / 5) * 5;
     info.textContent = `${what}${when ? when.replace("T", " ") : "Now"}: ${fmtNum(w.temp, 0)} °C, ${fmtNum(w.humid, 0)}% humidity; ` +
-      `wind ${fmtNum(w.speed, 0)} km/h from the ${compass(w.from)} at 10 m, ${fmtNum(near, 0)} km/h at the paddler${near > 40.5 ? " (the slider stops at 40)" : ""}.`;
+      `wind ${fmtNum(w.speed, 0)} km/h from the ${compass(w.from)} at 10 m, ${fmtNum(near, 0)} km/h at the paddler${near > 40.5 && !w.hours ? " (the slider stops at 40)" : ""}.` +
+      (w.hours ? ` The race meets it hour by hour (${w.hours.length} h): ${hourRange(w.hours)}.` : "");
   } catch (err) {
     if (cb === at) info.textContent = `Couldn't get the weather (${err.message}). Set it by hand.`;
     return null;
@@ -2424,10 +2440,14 @@ async function fetchWeather(when, utc, what = "") {
   updateSoon();
   return when;
 }
+const hourRange = (hs) => {
+  const span = (f, d = 0) => { const v = hs.map(f); return `${fmtNum(Math.min(...v), d)}–${fmtNum(Math.max(...v), d)}`; };
+  return `${span((x) => x.temp)} °C, wind ${span((x) => x.speed * WIND_AT_PADDLER)} km/h at the paddler`;
+};
 $("cb-weather").addEventListener("click", () => { if (cb) fetchWeather($("cb-weather-time").value); });
 // A course loads with its race's weather and river flow: a course with a race
-// day (the AuSable) at its start, the coming one once the forecast reaches
-// it, else the last one; a GPX at the time it was recorded; otherwise now.
+// day (the AuSable) at the start of its most recent race; a GPX at the time
+// it was recorded; otherwise now. A race's weather is taken hour by hour.
 function raceDay(r, year) {
   const d = new Date(Date.UTC(year, r.month, 0));   // the month's last day
   d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() - r.weekday + 7) % 7));
@@ -2436,7 +2456,7 @@ function raceDay(r, year) {
 function raceStart(r) {
   const y = new Date().getFullYear();
   let day = raceDay(r, y);
-  if (Date.parse(day) - Date.now() > 15 * 864e5) day = raceDay(r, y - 1);
+  if (Date.parse(`${day}T${r.time}Z`) > Date.now()) day = raceDay(r, y - 1);   // not run yet this year
   return `${day}T${r.time}`;
 }
 async function autoConditions() {
@@ -2451,7 +2471,11 @@ async function autoConditions() {
   if (cb === at) fetchGauges($("cb-gauge-date").value);
 }
 for (const id of ["wind", "windDir", "temp", "humid"])
-  $(id).addEventListener("input", () => { if (cb) $("cb-weather-info").textContent = "Weather is set by hand."; });
+  $(id).addEventListener("input", () => {
+    if (!cb) return;
+    $("cb-weather-info").textContent = "Weather is set by hand.";
+    if (cb.hourly) { cb.hourly = null; updateSoon(); }
+  });
 // The race on the real course, from above: north up, a fixed scale centred
 // between the boats (zoom sets it), or the whole course zoomed out.
 function drawCourseRace(dA, dB) {

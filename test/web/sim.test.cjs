@@ -234,6 +234,23 @@ console.log("\nCanoe Race Simulator physics");
   const carry = S.race(clean, clean, 0, 150, 150, { sections: [{ len: 200, kind: "portage", section: 0 }] });
   check("sections: a 200 m portage is carried (2 m/s + 30 s)", Math.abs(carry.tA - 130) < 1e-9 && carry.profileA[0].rate === 0);
   const into = (h) => S.race(clean, clean, 0, 150, 150, { windSpeed: 5, windFrom: 0, sections: [{ len: 5000, kind: "pond", heading: h, section: 0 }] }).tA;
+  // Weather hour by hour: each boat meets the hour it reaches each leg in.
+  {
+    const ponds = Array.from({ length: 20 }, (_, i) => ({ len: 2000, kind: "pond", heading: 0, section: i }));
+    const go = (env) => S.race(clean, clean, 0, 150, 150, Object.assign({ sections: ponds }, env));
+    const calm = go({}), still = go({ weather: [{ windSpeed: 0, windFrom: 0, power: 1 }] });
+    check("race: weather: one calm, cool hour is the same as none", Math.abs(still.tA - calm.tA) < 1e-6, `${still.tA} vs ${calm.tA}`);
+    const hot = go({ weather: [{ windSpeed: 0, windFrom: 0, power: 0.95 }] });
+    check("race: weather: the heat takes power, slower", hot.tA > calm.tA && hot.legsA.every((l) => Math.abs(l.watts - 142.5) < 1e-9));
+    // A headwind that comes up in the third hour slows only the legs from then on.
+    const later = go({ weather: [0, 0, 6].map((w) => ({ windSpeed: w, windFrom: 0, power: 1 })) });
+    const firstLate = later.legsA.findIndex((l) => l.hour === 2);
+    check("race: weather: a wind that comes up later slows only what's after it", firstLate > 0 &&
+          later.legsA.slice(0, firstLate).every((l, i) => Math.abs(l.t - calm.legsA[i].t) < 1e-9) &&
+          later.legsA.slice(firstLate).every((l, i) => l.t > calm.legsA[firstLate + i].t) && later.tA > calm.tA,
+          `first late leg ${firstLate}, ${later.tA.toFixed(0)} vs ${calm.tA.toFixed(0)} s`);
+    check("race: weather: the replay follows it", later.profileA.some((g) => g.watts === 150) && Math.abs(later.posA(later.tA) - 40000) < 1);
+  }
   check("sections: the wind turns with the course", Math.abs(into(0) - S.race(clean, clean, 5000, 150, 150, { windSpeed: 5, windAngle: 0 }).tA) < 1e-6 &&
         into(180) < into(90) && into(90) < into(0) && Math.abs(into(90) - into(270)) < 1e-9);
   const mixed = S.race(clean, clean, 0, 150, 150, { sections: [{ len: 3000, kind: "river", current: 0.8, depth: 1.5, width: 30, bendsDegPerKm: 300, section: 0 },
@@ -944,17 +961,19 @@ console.log("\nPaddle fit");
     // Real course: the AuSable preset, sections to edit, a GPX of your own.
     await page.click("#water >> text=AuSable / GPX");
     await page.waitForFunction(() => document.querySelectorAll("#cb-secs tbody tr").length > 10, null, { timeout: 10000 });
-    // It loads with its race's weather and flow: the last Saturday in July at 9 pm, this
-    // year's once the forecast reaches it (15 days), else last year's.
+    // It loads with its race's weather and flow, hour by hour from the start of its last
+    // race: the last Saturday in July at 9 pm.
     const raceDay = (y) => { const d = new Date(Date.UTC(y, 7, 0)); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 1) % 7)); return d.toISOString().slice(0, 10); };
     let race = raceDay(new Date().getFullYear());
-    if (Date.parse(race) - Date.now() > 15 * 864e5) race = raceDay(new Date().getFullYear() - 1);
+    if (Date.parse(`${race}T21:00Z`) > Date.now()) race = raceDay(new Date().getFullYear() - 1);
     await page.waitForFunction(() => /^\d{4} race start/.test(document.getElementById("cb-weather-info").textContent) &&
       /No USGS gauges/.test(document.getElementById("cb-gauge-info").textContent), null, { timeout: 5000 });
     const today = new Date().toISOString().slice(0, 10);
     check(`${tag}: real course: the AuSable loads with its race-day weather and flow`,
           (await page.$eval("#cb-weather-time", (e) => e.value)) === `${race}T21:00` &&
           (await text("#cb-weather-info")).startsWith(`${race.slice(0, 4)} race start, ${race} 21:00: 18 °C, 60% humidity`) &&
+          /The race meets it hour by hour \(48 h\): 18–18 °C, wind 4–4 km\/h at the paddler\.$/.test(await text("#cb-weather-info")) &&
+          /^Hour by hour: heat index \d+–\d+ °C/.test(await text("#heat-note")) &&
           (await page.$eval("#temp", (e) => e.value)) === "18" && (await page.$eval("#humid", (e) => e.value)) === "60" &&
           (await page.$eval("#cb-gauge-date", (e) => e.value)) === (race < today ? race : ""),
           `${await page.$eval("#cb-weather-time", (e) => e.value)} | ${await text("#cb-weather-info")} | ${meteo.slice(-1)}`);
@@ -1041,11 +1060,12 @@ console.log("\nPaddle fit");
     await page.waitForFunction(() => /^2023/.test(document.getElementById("cb-weather-info").textContent));
     check(`${tag}: weather: a past hour comes from the archive`, (await page.$eval("#wind", (e) => e.value)) === "40" &&
           (await page.$eval("#windDir", (e) => e.value)) === "90" && (await page.$eval("#temp", (e) => e.value)) === "18" &&
-          /slider stops at 40/.test(await weatherInfo()) &&
-          meteo.some((u) => u.startsWith("https://archive-api.open-meteo.com/v1/archive") && u.includes("start_date=2023-07-28") && u.includes("end_date=2023-07-30")),
+          /hour by hour \(48 h\): 18–18 °C, wind 4–48 km\/h at the paddler\.$/.test(await weatherInfo()) &&
+          meteo.some((u) => u.startsWith("https://archive-api.open-meteo.com/v1/archive") && u.includes("start_date=2023-07-28") && u.includes("end_date=2023-07-31")),
           `${await weatherInfo()} | ${meteo.slice(-1)}`);
-    await slide("#wind", 0);
-    check(`${tag}: weather: moving the wind takes it off the weather`, (await weatherInfo()) === "Weather is set by hand.");
+    await slide("#wind", 0); await page.waitForTimeout(150);
+    check(`${tag}: weather: moving the wind takes it off the weather`, (await weatherInfo()) === "Weather is set by hand." &&
+          /^Heat index/.test(await text("#heat-note")));
     await page.unroute("https://*.open-meteo.com/**");
     await page.route("https://*.open-meteo.com/**", (route) => route.abort());
     await page.fill("#cb-weather-time", "");
