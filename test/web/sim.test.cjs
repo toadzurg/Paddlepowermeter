@@ -355,6 +355,11 @@ console.log("\nStroke simulator physics");
     await goTab("race");
     check(`${tag}: race tab: race, conditions, score`, (await visible("#race-card")) && (await visible("#conditions-card")) &&
           (await visible("#score-card")) && !(await visible("#eff-card")) && (await visible("#controls")));
+    if (width < 560) {
+      const rv = await box("#race-view");
+      check(`${tag}: phone: the race view runs edge to edge, drawn bigger`, rv.width >= width - 34 && rv.height > 135,
+            `${rv.width.toFixed(0)} × ${rv.height.toFixed(0)} px`);
+    }
     check(`${tag}: race tab: boat picker and race power on top`, (await visible("#boats")) && (await visible("#effA")) &&
           (await visible("#effB")) && !(await visible("#c-effortW")));
     await goTab("boat");

@@ -255,6 +255,8 @@
   table.data { border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; margin-top: 6px; }
   table.data th, table.data td { padding: 2px 10px 2px 0; text-align: right; }
   svg.race { display: block; width: 100%; height: auto; margin-top: 6px; touch-action: pan-y; }   /* pinch zooms the view, not the page */
+  /* Phones: the race views run to the card's edges. */
+  @media (max-width: 559px) { #race-card svg.race { width: calc(100% + 32px); margin-left: -16px; margin-right: -16px; } }
   #race-zoom { justify-content: flex-end; margin-top: 6px; }
   #race-zoom button:not(.info) { min-width: 40px; text-align: center; }
   svg.race text { fill: var(--text-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
@@ -1413,6 +1415,11 @@ function zoomSpan(fit, minSpan, L, follows = false) {
   return span;
 }
 // A distance marker, with enough decimals that neighbours differ.
+// Phones: the race views are drawn in fewer units than their on-screen
+// width, so the browser scales the whole picture up: taller lanes, bigger
+// boats and text. Returns the drawing width.
+const PHONE_UP = 1.3;
+const raceW = (svg) => { const css = widthOf(svg) || 320; return Math.round(css < 560 ? css / PHONE_UP : Math.max(280, css)); };
 const distLabel = (d, step) => d >= 1000 ? `${+(d / 1000).toFixed(step < 10 ? 3 : 2)} km` : `${Math.round(d)} m`;
 // A canoe with its nose at (x, y), pointing along deg.
 const boatIcon = (x, y, deg, cls) =>
@@ -1424,7 +1431,7 @@ const boatIcon = (x, y, deg, cls) =>
 // boats are dots on their lines.
 function drawRiverRace(dA, dB) {
   const svg = $("river-map"), L = race.metres;
-  const W = Math.max(280, Math.round(widthOf(svg))) || 320, H = 150;
+  const W = raceW(svg), H = 150;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   const left = 24, right = W - 14, top = 22, band = 88, mid = top + band / 2, half = 20;
   const centres = race.profileA.filter((g) => g.kind === "bend").map((g) => (g.d0 + g.d1) / 2);
@@ -1499,7 +1506,7 @@ function drawRiverRace(dA, dB) {
 // Follow the leader with a fixed window wide enough to show the finishing gap.
 function drawRace(dA, dB, elapsed) {
   const svg = $("race-view");
-  const W = Math.max(280, Math.round(widthOf(svg))) || 320, H = 112;
+  const W = raceW(svg), H = 112;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   const L = race.metres, lead = Math.max(dA, dB);
   const span = zoomSpan(Math.min(L, Math.max(40, finalGap() * 2.5)), 10, L);
@@ -1994,7 +2001,8 @@ $("cb-gauge-list").addEventListener("change", (e) => {
 function drawCourseRace(dA, dB) {
   if (!cb) return;
   const svg = $("course-view"), L = race.metres;
-  const W = Math.max(280, Math.round(widthOf(svg))) || 320, H = 220;
+  const css = widthOf(svg) || 320;
+  const W = Math.max(280, Math.round(css)), H = css < 560 ? Math.round(Math.min(420, css * 1.05)) : 220;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   const S = zoomSpan(Math.min(L, Math.max(500, finalGap() * 2.5)), 50, L, true);
   let k, ox, oy, d0, d1;
