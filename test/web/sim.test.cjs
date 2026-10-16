@@ -316,6 +316,21 @@ console.log("\nStroke simulator physics");
   check("clean stroke: square blade is best", pe(0) > pe(15) && pe(0) > pe(-15));
   const ps = (d) => sim(SW, { pitchDeg: d }).efficiency;
   check("sweep: turning the face in toward the hull helps", ps(-15) > ps(0) && ps(0) > ps(15));
+
+  // Strength by position (off by default): weak far from vertical.
+  const on = (x) => Object.assign({ strengthOn: 1 }, x);
+  const LR = { catchDeg: 55, exitDeg: 45 };
+  check("strength by position: off by default, changes nothing", !S.DEFAULTS.strengthOn && S.strengthFactor({}) === 1 && S.strengthAt(S.DEFAULTS, 50) === 1);
+  check("strength by position: the default stroke keeps what it can hold; a long reach loses it",
+        Math.abs(S.strengthFactor(on({})) - 1) < 1e-9 && S.strengthFactor(on(LR)) < 0.85,
+        `×${S.strengthFactor(on(LR)).toFixed(2)}`);
+  check("strength by position: longer arms keep strength further out",
+        S.strengthFactor(on(Object.assign({ upperArmM: 0.34, forearmM: 0.34 }, LR))) > S.strengthFactor(on(Object.assign({ upperArmM: 0.26, forearmM: 0.26 }, LR))));
+  const sOff = S.simulate(LR), sOn = S.simulate(on(LR)), pk = (r) => r.peakForce * Math.pow(150 / r.paddlerPower, 2 / 3);
+  const sBal = sOn.hullPower + sOn.leewayPower + sOn.slipPower - sOn.paddlerPower;
+  check("strength by position: force bunches where you're strong (higher peak), energy still balances",
+        pk(sOn) > pk(sOff) * 1.1 && Math.abs(sBal) < 1e-3 * sOn.paddlerPower, `${pk(sOff).toFixed(0)} → ${pk(sOn).toFixed(0)} N`);
+  check("strength by position: what you can hold scales with it", Math.abs(S.capacity(on(LR)) / S.capacity(LR) - S.strengthFactor(on(LR))) < 1e-9);
 }
 
 (async () => {
@@ -947,6 +962,38 @@ console.log("\nStroke simulator physics");
       !document.querySelector(".switch-read"));
     check(`${tag}: switching sides off: always the right side`, off);
     await page.click("#switch-anim"); await settle();
+    // Paddler profile: height scales the body, presets keep the profile, profiles save and load.
+    await goTab("stroke");
+    await page.click("#profile summary");
+    const torso0 = await page.evaluate(() => window.sim.boats.a.torsoM);
+    await slide("#c-heightM", 1.95); await settle();
+    const torso1 = await page.evaluate(() => window.sim.boats.a.torsoM);
+    check(`${tag}: profile: height scales the body`, Math.abs(torso1 / torso0 - 1.95 / 1.78) < 0.01 && /195 cm/.test(await text("#o-heightM")),
+          `${torso0} → ${torso1}`);
+    await page.click("#strength-mode >> text=On"); await slide("#c-fitnessW", 260); await settle();
+    check(`${tag}: profile: strength by position shows its curve`, (await visible("#strength-curve")) &&
+          (await page.$$("#strength-curve path.cur")).length === 1 && /×[\d.]+ against the default stroke/.test(await text("#strength-read")));
+    await page.click("#presets >> text=Long reach"); await settle();
+    const kept = await page.evaluate(() => [window.sim.boats.a.heightM, window.sim.boats.a.fitnessW, window.sim.boats.a.strengthOn]);
+    check(`${tag}: profile: presets keep it`, JSON.stringify(kept) === "[1.95,260,1]" && /×0\.\d\d/.test(await text("#strength-read")),
+          `${kept} | ${await text("#strength-read")}`);
+    page.once("dialog", (d) => d.accept("Tall"));
+    await page.click("#profile-save"); await settle();
+    await page.click("#profile-copy"); await settle();
+    const copied = await page.evaluate(() => [window.sim.boats.b.heightM, window.sim.boats.b.fitnessW, window.sim.boats.b.catchDeg]);
+    check(`${tag}: profile: copy to the other boat (profile only)`, copied[0] === 1.95 && copied[1] === 260 && copied[2] === 25, `${copied}`);
+    await page.click("#profile-fit"); await slide("#c-heightM", 1.78); await slide("#c-fitnessW", 200);
+    await page.click("#strength-mode >> text=Off"); await settle();
+    await page.selectOption("#profile-pick", "Tall"); await settle();
+    const loaded = await page.evaluate(() => [window.sim.boats.a.heightM, window.sim.boats.a.fitnessW, window.sim.boats.a.strengthOn]);
+    check(`${tag}: profile: saved and loaded`, JSON.stringify(loaded) === "[1.95,260,1]" && (await page.$$("#profile-pick option")).length === 2, `${loaded}`);
+    page.once("dialog", (d) => d.accept());
+    await page.click("#profile-delete"); await settle();
+    check(`${tag}: profile: deleted`, (await page.$$("#profile-pick option")).length === 1);
+    // Back to the defaults for what follows.
+    await page.evaluate(() => { const S = window.StrokeSim; for (const x of ["a", "b"]) for (const k of ["heightM", "torsoM", "shoulderM", "upperArmM", "forearmM", "thighM", "shinM", "fitnessW", "strengthOn"]) window.sim.boats[x][k] = S.DEFAULTS[k]; });
+    await page.click("#presets >> text=Clean vertical"); await settle();
+    await page.click("#profile summary");
     const sh = await page.evaluate(() => [window.sim.shoulders([0, 0, 0], 1, 1), window.sim.shoulders([0, 0, 0], 1, -1)]);
     check(`${tag}: trunk rotation: paddle-side shoulder forward at the catch, back at the exit`,
           sh[0].pad[0] > sh[0].off[0] && sh[1].pad[0] < sh[1].off[0] && sh[0].pad[1] < 0);
