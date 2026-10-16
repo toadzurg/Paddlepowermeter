@@ -961,21 +961,18 @@ console.log("\nPaddle fit");
     // Real course: the AuSable preset, sections to edit, a GPX of your own.
     await page.click("#water >> text=AuSable / GPX");
     await page.waitForFunction(() => document.querySelectorAll("#cb-secs tbody tr").length > 10, null, { timeout: 10000 });
-    // It loads with its race's weather and flow, hour by hour from the start of its last
-    // race: the last Saturday in July at 9 pm.
-    const raceDay = (y) => { const d = new Date(Date.UTC(y, 7, 0)); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 1) % 7)); return d.toISOString().slice(0, 10); };
-    let race = raceDay(new Date().getFullYear());
-    if (Date.parse(`${race}T21:00Z`) > Date.now()) race = raceDay(new Date().getFullYear() - 1);
+    // It loads with the weather and flow of the 2023 race its track is from, hour by hour from the start.
+    const race = "2023-07-29";
     await page.waitForFunction(() => /^\d{4} race start/.test(document.getElementById("cb-weather-info").textContent) &&
       /No USGS gauges/.test(document.getElementById("cb-gauge-info").textContent), null, { timeout: 5000 });
-    const today = new Date().toISOString().slice(0, 10);
     check(`${tag}: real course: the AuSable loads with its race-day weather and flow`,
           (await page.$eval("#cb-weather-time", (e) => e.value)) === `${race}T21:00` &&
           (await text("#cb-weather-info")).startsWith(`${race.slice(0, 4)} race start, ${race} 21:00: 18 °C, 60% humidity`) &&
-          /The race meets it hour by hour \(48 h\): 18–18 °C, wind 4–4 km\/h at the paddler\.$/.test(await text("#cb-weather-info")) &&
+          /The race meets it hour by hour \(48 h\): 18–18 °C, wind 4–48 km\/h at the paddler\.$/.test(await text("#cb-weather-info")) &&
+          (await page.$eval("#wind", (e) => e.value)) === "40" &&
           /^Hour by hour: heat index \d+–\d+ °C/.test(await text("#heat-note")) &&
           (await page.$eval("#temp", (e) => e.value)) === "18" && (await page.$eval("#humid", (e) => e.value)) === "60" &&
-          (await page.$eval("#cb-gauge-date", (e) => e.value)) === (race < today ? race : ""),
+          (await page.$eval("#cb-gauge-date", (e) => e.value)) === race,
           `${await page.$eval("#cb-weather-time", (e) => e.value)} | ${await text("#cb-weather-info")} | ${meteo.slice(-1)}`);
     await page.unroute("https://*.open-meteo.com/**");
     await page.unroute("https://waterservices.usgs.gov/**");

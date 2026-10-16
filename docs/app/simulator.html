@@ -637,7 +637,7 @@
           <table class="secs" id="cb-gauge-list" hidden><tbody></tbody></table>
           <div class="row" style="margin-top:8px"><button id="cb-weather">Weather on the course</button>
             <input type="datetime-local" id="cb-weather-time" aria-label="Hour for the weather, local time on the course (empty: now)">
-            <button type="button" class="info" data-tip="Uses Open-Meteo's weather at the middle of the course: now, the forecast, or the record for a past hour (local time there). Sets wind, temperature and humidity. A course loads with its race's: the AuSable's last race from its start (last Saturday in July, 9 pm), a GPX from when it was recorded, hour by hour through the race; else now. The gauges follow the same day. Moving a weather slider sets one value for the whole race. Its wind is measured 10 m up; near the water it's about 80% of that." aria-label="What is this?">?</button></div>
+            <button type="button" class="info" data-tip="Uses Open-Meteo's weather at the middle of the course: now, the forecast, or the record for a past hour (local time there). Sets wind, temperature and humidity. A course loads with its race's: the AuSable's 2023 race from its start (July 29, 9 pm), a GPX from when it was recorded, hour by hour through the race; else now. The gauges follow the same day. Moving a weather slider sets one value for the whole race. Its wind is measured 10 m up; near the water it's about 80% of that." aria-label="What is this?">?</button></div>
           <div class="sub" id="cb-weather-info">Weather is set by hand.</div>
           <svg class="cmap" id="cb-map" role="img" aria-label="Course map: tap a section to edit it"></svg>
           <div class="note">Colour: current. Tap a section to edit it.</div>
@@ -2445,24 +2445,13 @@ const hourRange = (hs) => {
   return `${span((x) => x.temp)} °C, wind ${span((x) => x.speed * WIND_AT_PADDLER)} km/h at the paddler`;
 };
 $("cb-weather").addEventListener("click", () => { if (cb) fetchWeather($("cb-weather-time").value); });
-// A course loads with its race's weather and river flow: a course with a race
-// day (the AuSable) at the start of its most recent race; a GPX at the time
-// it was recorded; otherwise now. A race's weather is taken hour by hour.
-function raceDay(r, year) {
-  const d = new Date(Date.UTC(year, r.month, 0));   // the month's last day
-  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() - r.weekday + 7) % 7));
-  return d.toISOString().slice(0, 10);
-}
-function raceStart(r) {
-  const y = new Date().getFullYear();
-  let day = raceDay(r, y);
-  if (Date.parse(`${day}T${r.time}Z`) > Date.now()) day = raceDay(r, y - 1);   // not run yet this year
-  return `${day}T${r.time}`;
-}
+// A course loads with its race's weather and river flow, hour by hour: a
+// course that knows its race (the AuSable, 2023) from that race's start; a
+// GPX from when it was recorded; otherwise now.
 async function autoConditions() {
-  const at = cb, when = cb.race ? raceStart(cb.race) : "", utc = !when && cb.recorded ? cb.recorded : null;
+  const at = cb, when = cb.raceStart || "", utc = !when && cb.recorded ? cb.recorded : null;
   $("cb-weather-time").value = when;
-  const what = cb.race ? `${when.slice(0, 4)} race start, ` : utc ? "When the track was recorded, " : "";
+  const what = when ? `${when.slice(0, 4)} race start, ` : utc ? "When the track was recorded, " : "";
   const got = await fetchWeather(when, utc, what);
   // The gauges' daily mean that day, or their latest reading for a day still to come.
   const day = (got || when || (utc ? new Date(utc).toISOString() : "")).slice(0, 10);
