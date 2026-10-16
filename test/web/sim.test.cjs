@@ -714,6 +714,22 @@ console.log("\nPaddle fit");
     check(`${tag}: fixed count in a crosswind holds course`, /switching [\d.]+ strokes windward, [\d.]+ lee to hold course, wandering ±[\d.]+°/.test(await text("#c-a")),
           await text("#c-a"));
     await slide("#c-switchStrokes", 0); await settle();
+    // Heat: WBGT from temperature and humidity; power falls 0.2% per °C over 10 °C.
+    await slide("#wind", 0);
+    await slide("#temp", 5); await slide("#humid", 50); await page.waitForTimeout(150);
+    const tCool = secs(await text("#t-a"));
+    check(`${tag}: heat: a cool day costs nothing`, /^Heat index \d+ °C: no loss\.$/.test(await text("#heat-note")) &&
+          (await text("#o-heatLoss")) === "0.20% per °C", await text("#heat-note"));
+    // 30 °C, 70%: e = 29.7 hPa, WBGT = 17.0 + 11.7 + 3.9 = 32.6 °C, 22.6 °C over: 4.5% less power.
+    await slide("#temp", 30); await slide("#humid", 70); await page.waitForTimeout(150);
+    const tHot = secs(await text("#t-a"));
+    check(`${tag}: heat: hot and humid, less power, slower`, /^Heat index 33 °C: 4\.5% less power than on a cool day\.$/.test(await text("#heat-note")) &&
+          tHot > tCool && (await text("#o-effA")) === "150 W", `${await text("#heat-note")} | ${tCool} → ${tHot}`);
+    await slide("#humid", 20); await page.waitForTimeout(150);
+    check(`${tag}: heat: drier is easier`, secs(await text("#t-a")) < tHot, await text("#heat-note"));
+    await slide("#heatLoss", 0); await page.waitForTimeout(150);
+    check(`${tag}: heat: left out`, secs(await text("#t-a")) === tCool && (await text("#o-heatLoss")) === "left out");
+    await slide("#heatLoss", 0.2); await slide("#temp", 10); await slide("#humid", 50); await slide("#wind", 20);
     await slide("#windDir", 0);
     check(`${tag}: headwind readout`, (await text("#o-windDir")) === "dead ahead" && (await text("#c-a")) === "");
     await slide("#wind", 0);
@@ -975,8 +991,9 @@ console.log("\nPaddle fit");
     const hours = Array.from({ length: 24 }, (_, h) => `2023-07-29T${String(h).padStart(2, "0")}:00`);
     await page.route("https://*.open-meteo.com/**", (route) => {
       const url = route.request().url(); meteo.push(url);
-      const body = url.includes("current=") ? { current: { time: "2026-10-16T12:00", wind_speed_10m: 25, wind_direction_10m: 222 } } :
-        { hourly: { time: hours, wind_speed_10m: hours.map((_, h) => (h === 21 ? 60 : 5)), wind_direction_10m: hours.map(() => 95) } };
+      const body = url.includes("current=") ? { current: { time: "2026-10-16T12:00", wind_speed_10m: 25, wind_direction_10m: 222, temperature_2m: 28.4, relative_humidity_2m: 71 } } :
+        { hourly: { time: hours, wind_speed_10m: hours.map((_, h) => (h === 21 ? 60 : 5)), wind_direction_10m: hours.map(() => 95),
+          temperature_2m: hours.map(() => 18), relative_humidity_2m: hours.map(() => 60) } };
       route.fulfill({ status: 200, contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: JSON.stringify(body) });
     });
     const weatherInfo = () => text("#cb-weather-info");
@@ -985,25 +1002,27 @@ console.log("\nPaddle fit");
     await page.waitForFunction(() => /at the paddler/.test(document.getElementById("cb-weather-info").textContent));
     await page.waitForTimeout(250);
     // 25 km/h at 10 m is 20 km/h at the paddler; 222° rounds to 225°, the SW.
-    check(`${tag}: weather: wind now sets the sliders`, (await page.$eval("#wind", (e) => e.value)) === "20" &&
+    check(`${tag}: weather: now sets wind, temperature and humidity`, (await page.$eval("#wind", (e) => e.value)) === "20" &&
+          (await page.$eval("#temp", (e) => e.value)) === "28" && (await page.$eval("#humid", (e) => e.value)) === "70" &&
           (await page.$eval("#windDir", (e) => e.value)) === "225" && (await text("#o-windDir")) === "SW" &&
-          /^Now: 25 km\/h from the SW at 10 m, 20 km\/h at the paddler\.$/.test(await weatherInfo()) &&
+          /^Now: 28 °C, 71% humidity; wind 25 km\/h from the SW at 10 m, 20 km\/h at the paddler\.$/.test(await weatherInfo()) &&
           meteo.some((u) => u.startsWith("https://api.open-meteo.com/v1/forecast") && /latitude=4\d\.\d{4}/.test(u)) &&
           secs(await text("#t-a")) !== tCalm, `${await weatherInfo()} | ${meteo.slice(-1)}`);
     await page.fill("#cb-weather-time", "2023-07-29T21:00");
     await page.click("#cb-weather");
     await page.waitForFunction(() => /^2023/.test(document.getElementById("cb-weather-info").textContent));
     check(`${tag}: weather: a past hour comes from the archive`, (await page.$eval("#wind", (e) => e.value)) === "40" &&
-          (await page.$eval("#windDir", (e) => e.value)) === "90" && /slider stops at 40/.test(await weatherInfo()) &&
+          (await page.$eval("#windDir", (e) => e.value)) === "90" && (await page.$eval("#temp", (e) => e.value)) === "18" &&
+          /slider stops at 40/.test(await weatherInfo()) &&
           meteo.some((u) => u.startsWith("https://archive-api.open-meteo.com/v1/archive") && u.includes("start_date=2023-07-29")),
           `${await weatherInfo()} | ${meteo.slice(-1)}`);
     await slide("#wind", 0);
-    check(`${tag}: weather: moving the wind takes it off the weather`, (await weatherInfo()) === "Wind is set by hand.");
+    check(`${tag}: weather: moving the wind takes it off the weather`, (await weatherInfo()) === "Weather is set by hand.");
     await page.unroute("https://*.open-meteo.com/**");
     await page.route("https://*.open-meteo.com/**", (route) => route.abort());
     await page.fill("#cb-weather-time", "");
     await page.click("#cb-weather");
-    await page.waitForFunction(() => /Couldn't get the wind/.test(document.getElementById("cb-weather-info").textContent));
+    await page.waitForFunction(() => /Couldn't get the weather/.test(document.getElementById("cb-weather-info").textContent));
     check(`${tag}: weather: no connection says so`, (await page.$eval("#wind", (e) => e.value)) === "0");
     await page.unroute("https://*.open-meteo.com/**");
     // An AuSable gauge the course knows: current scales from its race-week median as (Q/median)^0.55.
@@ -1085,7 +1104,7 @@ console.log("\nPaddle fit");
     await scoreReady();
     const heads = await page.$$eval("#score-heads .big", (bs) => bs.map((b) => b.textContent));
     check(`${tag}: race score: the race's own times`, heads[0] === (await text("#t-a")) && heads[1] === (await text("#t-b")) &&
-          /^\d+(\.\d)? km (open water|river).*, (\d+ W|A \d+ W, B \d+ W)\.$/.test(await text("#score-status")) &&
+          /^\d+(\.\d)? km (open water|river).*, (\d+ W|A \d+ W, B \d+ W)(, [\d.]+% lost to heat)?\.$/.test(await text("#score-status")) &&
           /Blade slip/.test(await text("#score-bars")) && (await page.$$eval("h2", (hs) => hs.map((h) => h.textContent))).some((h) => h.startsWith("Boat A vs Boat B")),
           `${heads} | ${await text("#score-status")}`);
     // Boat score for both boats; body settings show what they do.
