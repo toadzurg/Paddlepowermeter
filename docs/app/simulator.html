@@ -657,6 +657,9 @@
       <div class="row boat-actions">
         <button class="small" id="copy">Copy to B</button>
         <button class="small" id="swap">Swap A and B</button>
+        <button class="small" id="reset">Reset Boat A</button>
+        <button class="small" id="reset-both">Reset both</button>
+        <div class="help" style="flex-basis:100%">Each boat's settings are remembered in this browser.</div>
       </div>
       <h2 class="ctl-title">Settings for <span id="editing-name">Boat A</span></h2>
       <h3>Presets</h3>
@@ -793,10 +796,30 @@ const BODY = ["torsoM", "shoulderM", "upperArmM", "forearmM", "thighM", "shinM"]
 const PROFILE = ["heightM", ...BODY, "massKg", "fitnessW", "strengthOn", "strengthPeakDeg", "strengthDrop"];
 // Presets set the technique; the profile, the paddle and the blade force model stay.
 const KEEP = ["effortW", ...PROFILE, "bladeLift", "paddleLenM", "bladeLenM", "bladeWidthM"];
-const boats = {
-  a: Object.assign({}, S.DEFAULTS),
-  b: Object.assign({}, S.DEFAULTS, PRESETS["Wide sweep"]),
+// Each boat's settings are remembered in this browser; Reset goes back to these.
+const STARTING = {
+  a: () => Object.assign({}, S.DEFAULTS),
+  b: () => Object.assign({}, S.DEFAULTS, PRESETS["Wide sweep"]),
 };
+const BOATS_KEY = "ppm.sim.boats";
+// Saved settings, on top of the starting ones: a setting added since they
+// were saved keeps its default, and anything unknown or not a number is dropped.
+function loadBoats() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(BOATS_KEY)); } catch {}
+  const out = {};
+  for (const x of ["a", "b"]) {
+    out[x] = STARTING[x]();
+    const sv = saved && saved[x];
+    if (sv && typeof sv === "object")
+      for (const k of Object.keys(S.DEFAULTS)) if (typeof sv[k] === "number" && isFinite(sv[k])) out[x][k] = sv[k];
+  }
+  return out;
+}
+function saveBoats() {
+  try { localStorage.setItem(BOATS_KEY, JSON.stringify({ a: boats.a, b: boats.b })); } catch {}
+}
+const boats = loadBoats();
 let editing = "a", effortW = 150;
 function presetName(p) {
   for (const [name, pre] of Object.entries(PRESETS)) {
@@ -986,6 +1009,7 @@ function syncControls() {
   $("editing-name").textContent = NAME[editing];
   $("presets").classList.toggle("b", editing === "b");
   $("copy").textContent = `Copy to ${NAME[other(editing)]}`;
+  $("reset").textContent = `Reset ${NAME[editing]}`;
   for (const b of $("boats").children) b.setAttribute("aria-pressed", String(b.dataset.boat === editing));
   const on = presetName(boats[editing]);
   for (const b of $("presets").children) b.setAttribute("aria-pressed", String(b.dataset.value === on));
@@ -1006,6 +1030,16 @@ for (const [name, p] of Object.entries(PRESETS)) {
 for (const b of $("boats").children)
   b.addEventListener("click", () => { editing = b.dataset.boat; syncControls(); });
 $("copy").addEventListener("click", () => { boats[other(editing)] = Object.assign({}, boats[editing]); changed(other(editing)); });
+$("reset").addEventListener("click", () => {
+  if (!confirm(`Reset ${NAME[editing]} to its starting settings? Its profile resets too.`)) return;
+  boats[editing] = STARTING[editing]();
+  changed(editing);
+});
+$("reset-both").addEventListener("click", () => {
+  if (!confirm("Reset both boats to their starting settings?")) return;
+  for (const x of BOATS) boats[x] = STARTING[x]();
+  changed("a"); changed("b");
+});
 $("swap").addEventListener("click", () => {
   [boats.a, boats.b] = [boats.b, boats.a];
   [results.a, results.b] = [results.b, results.a];
@@ -1124,6 +1158,7 @@ function changed(x) {
     pending = false;
     for (const b of dirty) results[b] = S.simulate(Object.assign({}, boats[b], { effortW }));
     dirty.clear();
+    saveBoats();
     showEfficiency();
     showBodyEffects();
     drawStrength();
