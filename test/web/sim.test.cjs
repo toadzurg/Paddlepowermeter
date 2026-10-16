@@ -27,7 +27,7 @@ const pct = (x) => `${(x * 100).toFixed(1)}%`;
     check(`simulator.html loads ${file}?v=${hash}`, tagged, tagged ? "" : "update the ?v= in simulator.html");
   }
 }
-console.log("\nStroke simulator physics");
+console.log("\nCanoe Race Simulator physics");
 {
   const base = S.simulate({});
   const balance = base.hullPower + base.leewayPower + base.slipPower - base.paddlerPower;
@@ -36,9 +36,13 @@ console.log("\nStroke simulator physics");
   check("thrust·speed = hull + leeway",
         Math.abs(base.usefulPower - base.hullPower - base.leewayPower) < 1e-3 * base.paddlerPower);
   const sh = base.at(150).shares;
-  const total = sh.hull + sh.slip + sh.leeway + sh.surge + sh.sink + sh.bounce + sh.swing + sh.drop + sh.pitch;
+  const total = sh.hull + sh.zigzag + sh.slip + sh.leeway + sh.surge + sh.sink + sh.bounce + sh.swing + sh.drop + sh.pitch;
   check("shares at 150 W add to 1", Math.abs(total - 1) < 1e-4, total.toFixed(6));
   check("efficiency is the hull share at the comparison effort", Math.abs(base.efficiency - sh.hull) < 1e-12);
+  // The zigzag: power a straight-running boat would need for the same progress.
+  const course = base.at(150).switching.course;
+  check("efficiency counts the zigzag: progress down the course", sh.zigzag > 0 &&
+        Math.abs(sh.hull / (sh.hull + sh.zigzag) - course ** 3) < 1e-12, `zigzag ${pct(sh.zigzag)} of your power`);
   check("surge costs a little", sh.surge > 0.0005 && sh.surge < 0.02, pct(sh.surge));
   // The Science of Paddling (Part 32) cites about ±10% speed swing.
   const swing = base.at(150).surgeSwing;
@@ -461,7 +465,7 @@ console.log("\nPaddle fit");
 }
 
 (async () => {
-  console.log("\nStroke simulator page");
+  console.log("\nCanoe Race Simulator page");
   const browser = await chromium.launch();
   for (const [scheme, width] of [["light", 390], ["dark", 1200]]) {
     const ctx = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: scheme, deviceScaleFactor: 2 });
@@ -548,8 +552,8 @@ console.log("\nPaddle fit");
     check(`${tag}: peak force has no winner, difference adds up`, peakRow.wins === 0 &&
           peakRow.d === `${peakA >= peakB ? "A" : "B"} pulls ${Math.abs(peakA - peakB)} N harder`, peakRow.d);
     check(`${tag}: winner highlighted`, (await page.$$('#cmp tr[data-row="eff"] td.win.a')).length === 1);
-    check(`${tag}: two power bars, five parts`, (await page.$$("#bars-power .bar")).length === 2 &&
-          (await page.$$("#leg-power tr")).length === 6);
+    check(`${tag}: two power bars, six parts`, (await page.$$("#bars-power .bar")).length === 2 &&
+          (await page.$$("#leg-power tr")).length === 7);
     // Switching's slice: the extra slip against the same boat with no switch time.
     await page.waitForTimeout(300);
     const swRow = await page.$$eval("#leg-power tr", (rs) => { const r = rs.find((q) => /switching/.test(q.textContent));
@@ -570,9 +574,9 @@ console.log("\nPaddle fit");
     const tipShown = () => page.$eval("#tip", (e) => !e.hidden);
     const effInfo = '#cmp tr[data-row="eff"] button.info';
     check(`${tag}: help buttons on table rows and breakdowns`, (await page.$$("#cmp button.info")).length === 7 &&
-          (await page.$$("#leg-power button.info")).length === 5);
+          (await page.$$("#leg-power button.info")).length === 6);
     await page.click(effInfo);
-    check(`${tag}: tap shows the tip`, (await tipShown()) && /actually moves the boat/.test(await text("#tip")) &&
+    check(`${tag}: tap shows the tip`, (await tipShown()) && /moves you down the course/.test(await text("#tip")) &&
           (await page.$eval(effInfo, (b) => b.getAttribute("aria-expanded"))) === "true");
     const tb = await (await page.$("#tip")).boundingBox();
     check(`${tag}: tip fits on screen`, tb.x >= 0 && tb.x + tb.width <= width + 1, `${tb.x.toFixed(0)}+${tb.width.toFixed(0)} in ${width}`);
@@ -1014,7 +1018,7 @@ console.log("\nPaddle fit");
     const heads = await page.$$eval("#score-heads .big", (bs) => bs.map((b) => b.textContent));
     check(`${tag}: race score: the race's own times`, heads[0] === (await text("#t-a")) && heads[1] === (await text("#t-b")) &&
           /^\d+(\.\d)? km (open water|river).*, (\d+ W|A \d+ W, B \d+ W)\.$/.test(await text("#score-status")) &&
-          /Blade slip/.test(await text("#score-bars")) && (await page.$$eval("h2", (hs) => hs.map((h) => h.textContent))).some((h) => h.startsWith("Stroke efficiency: A vs B")),
+          /Blade slip/.test(await text("#score-bars")) && (await page.$$eval("h2", (hs) => hs.map((h) => h.textContent))).some((h) => h.startsWith("Boat A vs Boat B")),
           `${heads} | ${await text("#score-status")}`);
     // Boat score for both boats; body settings show what they do.
     check(`${tag}: boat score for both boats`, /^Boat A\d+ \/ 100.*Boat B\d+ \/ 100/.test(await text("#boat-score")), await text("#boat-score"));

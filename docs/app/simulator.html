@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#fcfcfb" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#1a1a19" media="(prefers-color-scheme: dark)">
-<title>Stroke Simulator</title>
+<title>Canoe Race Simulator</title>
 <style>
   :root {
     color-scheme: light;
@@ -174,6 +174,7 @@
   .bar > span { display: block; height: 100%; }
   .s1 { background: var(--cat-useful); } .s2 { background: var(--cat-slip); } .s3 { background: var(--cat-side); } .s4 { background: var(--cat-other); }
   .s5 { background: color-mix(in srgb, var(--cat-slip) 45%, var(--surface-1)); }   /* slip from switching */
+  .s6 { background: color-mix(in srgb, var(--cat-useful) 35%, var(--surface-1)); }   /* hull drag spent on the zigzag */
   table.legend { border-collapse: collapse; margin-top: 6px; font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
   table.legend td { padding: 1px 12px 1px 0; }
   table.legend td.n { text-align: right; color: var(--text-primary); font-weight: 600; }
@@ -390,7 +391,7 @@
 <body>
 <main>
   <header>
-    <h1>Stroke simulator</h1>
+    <h1>Canoe Race Simulator</h1>
     <a href="./">← Paddle Power app</a>
   </header>
 
@@ -431,7 +432,7 @@
       <!-- ------------------------------------------------ efficiency -->
       <section class="card" id="eff-card">
         <div class="card-head">
-          <h2>Stroke efficiency: A vs B</h2>
+          <h2>Boat A vs Boat B</h2>
         </div>
         <table class="cmp" id="cmp">
           <thead><tr><th></th><th><span class="a-dot"></span>A</th><th><span class="b-dot"></span>B</th><th>Better</th></tr></thead>
@@ -775,7 +776,7 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of each engine file (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. The fit builds on the stroke engine. -->
-<script src="stroke-sim.js?v=e3545830fc"></script>
+<script src="stroke-sim.js?v=4f828038b1"></script>
 <script src="fit-sim.js?v=c4843125f4"></script>
 <script>
 (() => {
@@ -819,7 +820,7 @@ function shown(el) {
 }
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 40;
+const NEEDS_API = 41;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -1277,9 +1278,9 @@ const switchSlip = (x) => {
 };
 function showPowerBreakdown() {
   const power = (x) => { const sh = results[x].at(effortW).shares, sw = switchSlip(x);
-    return [sh.hull, sh.slip - sw, sw, sh.leeway, sh.surge + sh.bounce + sh.pitch + sh.swing + sh.drop + Math.max(0, sh.sink)].map((v) => v * 100); };
-  breakdown("power", ["moves the boat", "slip", "switching", "sideways drag", "surge & bounce"], power("a"), power("b"), 1,
-            ["s1", "s2", "s5", "s3", "s4"]);
+    return [sh.hull, sh.slip - sw, sw, sh.zigzag, sh.leeway, sh.surge + sh.bounce + sh.pitch + sh.swing + sh.drop + Math.max(0, sh.sink)].map((v) => v * 100); };
+  breakdown("power", ["moves the boat", "slip", "switching", "zigzag", "sideways drag", "surge & bounce"], power("a"), power("b"), 1,
+            ["s1", "s2", "s5", "s6", "s3", "s4"]);
 }
 function summary(r) {
   const at = r.at(effortW);
@@ -1291,7 +1292,7 @@ function summary(r) {
 }
 // What each table row and breakdown entry means.
 const HELP = {
-  eff: "Share of your power that actually moves the boat. The rest churns water or goes into sideways and up-down push.",
+  eff: "Share of your power that moves you down the course. The rest is lost to blade slip, switching, sideways drag, the zigzag between switches, and the boat surging, bobbing and pitching (the breakdown below).",
   speed: "Boat speed along the course at the Compare at effort.",
   fwd: "How much of the blade's push points straight ahead.",
   side: "Strokes on one side before you switch to keep straight.",
@@ -1301,6 +1302,7 @@ const HELP = {
   "moves the boat": "Power that overcomes hull drag: the useful part.",
   slip: "Power lost pushing water backwards as the blade slips through it.",
   switching: "Extra slip from switching sides. A switch puts no push in, so the strokes between pull harder to keep the same power and speed, and the blade slips more.",
+  zigzag: "Hull drag spent on the zigzag: between switches the bow swings off course, so the boat travels further than the course.",
   "sideways drag": "Drag from the hull crabbing against the stroke's sideways push.",
   "surge & bounce": "Lost to the boat speeding up and slowing within each stroke, bobbing and pitching, and to your body swinging.",
 };
@@ -2609,6 +2611,7 @@ function drawPower() {
   const parts = (x) => {
     const e = results[x].at(effortW), sh = e.shares, wave = 0.23 * Math.pow(e.waterSpeed / 2.5, 4);
     return [["Hull: friction", sh.hull * (1 - wave), "var(--cat-useful)"], ["Hull: waves", sh.hull * wave, "color-mix(in srgb, var(--cat-useful) 50%, var(--surface-1))"],
+            ["Zigzag", sh.zigzag, "color-mix(in srgb, var(--cat-useful) 25%, var(--surface-1))"],
             ["Blade slip", sh.slip - switchSlip(x), "var(--cat-slip)"],
             ["Switching", switchSlip(x), "color-mix(in srgb, var(--cat-slip) 45%, var(--surface-1))"], ["Crab", sh.leeway, "var(--cat-side)"],
             ["Speed swings", sh.surge, "var(--cat-other)"], ["Bob & pitch", sh.bounce + sh.pitch, "color-mix(in srgb, var(--cat-other) 55%, var(--surface-1))"],
@@ -2715,7 +2718,7 @@ async function runScore(gen) {
       return gen === scoreGen;
     };
     const set = (k, v) => () => { p = Object.assign({}, p, { [k]: v }); };
-    const intoHull = (key) => () => { const sh = simOf(p).at(W).shares; W *= (sh.hull + [].concat(key).reduce((a, k) => a + sh[k], 0)) / sh.hull; };
+    const intoHull = (key) => () => { const sh = simOf(p).at(W).shares, drag = sh.hull + sh.zigzag; W *= (drag + [].concat(key).reduce((a, k) => a + sh[k], 0)) / drag; };
     if (effortMode === "hold" && !(await step("Muscle not used", () => { p = Object.assign({}, p, { rotation: 1, legDrive: 1, hinge: 1 }); W = S.capacity(p, hours); }))) return;
     if (p.swingM && !(await step("Body swing", set("swingM", 0)))) return;
     if (p.dropM && !(await step("Drop", set("dropM", 0)))) return;

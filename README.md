@@ -190,11 +190,13 @@ time (up to three devices).
   needed. The demo's pivot wanders between strokes the way the paddle's
   estimate does, and power follows the changing lever arm.
 
-**Stroke simulator** (`docs/app/simulator.html`, linked from the app)
+**Canoe Race Simulator** (`docs/app/simulator.html`, linked from the app)
 compares two strokes, Boat A and Boat B. Pick a boat, start from a preset,
 and move the sliders.
-- **Efficiency:** an A-vs-B table, where the power goes, and which way the
-  blade pushes.
+- **Boat A vs Boat B:** a table led by efficiency, the share of your power
+  that moves you down the course after blade slip, switching, the zigzag
+  between switches, sideways drag and the boat surging and bobbing; where
+  the power goes; and which way the blade pushes.
 - **Force curve:** both boats through the drive. Hover for values, or turn
   on Live to trace it with the animation.
 - **Stroke views:** side, end and top, split or overlaid.
@@ -202,6 +204,8 @@ and move the sliders.
   gains a lot; that's untested on the water, so treat it with care.
 - **Switching sides:** by heading, or a fixed number of strokes per side.
   Too few loses time switching; too many zigzags.
+- **Fit:** seat height, paddle length and hand placement for the most speed
+  at what you can hold, within reach, the top hand's height and stability.
 - **Race:** A against B, point to point or there and back, with wind,
   current, shallow water, or a river with bends. It also shows each boat's
   force per stroke at its race effort. Drag the slider under the race to
@@ -327,7 +331,7 @@ lib/                     vendored sensor libraries
 tools/log2csv.py         log → CSV
 tools/replay/            re-run the power model over a log
 docs/app/index.html      web app (Bluetooth dashboard and setup)
-docs/app/simulator.html  stroke simulator (physics in stroke-sim.js)
+docs/app/simulator.html  canoe race simulator (physics in stroke-sim.js)
 docs/BENCH_TEST.md       hardware bench test checklist
 test/host/               PC simulation tests
 test/web/                browser test of the web app (simulated paddle)
