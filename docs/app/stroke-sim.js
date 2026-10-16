@@ -762,13 +762,18 @@
       // switching is worked out at this effort's speed. (Speed itself is
       // solved with the duty at the stroke's own speed: within ~0.1%.)
       const swW = switching(pg, Vw * Math.cbrt(f), yawMean * scale, Tc1);
+      // The zigzag between switches costs progress down the course: as power,
+      // what a boat running straight would need for the same progress (speed
+      // goes as the cube root of power), against what overcomes the hull's drag.
+      const straight = swW.course ** 3;
       const r = {
         speed: Vw * Math.cbrt(f) * swW.course,    // made good along the course
         waterSpeed: Vw * Math.cbrt(f),            // through the water
-        efficiency: base * f,
+        // Share of your power that moves you down the course.
+        efficiency: base * f * straight,
         // Shares of your power. They add to 1; `sink` is negative (a saving)
-        // when the stroke lifts the boat.
-        shares: { hull: base * f, slip: slip / pd, leeway: leeway / pd, surge: base * surgeFrac * f,
+        // when the stroke lifts the boat. hull + zigzag overcomes the hull's drag.
+        shares: { hull: base * f * straight, zigzag: base * f * (1 - straight), slip: slip / pd, leeway: leeway / pd, surge: base * surgeFrac * f,
                   sink: base * sink * f, bounce: base * bounce * f, swing: base * swing * f, drop: base * drop * f,
                   pitch: base * pitchFrac * f },
         meanLift,                        // N, + lifts the boat
@@ -785,7 +790,7 @@
       // forward speed. Points off for time lost switching, the zigzag, and
       // the power that goes into surging, bobbing, crabbing and the body's
       // motion; riding higher earns some back. Blade slip isn't counted.
-      const sh = r.shares, over = (x) => (x / Math.max(1e-9, sh.hull)) * 100;
+      const sh = r.shares, over = (x) => (x / Math.max(1e-9, sh.hull + sh.zigzag)) * 100;
       const parts = { switching: (1 - swW.duty) * 100, zigzag: (1 - swW.course) * 100, swing: over(sh.swing), drop: over(sh.drop),
                       surge: over(sh.surge), bob: over(sh.bounce), pitch: over(sh.pitch), crab: over(sh.leeway), riding: over(sh.sink) };
       r.boatScore = { total: Math.max(0, 100 - Object.values(parts).reduce((a, x) => a + x, 0)), parts };
@@ -1268,7 +1273,7 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 40;
+  const API_LEVEL = 41;
   const PADDLE = paddleOf(DEFAULTS);
   const api = { API_LEVEL, shaftDir, paddled, paddleOf, gearFactor, bestRate, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
