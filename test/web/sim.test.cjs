@@ -1018,10 +1018,14 @@ console.log("\nPaddle fit");
     });
     check(`${tag}: hull: the power chart's note clears its legend`, powerFit.gap >= 14 && powerFit.inside, JSON.stringify(powerFit));
     // Bob, pitch and roll each draw the paddler with the paddle in hand.
-    const figs = await page.evaluate(() => ["hp-bob", "hp-pitch", "hp-roll"].map((id) => {
+    const figs = await page.evaluate(() => ["hp-surge", "hp-bob", "hp-pitch", "hp-roll"].map((id) => {
       const el = document.getElementById(id); return [el.querySelectorAll(".fig-head").length, el.querySelectorAll(".paddle-hv").length];
     }));
-    check(`${tag}: hull: bob, pitch and roll draw the paddler and paddle`, figs.every(([h, p]) => h >= 1 && p >= 1), JSON.stringify(figs));
+    check(`${tag}: hull: surge, bob, pitch and roll draw the paddler and paddle`, figs.every(([h, p]) => h >= 1 && p >= 1), JSON.stringify(figs));
+    // Pitch shows the push and the drag; the power chart's legend gives both boats.
+    const pitchArrows = await page.$$eval("#hp-pitch line[marker-end]", (ls) => ls.length);
+    const legendAB = /Hull: friction\s*[\d.]+%\s*[\d.]+%/.test(await text("#hull-power")) && /A saves|A costs/.test(await text("#hull-power"));
+    check(`${tag}: hull: pitch draws push and drag; power legend has A and B`, pitchArrows >= 2 && legendAB, `${pitchArrows} arrows`);
     // Arrowheads: one definition each, outside every picture that can be hidden.
     const arrowheads = await page.evaluate(() => ["ha-a", "ha-b", "ha3"].map((id) => {
       const ms = document.querySelectorAll(`marker#${id}`);
