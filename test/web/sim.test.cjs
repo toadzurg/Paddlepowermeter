@@ -355,6 +355,16 @@ console.log("\nStroke simulator physics");
     await goTab("race");
     check(`${tag}: race tab: race, conditions, score`, (await visible("#race-card")) && (await visible("#conditions-card")) &&
           (await visible("#score-card")) && !(await visible("#eff-card")) && (await visible("#controls")));
+    check(`${tag}: race tab: boat picker and race power on top`, (await visible("#boats")) && (await visible("#effA")) &&
+          (await visible("#effB")) && !(await visible("#c-effortW")));
+    await goTab("boat");
+    await slide("#c-effortW", 250); await settle();
+    check(`${tag}: boat tab: power set right there`, (await visible("#c-effortW")) && (await visible("#boats")) &&
+          /at 250 W/.test(await text("#hull-sub")) && !(await visible("#effA")), await text("#hull-sub"));
+    await page.click("#boats [data-boat=b]"); await settle();
+    check(`${tag}: boat tab: pick the boat to edit`, (await text("#editing-name")) === "Boat B");
+    await page.click("#boats [data-boat=a]");
+    await slide("#c-effortW", 150); await settle();
     await goTab("stroke");
 
     // Efficiency comparison
