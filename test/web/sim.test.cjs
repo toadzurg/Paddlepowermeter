@@ -1022,6 +1022,12 @@ console.log("\nPaddle fit");
       const el = document.getElementById(id); return [el.querySelectorAll(".fig-head").length, el.querySelectorAll(".paddle-hv").length];
     }));
     check(`${tag}: hull: bob, pitch and roll draw the paddler and paddle`, figs.every(([h, p]) => h >= 1 && p >= 1), JSON.stringify(figs));
+    // Arrowheads: one definition each, outside every picture that can be hidden.
+    const arrowheads = await page.evaluate(() => ["ha-a", "ha-b", "ha3"].map((id) => {
+      const ms = document.querySelectorAll(`marker#${id}`);
+      return ms.length === 1 && !ms[0].closest(".hpair, .hull-part, [hidden]");
+    }));
+    check(`${tag}: hull: arrowheads defined once, where they always draw`, arrowheads.every(Boolean), JSON.stringify(arrowheads));
     check(`${tag}: hull: roll and its balance`, /^A Lifts the paddle side up to \d+ N·m; balance with hips \d+ mm toward the paddle side\. Held still: ±[\d.]+°/.test(await text("#hull-roll-read")), await text("#hull-roll-read"));
     await page.$eval("#hull-card", (e) => e.scrollIntoView());   // it only redraws while on screen
     const surgeSvg = () => page.$eval("#hp-surge", (e) => e.innerHTML);
