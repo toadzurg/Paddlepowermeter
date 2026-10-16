@@ -2454,7 +2454,16 @@ const hullShown = () => hullPanes().flat();
 const hullFocus = () => hullShown()[0];
 const COL = { a: "var(--series-1)", b: "var(--series-2)" };
 const ARROW = (id, c) => `<marker id="${id}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="${c}"/></marker>`;
-const hullDefs = `<defs>${ARROW("ha-a", COL.a)}${ARROW("ha-b", COL.b)}${ARROW("ha3", "var(--text-primary)")}</defs>`;
+// The hull pictures' arrowheads, defined once in an svg that is never
+// hidden. A url(#id) finds the first element with that id on the page, and
+// a marker inside a hidden picture draws nothing: with a copy in every
+// picture, the arrows lost their heads whenever the first copy was hidden.
+document.body.insertAdjacentHTML("afterbegin", `<svg aria-hidden="true" focusable="false" width="0" height="0" style="position:absolute">` +
+  `<defs>${ARROW("ha-a", COL.a)}${ARROW("ha-b", COL.b)}${ARROW("ha3", "var(--text-primary)")}</defs></svg>`);
+// The blade's lift on the boat, as an arrow up out of clear water at x
+// (boat k of the pair side by side); none when it barely lifts.
+const liftArrow = (x, k, cx, base, up) => up > 2
+  ? `<line x1="${cx + k * 14}" x2="${cx + k * 14}" y1="${base}" y2="${base - Math.min(28, 8 + up * 0.6)}" stroke="${COL[x]}" stroke-width="4" marker-end="url(#ha-${x})"/>` : "";
 const tagFor = (bs) => bs.map((x, i) => `<text class="strong" x="${W_HV - 8 - (bs.length - 1 - i) * 16}" y="16" text-anchor="end" style="fill:${COL[x]}">${x.toUpperCase()}</text>`).join("");
 const W_HV = 360;
 // One svg per pane in each of the moving pictures and the charts.
@@ -2502,7 +2511,7 @@ function drawHullLive(ph) {
   const big = Math.max(1e-6, ...BOATS.flatMap((x) => hullCyc[x].ahead.map(Math.abs))), ex = 28 / big;
   for (const { svg, bs } of panesIn("hp-surge")) {
     svg.setAttribute("viewBox", `0 0 ${W_HV} 112`);
-    let g = hullDefs + `<rect class="water" x="0" y="52" width="${W_HV}" height="60"/><line class="wl" x1="0" x2="${W_HV}" y1="52" y2="52"/>` +
+    let g = `<rect class="water" x="0" y="52" width="${W_HV}" height="60"/><line class="wl" x1="0" x2="${W_HV}" y1="52" y2="52"/>` +
       `<path class="ghost" d="${hullPath("side", sideP(180, 52, s))}"/>`;
     bs.forEach((x, k) => {
       const [c, i] = at(x), off = c.ahead[i] * ex, push = c.push[i], drag = c.drag[i], y = 82 + k * 12;
@@ -2523,21 +2532,21 @@ function drawHullLive(ph) {
   for (const { svg, bs } of panesIn("hp-bob")) {
     const wlB = 64, H = 108;
     svg.setAttribute("viewBox", `0 0 ${W_HV} ${H}`);
-    let g = hullDefs + `<rect class="water" x="0" y="${wlB}" width="${W_HV}" height="${H - wlB}"/><line class="wl" x1="0" x2="${W_HV}" y1="${wlB}" y2="${wlB}"/>`;
+    let g = `<rect class="water" x="0" y="${wlB}" width="${W_HV}" height="${H - wlB}"/><line class="wl" x1="0" x2="${W_HV}" y1="${wlB}" y2="${wlB}"/>`;
     bs.forEach((x, k) => {
       const [c, i] = at(x), y = wlB - c.heave[i] * 50 * s, P = sideP(180, y, s), two = bs.length > 1 && !sameBoats();
       g += `<path class="hull boat-${x}" d="${hullPath("side", P)}"/>` + (k === 0 || two ? paddlerFig(P, x, ph, two) + paddleHV(P, x, ph) : "");
-      if (c.up[i] > 2) g += `<line x1="${170 + k * 20}" x2="${170 + k * 20}" y1="${y + 8 + Math.min(30, c.up[i] * 0.35)}" y2="${y + 8}" stroke="${COL[x]}" stroke-width="4" marker-end="url(#ha-${x})"/>`;
+      g += liftArrow(x, k, W_HV - 96, H - 4, c.up[i]);
       g += `<text x="8" y="${16 + k * 15}"><tspan class="strong" style="fill:${COL[x]}">${x.toUpperCase()}</tspan> ${c.heave[i] >= 0 ? "up" : "down"} ${fmtNum(Math.abs(c.heave[i]) * 1000, 1)} mm</text>`;
     });
-    g += `<text x="${W_HV - 8}" y="16" text-anchor="end">height ×50</text>`;
+    g += `<text x="${W_HV - 8}" y="16" text-anchor="end">height ×50</text><text x="${W_HV - 96 + bs.length * 14}" y="${H - 8}">blade lift</text>`;
     svg.innerHTML = g;
   }
   // Pitch: side view, bow right, with the paddler; tilt ×20.
   for (const { svg, bs } of panesIn("hp-pitch")) {
     svg.setAttribute("viewBox", `0 0 ${W_HV} 120`);
     const cx = 180, wl = 82, ps = s;
-    let g = hullDefs + `<rect class="water" x="0" y="${wl}" width="${W_HV}" height="${120 - wl}"/><line class="wl" x1="0" x2="${W_HV}" y1="${wl}" y2="${wl}"/>`;
+    let g = `<rect class="water" x="0" y="${wl}" width="${W_HV}" height="${120 - wl}"/><line class="wl" x1="0" x2="${W_HV}" y1="${wl}" y2="${wl}"/>`;
     bs.forEach((x, k) => {
       const [c, i] = at(x), deg = c.pitch[i] * 180 / Math.PI;
       g += `<g transform="rotate(${(-deg * 20).toFixed(2)} ${cx} ${wl})"><path class="hull boat-${x}" d="${hullPath("side", sideP(cx, wl, ps))}"/>` +
@@ -2552,7 +2561,7 @@ function drawHullLive(ph) {
     const H = 190;
     svg.setAttribute("viewBox", `0 0 ${W_HV} ${H}`);
     const cx = 100, wl = 150, sr = 110, P = (q) => [cx - q[1] * sr, wl - q[2] * sr];   // from behind: +y (left) is on the left
-    let g = hullDefs + `<rect class="water" x="0" y="${wl}" width="${W_HV}" height="${H - wl}"/><line class="wl" x1="0" x2="${W_HV}" y1="${wl}" y2="${wl}"/>`;
+    let g = `<rect class="water" x="0" y="${wl}" width="${W_HV}" height="${H - wl}"/><line class="wl" x1="0" x2="${W_HV}" y1="${wl}" y2="${wl}"/>`;
     const two = bs.length > 1 && !sameBoats();
     bs.slice().reverse().forEach((x) => {
       const k = bs.indexOf(x), [c, i] = at(x), deg = (c.heel[i] * 180) / Math.PI * 3;
@@ -2560,7 +2569,7 @@ function drawHullLive(ph) {
       g += `<g transform="rotate(${deg.toFixed(2)} ${cx} ${wl})"${two && x === "b" ? ` opacity="0.8"` : ""}><path class="hull boat-${x}" d="${hullPath("end", P)}"/>` +
         (k === 0 || two ? paddlerFig(P, x, ph, two) + paddleHV(P, x, ph) : "") + `</g>`;
       // The blade's lift, in clear water to the right of the blade.
-      if (c.up[i] > 2) g += `<line x1="${cx + 152 + k * 14}" x2="${cx + 152 + k * 14}" y1="${wl + 34}" y2="${wl + 34 - Math.min(28, 8 + c.up[i] * 0.6)}" stroke="${COL[x]}" stroke-width="4" marker-end="url(#ha-${x})"/>`;
+      g += liftArrow(x, k, cx + 152, wl + 34, c.up[i]);
       const d = c.heel[i] * 180 / Math.PI;
       g += `<text x="205" y="${22 + k * 15}"><tspan class="strong" style="fill:${COL[x]}">${x.toUpperCase()}</tspan> ${Math.abs(d) < 0.05 ? "level" : `${fmtNum(Math.abs(d), 1)}° paddle side ${d > 0 ? "down" : "up"}`}</text>`;
     });
@@ -2619,7 +2628,7 @@ function drawHeading() {
   const strokes = Math.max(12, Math.round(Math.max(...BOATS.map(per)) * 4)), lim = Math.max(1, Math.ceil(Math.max(...BOATS.map(wan))));
   const X = (k) => m.l + (k / strokes) * pw, Y = (d) => m.t + ph / 2 - (d / (lim * 1.25)) * (ph / 2);
   for (const { svg, bs } of panesIn("hp-heading")) {
-    let g = hullDefs;
+    let g = "";
     for (const d of [-lim, 0, lim]) g += `<line class="${d ? "grid" : "axis"}" x1="${m.l}" x2="${W - m.r}" y1="${Y(d)}" y2="${Y(d)}"/><text x="${m.l - 5}" y="${Y(d) + 4}" text-anchor="end">${d > 0 ? "+" : ""}${d}°</text>`;
     for (const x of bs) {
       const pr = per(x), w = wan(x), step = (2 * w) / pr;
