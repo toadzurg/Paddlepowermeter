@@ -331,6 +331,28 @@ console.log("\nStroke simulator physics");
   check("strength by position: force bunches where you're strong (higher peak), energy still balances",
         pk(sOn) > pk(sOff) * 1.1 && Math.abs(sBal) < 1e-3 * sOn.paddlerPower, `${pk(sOff).toFixed(0)} → ${pk(sOn).toFixed(0)} N`);
   check("strength by position: what you can hold scales with it", Math.abs(S.capacity(on(LR)) / S.capacity(LR) - S.strengthFactor(on(LR))) < 1e-9);
+
+  // The body is fitted to the paddle: within reach for every preset, and it says when it can't be.
+  const PRE = { def: {}, long: LR, behind: { catchDeg: 12, exitDeg: 45 }, sweep: { leanDeg: 40, sweepDeg: 70, handOutM: 0.5, catchDeg: 25, exitDeg: 25 },
+                rot: { rotation: 1 }, clean: { leanDeg: 2, handOutM: 0.38 } };
+  const worst = Object.entries(PRE).map(([k, p]) => { const b = S.simulate(p).body; return [k, Math.max(...b.frames.map((f) => Math.max(f.top, f.low))), b.short]; });
+  check("body: both hands within reach all through the drive, for every preset", worst.every(([, m, sh]) => m <= 0.98 && sh === 0),
+        worst.map(([k, m]) => `${k} ${(m * 100).toFixed(0)}%`).join(", "));
+  const far = S.simulate({ catchDeg: 60, handOutM: 0.85, leanDeg: 40 }).body;
+  check("body: a stroke out of reach says by how much", far.short > 0.05 && far.short < 0.3, `${(far.short * 100).toFixed(0)} cm`);
+  const seats = [36, 38, 40].map((c) => S.simulate({ catchDeg: c }).body.seatX);
+  check("body: the seat holds steady as the stroke changes", Math.max(...seats) - Math.min(...seats) < 0.05 && seats.every((x) => x > -0.6 && x < 0),
+        seats.map((x) => x.toFixed(2)).join(" "));
+  // Strength from the arms.
+  const arms = (x) => Object.assign({ strengthOn: 2 }, x), fA = (x) => S.strengthFactor(arms(x));
+  check("strength from the arms: arms at full stretch tire you (wide sweep, out of reach), comfortable ones don't",
+        Math.abs(fA({}) - 1) < 1e-9 && fA(PRE.sweep) < 0.9 && fA({ catchDeg: 60, handOutM: 0.85, leanDeg: 40 }) < 0.6 && fA(PRE.clean) > 0.98,
+        `sweep ×${fA(PRE.sweep).toFixed(2)}, clean ×${fA(PRE.clean).toFixed(2)}`);
+  check("strength from the arms: longer arms make a long reach easier",
+        fA(Object.assign({ upperArmM: 0.34, forearmM: 0.34 }, LR)) > fA(LR) + 0.02);
+  const armCurve = S.simulate(arms(LR)).strengthCurve;
+  let bumpy = 0; for (let i = 2; i < armCurve.length; i++) bumpy = Math.max(bumpy, Math.abs(armCurve[i][1] - 2 * armCurve[i - 1][1] + armCurve[i - 2][1]));
+  check("strength from the arms: a smooth curve through the drive (no steps)", bumpy < 0.1, bumpy.toFixed(3));
 }
 
 (async () => {
@@ -970,7 +992,7 @@ console.log("\nStroke simulator physics");
     const torso1 = await page.evaluate(() => window.sim.boats.a.torsoM);
     check(`${tag}: profile: height scales the body`, Math.abs(torso1 / torso0 - 1.95 / 1.78) < 0.01 && /195 cm/.test(await text("#o-heightM")),
           `${torso0} → ${torso1}`);
-    await page.click("#strength-mode >> text=On"); await slide("#c-fitnessW", 260); await settle();
+    await page.click("#strength-mode >> text=By paddle angle"); await slide("#c-fitnessW", 260); await settle();
     check(`${tag}: profile: strength by position shows its curve`, (await visible("#strength-curve")) &&
           (await page.$$("#strength-curve path.cur")).length === 1 && /×[\d.]+ against the default stroke/.test(await text("#strength-read")));
     await page.click("#presets >> text=Long reach"); await settle();
@@ -990,6 +1012,17 @@ console.log("\nStroke simulator physics");
     page.once("dialog", (d) => d.accept());
     await page.click("#profile-delete"); await settle();
     check(`${tag}: profile: deleted`, (await page.$$("#profile-pick option")).length === 1);
+    // A stroke the arms can't reach is flagged; strength from the arms shows its curve.
+    await page.click("#boats [data-boat=a]");
+    await slide("#c-handOutM", 0.85); await slide("#c-catchDeg", 60); await settle();
+    check(`${tag}: reach warning for a stroke out of reach`, (await visible("#reach-warn")) && /Boat A's stroke needs \d+ cm more reach/.test(await text("#reach-warn")),
+          await text("#reach-warn"));
+    await page.click("#strength-mode >> text=From the arms"); await settle();
+    check(`${tag}: strength from the arms: curve through the drive`, (await page.$$("#strength-curve path.cur")).length === 1 &&
+          /Arms at up to \d+% \(lower\)/.test(await text("#strength-read")) && !(await visible("#c-strengthPeakDeg")));
+    await page.click("#strength-mode >> text=Off");
+    await page.click("#presets >> text=Defaults"); await settle();
+    check(`${tag}: reach warning gone when in reach`, !(await visible("#reach-warn")));
     // Back to the defaults for what follows.
     await page.evaluate(() => { const S = window.StrokeSim; for (const x of ["a", "b"]) for (const k of ["heightM", "torsoM", "shoulderM", "upperArmM", "forearmM", "thighM", "shinM", "fitnessW", "strengthOn"]) window.sim.boats[x][k] = S.DEFAULTS[k]; });
     await page.click("#presets >> text=Clean vertical"); await settle();
