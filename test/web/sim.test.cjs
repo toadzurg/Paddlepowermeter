@@ -1046,6 +1046,33 @@ console.log("\nStroke simulator physics");
       check(`${tag}: stale engine shows a reload prompt`, /kept an old copy/.test(await old.textContent("main")) &&
             (await old.$$("main > .card button.primary")).length === 1);
       await old.close();
+      // Each boat's settings are remembered, and can be reset.
+      {
+        const url = "file://" + path.resolve(__dirname, "../../docs/app/simulator.html");
+        const mem = await ctx.newPage();
+        await mem.goto(url); await mem.evaluate(() => localStorage.removeItem("ppm.sim.boats")); await mem.reload(); await mem.waitForTimeout(500);
+        const val = (sel) => mem.$eval(sel, (e) => e.value);
+        await mem.$eval("#c-catchDeg", (el) => { el.value = 50; el.dispatchEvent(new Event("input")); });
+        await mem.click("#boats [data-boat=b]");
+        await mem.$eval("#c-rateSpm", (el) => { el.value = 72; el.dispatchEvent(new Event("input")); });
+        await mem.waitForTimeout(300); await mem.reload(); await mem.waitForTimeout(500);
+        const kept = [await val("#c-catchDeg"), await mem.evaluate(() => window.sim.boats.b.rateSpm)];
+        check(`${tag}: each boat's settings are remembered`, kept[0] === "50" && kept[1] === 72, `${kept}`);
+        mem.once("dialog", (d) => d.accept());
+        await mem.click("#reset"); await mem.waitForTimeout(300);
+        check(`${tag}: reset the boat being edited`, (await val("#c-catchDeg")) === "35" && (await mem.textContent("#reset")) === "Reset Boat A" &&
+              (await mem.evaluate(() => window.sim.boats.b.rateSpm)) === 72);
+        mem.once("dialog", (d) => d.accept());
+        await mem.click("#reset-both"); await mem.waitForTimeout(300);
+        check(`${tag}: reset both: back to the starting boats`, (await mem.evaluate(() => window.sim.boats.b.rateSpm)) === 60 &&
+              (await mem.textContent("#nm-a")) === "Defaults" && (await mem.textContent("#nm-b")) === "Wide sweep");
+        await mem.evaluate(() => localStorage.setItem("ppm.sim.boats", '{"a":{"catchDeg":"x","rateSpm":66},"b":7}'));
+        await mem.reload(); await mem.waitForTimeout(500);
+        check(`${tag}: a damaged save keeps what it can`, (await val("#c-catchDeg")) === "35" && (await mem.evaluate(() => window.sim.boats.a.rateSpm)) === 66 &&
+              (await mem.textContent("#nm-b")) === "Wide sweep");
+        await mem.evaluate(() => localStorage.removeItem("ppm.sim.boats"));
+        await mem.close();
+      }
       // A phone: taps act once each, a paused race stops redrawing, and the
       // followed map widens so it doesn't lurch kilometres a frame.
       const { devices } = require("playwright");
