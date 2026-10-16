@@ -25,7 +25,7 @@ struct PaddleSample {
 
 // Estimates paddler power from blade force and paddle kinematics.
 //
-//   P = F · v_blade,  v_blade = ω · L,  L = x_blade − x_pivot
+//   P = F · v_blade,  v_blade = ω · L,  L = d + (x_throat − x_pivot)·cos β
 //
 // ω and α come from a [rate, accel] Kalman filter fed by both gyros and by
 // the difference of the two accelerometers (a rigid-body identity in which
@@ -79,12 +79,15 @@ public:
   // lost to blade slip. Needs boat speed for the whole drive; check
   // hasPowerSplit() first.
   bool hasPowerSplit() const { return splitValid_; }
-  float usefulPower() const { return usefulPower_; }  // W, F·cosθ·v_boat
+  float usefulPower() const { return usefulPower_; }  // W, F·cos(θ−β)·v_boat
   float slipPower() const { return slipPower_; }      // W, total − useful
   // useful / total. Not clamped: a value above 1 on the water means the
   // force, lever arm or impeller calibration is off.
   float efficiency() const { return efficiency_; }
   uint16_t strokeCount() const { return strokeCount_; }
+  // Changes whenever the stroke figures do: on each new stroke, and when a
+  // second force peak is folded into the last one (count unchanged).
+  uint16_t strokeUpdates() const { return strokeUpdates_; }
   uint32_t lastStrokeTimeMs() const { return lastStrokeMs_; }
   bool inDrive() const { return inDrive_; }
 
@@ -109,8 +112,9 @@ private:
   uint32_t prevDriveStartMs_;
 
   float strokePower_, strokeRate_, lastEnergy_;
-  uint16_t strokeCount_;
+  uint16_t strokeCount_, strokeUpdates_;
   uint32_t lastStrokeMs_;
+  uint32_t lastCycleMs_;   // cycle the last stroke was scored over; 0 if none
 
   float driveUseful_, lastUseful_;
   float driveImpulse_, lastImpulse_, lastDriveS_, dutyFactor_, meanForward_;

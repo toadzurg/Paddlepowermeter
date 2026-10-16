@@ -136,12 +136,12 @@ With a calibrated impeller, each stroke's power is split in two. The
 
 ```
 total  = F · v_blade                (what you put out; sent over BLE)
-useful = F · cosθ · v_boat          (what pushes the boat forward)
+useful = F · cos(θ − β) · v_boat    (what pushes the boat forward)
 slip   = total − useful             (lost churning water)
 efficiency = useful / total
 ```
 
-`cosθ` is the horizontal share of the blade force, taken from the paddle's
+`cos(θ − β)` is the horizontal share of the blade force, taken from the paddle's
 orientation. At the catch and the exit the angled blade partly lifts or
 sinks the boat rather than driving it forward. The calculation assumes the
 blade moves straight aft, so sweep and steering strokes read slightly high.

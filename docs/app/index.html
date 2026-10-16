@@ -92,17 +92,29 @@
 
   .card { background: var(--surface-1); border: 1px solid var(--border);
           border-radius: 14px; padding: 14px 16px; }
-  .grid { display: grid; gap: 10px; }
-  .tiles { grid-template-columns: repeat(2, 1fr); }
-  @media (min-width: 560px) { .tiles { grid-template-columns: repeat(3, 1fr); } }
-
   .label { font-size: 13px; color: var(--text-secondary); }
   .value { font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
   .unit { font-size: 0.45em; font-weight: 500; color: var(--text-secondary); margin-left: 4px; letter-spacing: 0; }
   .sub { font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 
-  .hero .value { font-size: clamp(72px, 22vw, 120px); line-height: 1; margin: 4px 0 2px; }
-  .tile .value { font-size: 34px; line-height: 1.1; margin-top: 2px; }
+  .hero > .value { font-size: clamp(72px, 22vw, 120px); line-height: 1; margin: 4px 0 2px; }
+  /* Rate, speed and efficiency under the big number, divided by thin rules. */
+  .glance { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 14px;
+            border-top: 1px solid var(--border); padding-top: 10px; }
+  .glance > div { padding: 0 10px; border-left: 1px solid var(--border); min-width: 0; }
+  .glance > div:first-child { padding-left: 0; border-left: 0; }
+  .glance .value { font-size: clamp(26px, 8vw, 34px); line-height: 1.1; margin-top: 2px; }
+  .glance .sub { overflow-wrap: anywhere; }
+  /* Secondary numbers: a quiet grid, no boxes. */
+  .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; margin-top: 8px; }
+  @media (min-width: 560px) { .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  .stats .value { font-size: 22px; line-height: 1.15; }
+  .status-row { margin-top: 12px; gap: 6px 18px; }
+  .status-row b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+  .status-row .unit { font-size: inherit; margin-left: 1px; }
+  a.button-link { display: inline-flex; align-items: center; padding: 10px 16px; min-height: 44px;
+    border: 1px solid var(--border); border-radius: 10px; background: var(--surface-1);
+    color: var(--text-primary); font-weight: 600; text-decoration: none; }
 
   .chart-card { margin-top: 10px; position: relative; }
   .chart-card h2 { font-size: 15px; margin: 0; }
@@ -143,10 +155,6 @@
              font-size: 13px; font-variant-numeric: tabular-nums;
              box-shadow: 0 2px 8px rgba(0,0,0,.15); display: none; white-space: nowrap; }
   .empty { color: var(--text-secondary); font-size: 14px; padding: 36px 0; text-align: center; }
-
-  .live-row { grid-template-columns: repeat(3, 1fr); margin-top: 10px; }
-  @media (min-width: 560px) { .live-row { grid-template-columns: repeat(6, 1fr); } }
-  .live-row .value { font-size: 20px; }
 
   details { margin-top: 8px; font-size: 14px; }
   details table { border-collapse: collapse; margin-top: 6px; font-variant-numeric: tabular-nums; }
@@ -211,52 +219,28 @@
 
   <!-- ===================================================== Paddle tab -->
   <section id="tab-paddle">
-    <div class="grid tiles">
-      <div class="card hero" style="grid-column: 1 / -1">
-        <div class="label">Stroke power<button type="button" class="info" data-tip="Your average power over the last full stroke, drive and recovery together." aria-label="What is this?">?</button></div>
-        <div class="value" id="v-power">—<span class="unit">W</span></div>
-        <div class="sub" id="v-power-sub">Average appears after 2 strokes</div>
+    <!-- At a glance: the numbers you read while paddling. -->
+    <div class="card hero">
+      <div class="label">Stroke power<button type="button" class="info" data-tip="Your average power over the last full stroke, drive and recovery together." aria-label="What is this?">?</button></div>
+      <div class="value" id="v-power">—<span class="unit">W</span></div>
+      <div class="sub" id="v-power-sub">Average appears after 2 strokes</div>
+      <div class="glance">
+        <div>
+          <div class="label">Stroke rate</div>
+          <div class="value" id="v-rate">—<span class="unit">spm</span></div>
+          <div class="sub">&nbsp;</div>
+        </div>
+        <div>
+          <div class="label">Boat speed</div>
+          <div class="value" id="v-speed">—<span class="unit">km/h</span></div>
+          <div class="sub" id="v-speed-sub">&nbsp;</div>
+        </div>
+        <div>
+          <div class="label">Efficiency<button type="button" class="info" data-tip="Share of your power that pushes the boat forward; the rest churns water. Needs boat speed from the impeller." aria-label="What is this?">?</button></div>
+          <div class="value" id="v-eff">—<span class="unit">%</span></div>
+          <div class="sub" id="v-eff-sub">needs boat speed</div>
+        </div>
       </div>
-      <div class="card tile">
-        <div class="label">Stroke rate</div>
-        <div class="value" id="v-rate">—<span class="unit">spm</span></div>
-      </div>
-      <div class="card tile">
-        <div class="label">Boat speed</div>
-        <div class="value" id="v-speed">—<span class="unit">km/h</span></div>
-        <div class="sub" id="v-speed-sub">&nbsp;</div>
-      </div>
-      <div class="card tile">
-        <div class="label">Efficiency<button type="button" class="info" data-tip="Share of your power that pushes the boat forward; the rest churns water. Needs boat speed from the impeller." aria-label="What is this?">?</button></div>
-        <div class="value" id="v-eff">—<span class="unit">%</span></div>
-        <div class="sub" id="v-eff-sub">needs boat speed</div>
-      </div>
-      <div class="card tile">
-        <div class="label">Impulse per stroke<button type="button" class="info" data-tip="The forward push added up over the drive. At the same stroke rate, more impulse means more speed." aria-label="What is this?">?</button></div>
-        <div class="value" id="v-impulse">—<span class="unit">N·s</span></div>
-        <div class="sub" id="v-impulse-sub">forward push × time</div>
-      </div>
-      <div class="card tile">
-        <div class="label">Mean push<button type="button" class="info" data-tip="Impulse spread over the whole stroke. At steady speed it equals the boat's drag." aria-label="What is this?">?</button></div>
-        <div class="value" id="v-push">—<span class="unit">N</span></div>
-        <div class="sub" id="v-push-sub">over the whole stroke</div>
-      </div>
-      <div class="card tile">
-        <div class="label">Lever arm<button type="button" class="info" data-tip="Distance from the pivot to where the blade pushes. It turns shaft rotation into blade speed." aria-label="What is this?">?</button></div>
-        <div class="value" id="v-lever">—<span class="unit">m</span></div>
-        <div class="sub" id="v-lever-sub">&nbsp;</div>
-      </div>
-    </div>
-
-    <div class="card chart-card">
-      <h2>Stroke</h2>
-      <div class="sub">Side view, bow to the right. The pivot and lever arm (blue)
-        are the paddle's live estimates. The lever arm runs square to the line the blade
-        force acts along, so a bent blade makes it shorter. The orange arrow is the water's
-        force on the blade.</div>
-      <div id="stroke-empty" class="empty">The stroke view starts when data arrives.</div>
-      <svg class="stroke-view" id="stroke-view" role="img" hidden
-           aria-label="Side view of the paddle, its pivot, lever arm and blade force"></svg>
     </div>
 
     <div class="card chart-card">
@@ -275,20 +259,45 @@
       </details>
     </div>
 
-    <div class="grid live-row">
-      <div class="card"><div class="label">Power now<button type="button" class="info" data-tip="Power at this instant: blade force × blade speed. Stroke power averages it over a stroke." aria-label="What is this?">?</button></div><div class="value" id="v-inst">—</div></div>
-      <div class="card"><div class="label">Force</div><div class="value" id="v-force">—</div></div>
-      <div class="card"><div class="label">Shaft rate<button type="button" class="info" data-tip="How fast the shaft is rotating, in radians per second." aria-label="What is this?">?</button></div><div class="value" id="v-omega">—</div></div>
-      <div class="card"><div class="label">Pivot<button type="button" class="info" data-tip="The point on the shaft that stays still as you pull, measured from the upper sensor (minus is toward the grip). It moves with your technique." aria-label="What is this?">?</button></div><div class="value" id="v-pivot">—</div></div>
-      <div class="card"><div class="label">Battery</div><div class="value" id="v-batt">—</div></div>
-      <div class="card"><div class="label">SD log<button type="button" class="info" data-tip="Whether raw sensor data is being recorded to the SD card." aria-label="What is this?">?</button></div><div class="value" id="v-log">—</div></div>
+    <div class="card chart-card">
+      <h2>Stroke<button type="button" class="info" data-tip="The pivot and lever arm (blue) are the paddle's live estimates. The lever arm runs square to the line the blade force acts along, so a bent blade makes it shorter. The orange arrow is the water's force on the blade." aria-label="What is this?">?</button></h2>
+      <div class="sub">Side view, bow to the right.</div>
+      <div id="stroke-empty" class="empty">The stroke view starts when data arrives.</div>
+      <svg class="stroke-view" id="stroke-view" role="img" hidden
+           aria-label="Side view of the paddle, its pivot, lever arm and blade force"></svg>
     </div>
 
-    <div class="row" style="margin-top:12px">
+    <!-- Everything else, as a plain list rather than a wall of tiles. -->
+    <div class="card chart-card">
+      <h2>Per stroke</h2>
+      <div class="stats">
+        <div><div class="label">Impulse<button type="button" class="info" data-tip="The forward push added up over the drive. At the same stroke rate, more impulse means more speed." aria-label="What is this?">?</button></div>
+          <div class="value" id="v-impulse">—<span class="unit">N·s</span></div>
+          <div class="sub" id="v-impulse-sub">forward push × time</div></div>
+        <div><div class="label">Mean push<button type="button" class="info" data-tip="Impulse spread over the whole stroke. At steady speed it equals the boat's drag." aria-label="What is this?">?</button></div>
+          <div class="value" id="v-push">—<span class="unit">N</span></div>
+          <div class="sub" id="v-push-sub">over the whole stroke</div></div>
+        <div><div class="label">Lever arm<button type="button" class="info" data-tip="Distance from the pivot to where the blade pushes. It turns shaft rotation into blade speed." aria-label="What is this?">?</button></div>
+          <div class="value" id="v-lever">—<span class="unit">m</span></div>
+          <div class="sub" id="v-lever-sub">&nbsp;</div></div>
+      </div>
+      <h2 style="margin-top:14px">Right now</h2>
+      <div class="stats">
+        <div><div class="label">Power<button type="button" class="info" data-tip="Power at this instant: blade force × blade speed. Stroke power averages it over a stroke." aria-label="What is this?">?</button></div><div class="value" id="v-inst">—</div></div>
+        <div><div class="label">Force</div><div class="value" id="v-force">—</div></div>
+        <div><div class="label">Shaft rate<button type="button" class="info" data-tip="How fast the shaft is rotating, in radians per second." aria-label="What is this?">?</button></div><div class="value" id="v-omega">—</div></div>
+        <div><div class="label">Pivot<button type="button" class="info" data-tip="The point on the shaft that stays still as you pull, measured from the upper sensor (minus is toward the grip). It moves with your technique." aria-label="What is this?">?</button></div><div class="value" id="v-pivot">—</div></div>
+      </div>
+    </div>
+
+    <div class="row status-row">
+      <span class="sub">Battery <b id="v-batt">—</b></span>
+      <span class="sub">SD log<button type="button" class="info" data-tip="Whether raw sensor data is being recorded to the SD card." aria-label="What is this?">?</button> <b id="v-log">—</b></span>
+    </div>
+    <div class="row" style="margin-top:10px">
       <button class="secondary" id="wake">Keep screen on</button>
       <button class="secondary" id="demo">Try demo</button>
-      <a class="secondary" id="sim-link" href="simulator.html"
-         style="display:inline-flex;align-items:center;padding:10px 16px;min-height:44px;border:1px solid var(--border);border-radius:10px;background:var(--surface-1);color:var(--text-primary);font-weight:600;text-decoration:none">Stroke simulator →</a>
+      <a class="secondary button-link" id="sim-link" href="simulator.html">Stroke simulator →</a>
     </div>
   </section>
 
@@ -394,7 +403,7 @@
 // scripts into the page, and shared global names would break one or both.
 (() => {
 "use strict";
-const APP_VERSION = "2026-10-15.9";
+const APP_VERSION = "2026-10-16.1";
 // Must match src/BleProtocol.h.
 const UUID = {
   service: "7e1a0001-5c3b-4c2e-9a77-0f5d3e2b9c10",
@@ -512,6 +521,9 @@ function onLive(p) {
 }
 
 function onStroke(s) {
+  // The same stroke again (re-scored after a second force peak): replace it,
+  // so the average doesn't count it twice.
+  if (state.strokes.length && state.strokes[0].count === s.count) state.strokes.shift();
   state.strokes.unshift(s);
   state.strokes.length = Math.min(state.strokes.length, 5);
   if (s.power > 0) {
@@ -1038,6 +1050,7 @@ function startDemo() {
     },
   };
   setValue("v-batt", "87", "%");
+  $("unsupported").hidden = true;   // the demo is running: no need to offer it
   $("connect").textContent = "Stop demo";
   $("demo").textContent = "Stop demo";
   setPill("live", "Demo");
@@ -1050,6 +1063,7 @@ function stopDemo() {
   $("connect").textContent = "Connect";
   $("demo").textContent = "Try demo";
   setPill("off", "Not connected");
+  if (!hasBluetooth()) $("unsupported").hidden = false;
 }
 $("demo").addEventListener("click", () => (state.demo ? stopDemo() : startDemo()));
 $("demo-2").addEventListener("click", startDemo);

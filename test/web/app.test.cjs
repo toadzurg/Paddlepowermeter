@@ -164,7 +164,7 @@ function liveHex(seq, tMs, inDrive, force) {
           await page.textContent("#v-speed"));
     check("battery", (await page.textContent("#v-batt")) === "87%");
     // Help tips on the jargon tiles
-    check("help on jargon tiles", (await page.$$("#tab-paddle button.info")).length === 9);
+    check("help on jargon tiles", (await page.$$("#tab-paddle button.info")).length === 10);
     const leverInfo = page.locator(".label", { hasText: "Lever arm" }).locator("button.info");
     await leverInfo.click();
     check("tap shows the lever arm tip", /pivot to where the blade pushes/.test(await page.textContent("#tip")) &&

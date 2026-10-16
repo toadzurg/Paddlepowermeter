@@ -43,8 +43,9 @@
 //  - Boat speed is where mean thrust (counting the switches) balances hull
 //    drag k·V² plus leeway drag. Then paddler power = moving the boat
 //    (k·V³) + leeway + slip (power into the water), exactly. With quadratic
-//    drag on blade and hull, these shares do not depend on effort: every
-//    speed and force scales together.
+//    drag on blade and hull, these shares barely depend on effort: every
+//    speed and force scales together. Switching does: a faster boat turns
+//    more per stroke, so it switches more often.
 //  - Vertical push. A blade angled forward at the catch pushes water down
 //    and lifts the boat; angled back at the exit it lifts water and pulls
 //    the boat down. The average over the stroke changes how deep the boat
@@ -481,7 +482,9 @@
       const Tc1 = 60 / p.rateSpm, Td1 = Tc1 * p.driveFraction;
       const fz = replay(samples, Td0, Td1, scale, 2), mp = p.massKg - BOAT_KG;
       const h = heave(fz, Tc1, p.massKg);
-      const fx = replay(samples, Td0, Td1, scale * sw.duty, 0);
+      // Between switches the blade pulls at full strength: the switches
+      // thin out the strokes, not each stroke's surge.
+      const fx = replay(samples, Td0, Td1, scale, 0);
       const sg = surge(fx, Tc1, Vw, p.massKg, k);
       const pt = pitch(pitchMoment(p, fx, Tc1, Td1), Tc1, p.massKg);
       // The body's motion: the swing shakes the hull's speed, the drop pushes it up and down.
@@ -489,13 +492,18 @@
       const dropAcc = bodyDropAcc(p.dropM, Tc1, Td1);
       const hd = p.dropM ? heave((t) => fz(t) - mp * dropAcc(t), Tc1, p.massKg) : h;
       const weight = p.massKg * G;
-      const sink = Math.pow(Math.max(0.05, 1 - h.meanLift / weight), 2 / 3) - 1;
+      const meanLift = sw.duty * h.meanLift;   // averaged over a side, switches included
+      const sink = Math.pow(Math.max(0.05, 1 - meanLift / weight), 2 / 3) - 1;
       const bounce = h.power / (k * Vw * Vw * Vw), drop = (hd.power - h.power) / (k * Vw * Vw * Vw);
       const surgeFrac = sg.power / (k * Vw * Vw * Vw), swing = Math.max(0, swingPower) / (k * Vw * Vw * Vw);
       const pitchFrac = pt.power / (k * Vw * Vw * Vw);
       const eps = sink + bounce + surgeFrac + swing + drop + pitchFrac, f = 1 / (1 + eps);
+      // Turning per stroke grows with speed (moment ∝ V², damping ∝ V), so
+      // switching is worked out at this effort's speed. (Speed itself is
+      // solved with the duty at the stroke's own speed: within ~0.1%.)
+      const swW = switching(pg, Vw * Math.cbrt(f), yawMean * scale, Tc1);
       const r = {
-        speed: Vw * Math.cbrt(f) * sw.course,     // made good along the course
+        speed: Vw * Math.cbrt(f) * swW.course,    // made good along the course
         waterSpeed: Vw * Math.cbrt(f),            // through the water
         efficiency: base * f,
         // Shares of your power. They add to 1; `sink` is negative (a saving)
@@ -503,21 +511,22 @@
         shares: { hull: base * f, slip: slip / pd, leeway: leeway / pd, surge: base * surgeFrac * f,
                   sink: base * sink * f, bounce: base * bounce * f, swing: base * swing * f, drop: base * drop * f,
                   pitch: base * pitchFrac * f },
-        meanLift: h.meanLift,            // N, + lifts the boat
-        sinkMm: -h.meanLift / (RHO * G * WATERPLANE) * 1000,  // + deeper
+        meanLift,                        // N, + lifts the boat
+        sinkMm: -meanLift / (RHO * G * WATERPLANE) * 1000,  // + deeper
         bounceMm: hd.amplitude * 1000,      // with the drop, if any
         bounceStillMm: h.amplitude * 1000,  // the stroke alone
         pitchDeg: pt.amplitude * 180 / Math.PI,      // ± bow up and down
         bowMm: pt.amplitude * 5.6 / 2 * 1000,         // ± at the bow
         surgeSwing: sg.swing / Vw,        // speed swing over a stroke, peak to peak / mean
         hullK: k * (1 + eps),            // effective drag constant at this effort
+        switching: swW,                  // strokes per side, wander, duty at this effort
       };
       // Boat score (0–100): how much of the push on the hull becomes steady
       // forward speed. Points off for time lost switching, the zigzag, and
       // the power that goes into surging, bobbing, crabbing and the body's
       // motion; riding higher earns some back. Blade slip isn't counted.
       const sh = r.shares, over = (x) => (x / Math.max(1e-9, sh.hull)) * 100;
-      const parts = { switching: (1 - sw.duty) * 100, zigzag: (1 - sw.course) * 100, swing: over(sh.swing), drop: over(sh.drop),
+      const parts = { switching: (1 - swW.duty) * 100, zigzag: (1 - swW.course) * 100, swing: over(sh.swing), drop: over(sh.drop),
                       surge: over(sh.surge), bob: over(sh.bounce), pitch: over(sh.pitch), crab: over(sh.leeway), riding: over(sh.sink) };
       r.boatScore = { total: Math.max(0, 100 - Object.values(parts).reduce((a, x) => a + x, 0)), parts };
       cache.set(key, r);
@@ -537,7 +546,7 @@
       const t = [], push = [], side = [], up = [], roll = [];
       for (let i = 0; i < n; i++) {
         const s = sampleAt(i * dt), f = s ? mul(s.thrust, scale) : [0, 0, 0];
-        t.push(i * dt); push.push(f[0] * sw.duty); side.push(f[1]); up.push(f[2]);
+        t.push(i * dt); push.push(f[0]); side.push(f[1]); up.push(f[2]);
         roll.push(s ? s.B.cop[1] * f[2] - s.B.cop[2] * f[1] : 0);
       }
       // A periodic linear response to a forcing f: m·x'' + c·x' + K·x = f − mean (K = 0: surge).
@@ -597,11 +606,12 @@
       efficiency: e.efficiency,
       baseEfficiency: base,
       at,
-      strokesPerSide: sw.perSide,
-      headingWanderDeg: sw.wander * 180 / Math.PI,   // ± about the course
-      courseFactor: sw.course,
-      turnPerStroke: sw.turnPerStroke,               // rad of heading per stroke
-      switchDuty: sw.duty,
+      // Switching at the comparison effort.
+      strokesPerSide: e.switching.perSide,
+      headingWanderDeg: e.switching.wander * 180 / Math.PI,   // ± about the course
+      courseFactor: e.switching.course,
+      turnPerStroke: e.switching.turnPerStroke,               // rad of heading per stroke
+      switchDuty: e.switching.duty,
       forceShare: { forward: share(0), sideways: share(1), vertical: share(2) },
       // Share of the blade force that is lift (across the flow), over the drive.
       liftShare: sum((s) => s.lift) / Math.max(1e-9, sum((s) => s.F)),
@@ -628,9 +638,12 @@
   // Shallow water (The Science of Paddling, Part 4): the boat's own wave, wavelength
   // λ = 2πV²/g, runs slower when the depth D is under about λ/2, as
   // c = √(gλ/2π · tanh(2πD/λ)). The hull then makes the wave it would make
-  // in deep water at V / √tanh(gD/V²) (Schlichting's intermediate speed), so
-  // the wave drag (∝ V⁶ near hull speed) grows by tanh(gD/V²)^-3, capped at
-  // SHALLOW_MAX. Under 2 ft at race pace drag "skyrockets".
+  // in deep water at about V / √tanh(gD/V²), so the wave drag (∝ V⁶ near
+  // hull speed) grows by tanh(gD/V²)^-3, capped at SHALLOW_MAX. This is one
+  // explicit step of Schlichting's relation (which puts the deep-water speed
+  // inside the tanh): close below a depth Froude number of ~0.7, and lower
+  // than it nearer the wave speed, where the relation itself breaks down.
+  // Under 2 ft at race pace drag "skyrockets".
   function shallowFactor(V, depth) {
     if (!(depth > 0) || !isFinite(depth) || V <= 0) return 1;
     return Math.min(SHALLOW_MAX, Math.pow(Math.tanh((G * depth) / (V * V)), -3));
@@ -657,9 +670,9 @@
     const tol = rad(r.params.switchHeadingDeg);
     const head = c.windSpeed * Math.cos(rad(c.windAngle)), cross = Math.abs(c.windSpeed * Math.sin(rad(c.windAngle)));
     const qPlan = (V) => 0.5 * RHO * V * V * Math.PI * Math.pow(2 * HULL_DRAFT, 2);
-    // Heading turned per stroke under a moment m at speed V: the stroke's own
-    // figure (scale-free) scaled by m/M, and by 1/V for the hull's damping.
-    const turn = (m, V) => r.turnPerStroke * (M > 1e-9 ? m / M : 0) * (e.waterSpeed / Math.max(1e-6, V));
+    // Heading turned per stroke under a moment m at speed V: m over the
+    // hull's yaw damping, over one stroke cycle.
+    const turn = (m, V) => (m * r.cycle) / yawDamping(Math.max(1e-6, V));
     const clampN = (n) => Math.min(MAX_STROKES_PER_SIDE, Math.max(1, n));
     // Switching with the wind's turning moment W (bow into the wind) added to
     // the stroke's on the lee side and taken from it on the windward side.
@@ -778,9 +791,10 @@
     let t = 0, path = 0;
     const parts = segs.map((sg) => {
       const st = legSpeed(r, watts, Object.assign({}, c, { current: sg.current, depth: sg.depth }));
-      // Current runs along the river; the boat's path may be shorter (inside
-      // of a bend) or longer (crossing), and moves along at path/len of it.
-      const ground = st.water + sg.current * (sg.len / sg.path);
+      // Current runs along the river. Round a bend it follows the boat's own
+      // arc (sg.current is already the current on that line); on a crossing
+      // only its share along the path, len/path, helps.
+      const ground = st.water + sg.current * (sg.kind === "crossing" ? sg.len / sg.path : 1);
       const tt = ground > 1e-3 ? sg.path / ground : Infinity;
       t += tt; path += sg.path;
       return Object.assign({}, sg, { t: tt, water: st.water });
