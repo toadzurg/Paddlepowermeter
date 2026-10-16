@@ -637,7 +637,7 @@
           <table class="secs" id="cb-gauge-list" hidden><tbody></tbody></table>
           <div class="row" style="margin-top:8px"><button id="cb-weather">Weather on the course</button>
             <input type="datetime-local" id="cb-weather-time" aria-label="Hour for the weather, local time on the course (empty: now)">
-            <button type="button" class="info" data-tip="Uses Open-Meteo's weather at the middle of the course: now, the forecast, or the record for a past hour (local time there). Sets wind, temperature and humidity. A course loads with its race's: the AuSable's 2023 race from its start (July 29, 9 pm), a GPX from when it was recorded, hour by hour through the race; else now. The gauges follow the same day. Moving a weather slider sets one value for the whole race. Its wind is measured 10 m up; near the water it's about 80% of that." aria-label="What is this?">?</button></div>
+            <button type="button" class="info" data-tip="Uses Open-Meteo's weather at the middle of the course: now, the forecast, or the record for a past hour (local time there). Sets wind, temperature and humidity. A course loads with its race's: the AuSable's 2023 race from its start (July 29, 9 pm), a GPX from its race start (the track's first time), hour by hour through the race; else now. The gauges follow the same day. Moving a weather slider sets one value for the whole race. Its wind is measured 10 m up; near the water it's about 80% of that." aria-label="What is this?">?</button></div>
           <div class="sub" id="cb-weather-info">Weather is set by hand.</div>
           <svg class="cmap" id="cb-map" role="img" aria-label="Course map: tap a section to edit it"></svg>
           <div class="note">Colour: current. Tap a section to edit it.</div>
@@ -2024,22 +2024,30 @@ const titleCase = (s) => (s === s.toUpperCase() ? s.toLowerCase().replace(/\b\w/
 function parseGpx(text, fileName) {
   const doc = new DOMParser().parseFromString(text, "application/xml");
   if (doc.getElementsByTagName("parsererror").length) throw new Error("that isn't a GPX file");
-  const read = (els) => [...els].map((p) => [+p.getAttribute("lat"), +p.getAttribute("lon")]).filter((p) => isFinite(p[0]) && isFinite(p[1]));
+  // Each track's points, and when its first timed point was (ms, UTC).
+  const read = (els) => {
+    const pts = [...els].map((p) => [+p.getAttribute("lat"), +p.getAttribute("lon")]).filter((p) => isFinite(p[0]) && isFinite(p[1]));
+    const t = [...els].map((p) => p.getElementsByTagName("time")[0]).find((e) => e && isFinite(Date.parse(e.textContent)));
+    pts.t0 = t ? Date.parse(t.textContent) : NaN;
+    return pts;
+  };
   const tracks = [...doc.getElementsByTagName("trk")].map((t) => read(t.getElementsByTagName("trkpt"))).filter((t) => t.length > 1);
   tracks.push(read(doc.getElementsByTagName("rtept")));
   const length = (t) => t.reduce((a, p, i) => (i ? a + hav(t[i - 1], p) : 0), 0);
   let raw = [], best = 0;
   for (let i = 0; i < tracks.length; i++) {
     let run = tracks[i];
-    for (let j = i + 1; j < tracks.length && tracks[j].length && hav(run[run.length - 1], tracks[j][0]) < 500; j++) run = run.concat(tracks[j]);
+    for (let j = i + 1; j < tracks.length && tracks[j].length && hav(run[run.length - 1], tracks[j][0]) < 500; j++) run = Object.assign(run.concat(tracks[j]), { t0: run.t0 });
     const len = run.length > 1 ? length(run) : 0;
     if (len > best) { best = len; raw = run; }
   }
   if (raw.length < 2) throw new Error("no track in that file");
   const c = prepCourse({ name: fileName.replace(/\.gpx$/i, ""), points: simplify(raw, 3), ponds: [], portages: [] });
-  // When it was recorded (UTC), from the first timed point.
-  const t = doc.querySelector("trkpt > time, rtept > time, metadata > time");
-  if (t && isFinite(Date.parse(t.textContent))) c.recorded = Date.parse(t.textContent);
+  // The race's start (UTC): the track's first timed point, else the file's own time
+  // (often when it was saved, so only a fallback).
+  const meta = doc.querySelector("metadata > time");
+  const t0 = isFinite(raw.t0) ? raw.t0 : meta ? Date.parse(meta.textContent) : NaN;
+  if (isFinite(t0)) c.recorded = t0;
   for (const w of doc.getElementsByTagName("wpt")) {
     const n = w.getElementsByTagName("name")[0], name = n ? n.textContent.trim() : "";
     if (!(/portag|carry/i.test(name) || /\bdam$/i.test(name)) || /^feed/i.test(name)) continue;
@@ -2451,7 +2459,7 @@ $("cb-weather").addEventListener("click", () => { if (cb) fetchWeather($("cb-wea
 async function autoConditions() {
   const at = cb, when = cb.raceStart || "", utc = !when && cb.recorded ? cb.recorded : null;
   $("cb-weather-time").value = when;
-  const what = when ? `${when.slice(0, 4)} race start, ` : utc ? "When the track was recorded, " : "";
+  const what = when ? `${when.slice(0, 4)} race start, ` : utc ? "Race start from the file, " : "";
   const got = await fetchWeather(when, utc, what);
   // The gauges' daily mean that day, or their latest reading for a day still to come.
   const day = (got || when || (utc ? new Date(utc).toISOString() : "")).slice(0, 10);

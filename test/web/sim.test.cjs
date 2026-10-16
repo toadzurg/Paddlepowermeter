@@ -1089,7 +1089,8 @@ console.log("\nPaddle fit");
       `<time>${new Date(Date.parse("2023-07-30T01:00:00Z") + i * 60e3).toISOString()}</time></trkpt>`).join("");
     await page.route("https://*.open-meteo.com/**", meteoReply);
     await page.route("https://waterservices.usgs.gov/**", noGauges);
-    const gpx = `<?xml version="1.0"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><wpt lat="44.0003" lon="-83.98127"><name>TEST DAM</name></wpt>` +
+    // Saved months later (its metadata time); the race's own time is on the track.
+    const gpx = `<?xml version="1.0"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><metadata><time>2024-01-05T12:00:00Z</time></metadata><wpt lat="44.0003" lon="-83.98127"><name>TEST DAM</name></wpt>` +
       `<wpt lat="44.0" lon="-83.99"><name>FEED: Test Dam</name></wpt><trk><name>t</name><trkseg>${trk}</trkseg></trk></gpx>`;
     await page.setInputFiles("#cb-file", { name: "mine.gpx", mimeType: "application/gpx+xml", buffer: Buffer.from(gpx) });
     await page.waitForFunction(() => /^mine\.gpx/.test(document.getElementById("cb-info").textContent), null, { timeout: 5000 });
@@ -1097,11 +1098,11 @@ console.log("\nPaddle fit");
           JSON.stringify(await page.$$eval("#cb-secs tbody tr td:nth-child(3)", (ts) => ts.map((t) => t.textContent))) ===
           '["River to Test Dam","Test Dam portage","River to the finish"]', await text("#cb-info"));
     // Recorded 01:00 UTC on the 30th: 21:00 on the 29th there, the hour of the 60 km/h wind.
-    await page.waitForFunction(() => /^When the track/.test(document.getElementById("cb-weather-info").textContent) &&
+    await page.waitForFunction(() => /^Race start from the file/.test(document.getElementById("cb-weather-info").textContent) &&
       /No USGS gauges/.test(document.getElementById("cb-gauge-info").textContent), null, { timeout: 5000 });
-    check(`${tag}: real course: a GPX loads with the weather when it was recorded`,
+    check(`${tag}: real course: a GPX loads with the weather from its race start, not when it was saved`,
           (await page.$eval("#cb-weather-time", (e) => e.value)) === "2023-07-29T21:00" && (await page.$eval("#wind", (e) => e.value)) === "40" &&
-          /^When the track was recorded, 2023-07-29 21:00: 18 °C/.test(await text("#cb-weather-info")) &&
+          /^Race start from the file, 2023-07-29 21:00: 18 °C/.test(await text("#cb-weather-info")) &&
           (await page.$eval("#cb-gauge-date", (e) => e.value)) === "2023-07-29", await text("#cb-weather-info"));
     await page.unroute("https://*.open-meteo.com/**");
     await page.unroute("https://waterservices.usgs.gov/**");
