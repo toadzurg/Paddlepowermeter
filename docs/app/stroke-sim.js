@@ -200,6 +200,14 @@
   // Smooth 0→1 progress, zero speed at both ends of the drive.
   const ease = (u) => (1 - Math.cos(Math.PI * u)) / 2;
 
+  // Shaft direction (grip → blade): start pointing down, swing by θ about
+  // the lateral axis (+θ moves the blade aft), lean outboard by φ, then
+  // turn the stroke plane by ψ about the vertical.
+  function shaftDir(th, phi, psi) {
+    let d = [-Math.sin(th), 0, -Math.cos(th)];
+    d = [d[0], d[1] * Math.cos(-phi) - d[2] * Math.sin(-phi), d[1] * Math.sin(-phi) + d[2] * Math.cos(-phi)];
+    return [d[0] * Math.cos(psi) - d[1] * Math.sin(psi), d[0] * Math.sin(psi) + d[1] * Math.cos(psi), d[2]];
+  }
   // Paddle pose at drive progress u ∈ [0, 1].
   // When in the drive the force comes: leg drive holds it later, a drop
   // onto the paddle loads the blade early (u^w: w > 1 later, < 1 earlier).
@@ -208,13 +216,7 @@
     const e = ease(Math.pow(u, driveWarp(p)));
     const th = rad(-p.catchDeg + (p.catchDeg + p.exitDeg) * e);
     const psi = rad(p.directionDeg + p.sweepDeg * (0.5 - e));
-    const phi = rad(p.leanDeg);
-    // Shaft direction (grip → blade): start pointing down, swing by θ about
-    // the lateral axis (+θ moves the blade aft), lean outboard by φ, then
-    // turn the stroke plane by ψ about the vertical.
-    let d = [-Math.sin(th), 0, -Math.cos(th)];
-    d = [d[0], d[1] * Math.cos(-phi) - d[2] * Math.sin(-phi), d[1] * Math.sin(-phi) + d[2] * Math.cos(-phi)];
-    d = [d[0] * Math.cos(psi) - d[1] * Math.sin(psi), d[0] * Math.sin(psi) + d[1] * Math.cos(psi), d[2]];
+    const d = shaftDir(th, rad(p.leanDeg), psi);
     // The pivot stays put in the boat (plus hand travel aft), at the height
     // that puts the throat at the waterline.
     const pivot = [-p.handTravelM * e, -p.handOutM, -d[2] * (paddleOf(p).throat - p.pivotFromGrip)];
@@ -1266,9 +1268,9 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 39;
+  const API_LEVEL = 40;
   const PADDLE = paddleOf(DEFAULTS);
-  const api = { API_LEVEL, paddled, paddleOf, gearFactor, bestRate, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
+  const api = { API_LEVEL, shaftDir, paddled, paddleOf, gearFactor, bestRate, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.StrokeSim = api;
 })(typeof window !== "undefined" ? window : globalThis);
