@@ -372,9 +372,17 @@ console.log("\nStroke simulator physics");
   check("strength from the arms: arms at full stretch tire you (wide sweep, out of reach), comfortable ones don't",
         Math.abs(fA({}) - 1) < 1e-9 && fA(PRE.sweep) < 0.9 && fA({ catchDeg: 60, handOutM: 0.85, leanDeg: 40 }) < 0.6 && fA(PRE.clean) > 0.98,
         `sweep ×${fA(PRE.sweep).toFixed(2)}, clean ×${fA(PRE.clean).toFixed(2)}`);
-  // From one seat the body leans to reach the catch, and leaning isn't
-  // charged, so what longer arms buy is reach: a stroke out of reach for short
-  // arms comes within reach.
+  // From one seat the body leans to reach the catch, and leaning far forward
+  // is weaker: a long reach costs strength again, more with short arms.
+  const withArms = (a) => Object.assign({ upperArmM: a, forearmM: a }, LR);
+  check("strength from the arms: leaning to a long reach costs strength, more with shorter arms",
+        fA(LR) < 0.98 && fA(withArms(0.26)) < fA(LR) - 0.02 && fA(withArms(0.34)) > fA(LR),
+        [0.26, 0.30, 0.34].map((a) => `×${fA(withArms(a)).toFixed(3)}`).join(" / "));
+  const leans = S.simulate(arms(LR)).body.frames.map((f) => f.lean), ownLean = S.simulate(arms({})).body.frames[0].lean;
+  check("body: a long reach leans further forward at the catch", leans[0] > ownLean + 0.1 && leans[leans.length - 1] < leans[0],
+        `${(leans[0] * 180 / Math.PI).toFixed(0)}° vs ${(ownLean * 180 / Math.PI).toFixed(0)}°`);
+  // Longer arms also reach further: a stroke out of reach for short arms
+  // comes within reach.
   const farFor = (a) => S.simulate({ catchDeg: 60, handOutM: 0.85, leanDeg: 40, upperArmM: a, forearmM: a }).body.short;
   check("body: longer arms reach further", farFor(0.34) < farFor(0.30) - 0.05 && farFor(0.30) < farFor(0.26) - 0.05,
         [0.26, 0.30, 0.34].map((a) => `${(farFor(a) * 100).toFixed(0)} cm`).join(" / "));

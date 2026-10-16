@@ -375,8 +375,9 @@
     seatCache.set(key, (lo + hi) / 2);
     return (lo + hi) / 2;
   }
-  // The body through the drive: how stretched each arm is, and how far
-  // short of the hands they fall where they can't reach (m).
+  // The body through the drive: how stretched each arm is, how far forward
+  // the trunk leans (rad), and how far short of the hands the arms fall
+  // where they can't reach (m).
   function bodyThroughDrive(pg, n = 20) {
     const seatX = seatFor(pg), arm = armOf(pg), out = [];
     let prev = null;
@@ -384,7 +385,7 @@
       const u = i / n, P = pose(pg, u), nn = neutralAt(pg, u);
       const b = fitBody(pg, seatX, P.at(0), P.at(lowerHand(pg)), nn, 0, prev || nn);
       prev = b.pose;
-      out.push({ u, top: b.top, low: b.low, short: Math.max(0, (Math.max(b.top, b.low) - 1) * arm) });
+      out.push({ u, top: b.top, low: b.low, lean: b.pose[0], short: Math.max(0, (Math.max(b.top, b.low) - 1) * arm) });
     }
     return { seatX, frames: out, short: Math.max(...out.map((f) => f.short)) };
   }
@@ -392,6 +393,11 @@
   // weaker folded up or stretched out; the lower (pulling) arm counts most.
   const ARM_BEST = 0.72, ARM_SPAN = 0.25;
   const armStrength = (p, e) => Math.max(STRENGTH_MIN, 1 - p.strengthDrop * ((Math.min(1.05, e) - ARM_BEST) / ARM_SPAN) ** 2);
+  // Leaning far forward to reach the catch is weaker too: the trunk can't
+  // brace the pull. Lean past the usual LEAN0 costs strength as the square
+  // of the excess, losing strengthDrop LEAN_SPAN past it. Assumed, not measured.
+  const LEAN_SPAN = rad(40);
+  const leanStrength = (p, pitch) => Math.max(STRENGTH_MIN, 1 - p.strengthDrop * (Math.max(0, pitch - LEAN0) / LEAN_SPAN) ** 2);
 
   // Drive progress u at each moment. Where you're weaker the paddle moves
   // slower (force ∝ speed², so speed ∝ √strength puts the force in step
@@ -414,7 +420,7 @@
       const P = pose(p, u), nn = neutralAt(p, u);
       const b = fitBody(p, seatX, P.at(0), P.at(lowerHand(p)), nn, 0, prev || nn);
       prev = b.pose;
-      return 0.75 * armStrength(p, b.low) + 0.25 * armStrength(p, b.top);
+      return (0.75 * armStrength(p, b.low) + 0.25 * armStrength(p, b.top)) * leanStrength(p, b.pose[0]);
     };
     for (let i = 1; i <= n; i++) {
       const u = (i - 0.5) / n, s = sAt(u);
@@ -1217,7 +1223,7 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 36;
+  const API_LEVEL = 37;
   const PADDLE = paddleOf(DEFAULTS);
   const api = { API_LEVEL, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;

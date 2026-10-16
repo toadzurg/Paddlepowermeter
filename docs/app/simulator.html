@@ -682,7 +682,7 @@
         </div>
         <div id="ctl-profile"></div>
         <div class="engine-box" id="engine-box"></div>
-        <h4 class="sub-h">Strength by position<button type="button" class="info" data-tip="Off: you can pull equally hard all through the stroke. By paddle angle: strongest at one angle, weaker toward the catch and exit. From the arms: your body follows the paddle, and you're strongest with the arms about 70% stretched, weaker folded up or at full stretch. Where you're weak the paddle moves slower, so the force bunches where you're strong, and what you can hold drops. Assumed curves, not measured." aria-label="What is this?">?</button></h4>
+        <h4 class="sub-h">Strength by position<button type="button" class="info" data-tip="Off: you can pull equally hard all through the stroke. By paddle angle: strongest at one angle, weaker toward the catch and exit. From the arms: your body follows the paddle, and you're strongest with the arms about 70% stretched, weaker folded up or at full stretch, and weaker leaning far forward to reach the catch. Where you're weak the paddle moves slower, so the force bunches where you're strong, and what you can hold drops. Assumed curves, not measured." aria-label="What is this?">?</button></h4>
         <div class="row chips" id="strength-mode" role="group" aria-label="Strength by position"></div>
         <div id="strength-ctl"><div id="ctl-strength"></div>
           <svg class="hv" id="strength-curve" role="img" aria-label="Strength at each paddle angle, with this stroke's range"></svg>
@@ -727,7 +727,7 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of stroke-sim.js (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. -->
-<script src="stroke-sim.js?v=cd8b12b339"></script>
+<script src="stroke-sim.js?v=009a0801e4"></script>
 <script>
 (() => {
 "use strict";
@@ -770,7 +770,7 @@ function shown(el) {
 }
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 36;
+const NEEDS_API = 37;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -1103,7 +1103,7 @@ function drawArmStrength(r) {
   $("strength-curve").innerHTML = svg;
   const fr = r.body.frames, at = (k) => fr.reduce((a, f) => Math.max(a, f[k]), 0);
   $("strength-read").innerHTML = `Arms at up to <b>${Math.round(at("low") * 100)}%</b> (lower) and <b>${Math.round(at("top") * 100)}%</b> (top) of full stretch; ` +
-    `strongest about 70%. What you can hold: <b>×${fmtNum(S.strengthFactor(r.params), 2)}</b> against the default stroke.`;
+    `strongest about 70%. Leaning up to <b>${fmtNum(at("lean") * 180 / Math.PI, 0)}°</b> forward; past 15° costs strength. What you can hold: <b>×${fmtNum(S.strengthFactor(r.params), 2)}</b> against the default stroke.`;
 }
 // A stroke the arms can't reach: say by how much.
 function showReach() {
