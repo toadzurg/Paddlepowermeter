@@ -157,6 +157,21 @@
     rotation: 0,               // trunk rotation, 0–1: more reach and hand travel, more muscle
     legDrive: 0,               // leg drive, 0–1: force held later in the drive, more muscle
     hinge: 0,                  // hinge from the waist, 0–1: lean to the catch, sit up through the drive
+    // Strength by position (off by default): weakest far from strengthPeakDeg,
+    // losing strengthDrop of your strength 45° away (with arms of ARM_REF).
+    strengthOn: 0,
+    strengthPeakDeg: 0,        // shaft angle you pull hardest at; + = behind vertical
+    strengthDrop: 0.4,
+    // The paddler's body, m. Only the arms (upperArmM + forearmM, shoulder to
+    // grip) change results, through strength by position; the rest is for
+    // the drawings.
+    heightM: 1.78,
+    torsoM: 0.55,              // hip to shoulder
+    shoulderM: 0.40,           // shoulder width
+    upperArmM: 0.30,
+    forearmM: 0.30,            // elbow to the middle of the grip
+    thighM: 0.45,
+    shinM: 0.45,
   };
 
   const rad = (d) => (d * Math.PI) / 180;
@@ -216,16 +231,57 @@
     return { n, cop, throat, tip, wet };
   }
 
+  // Strength by position: the share of your strength at shaft angle thDeg
+  // (from vertical, + behind). Full at strengthPeakDeg, dropping as the
+  // square of the angle away from it; longer arms keep it further out. An
+  // assumption, not measured: your paddle can log the real curve.
+  const ARM_REF = 0.6, STRENGTH_MIN = 0.25;
+  function strengthAt(p, thDeg) {
+    if (!p.strengthOn) return 1;
+    const arm = (p.upperArmM || 0.3) + (p.forearmM || 0.3);
+    const x = ((thDeg - p.strengthPeakDeg) * (ARM_REF / arm)) / 45;
+    return Math.max(STRENGTH_MIN, 1 - p.strengthDrop * x * x);
+  }
+  // Drive progress u at each moment. Where you're weaker the paddle moves
+  // slower (force ∝ speed², so speed ∝ √strength puts the force in step
+  // with your strength), and faster where you're strong: the drive takes
+  // the same time. Returns u(τ) for τ = time / drive time, and the average
+  // strength over the drive's time.
+  function driveTiming(p) {
+    if (!p.strengthOn) return { at: (tau) => tau, mean: 1 };
+    const n = 400, cum = [0];
+    let sumS = 0;
+    for (let i = 1; i <= n; i++) {
+      const s = strengthAt(p, (pose(p, (i - 0.5) / n).th * 180) / Math.PI);
+      cum.push(cum[i - 1] + 1 / Math.sqrt(s));
+      sumS += Math.sqrt(s);
+    }
+    const T = cum[n];
+    return {
+      at: (tau) => {
+        const target = Math.max(0, Math.min(1, tau)) * T;
+        let lo = 0, hi = n;
+        while (hi - lo > 1) { const m = (lo + hi) >> 1; if (cum[m] < target) lo = m; else hi = m; }
+        const f = (target - cum[lo]) / Math.max(1e-12, cum[hi] - cum[lo]);
+        return (lo + f) / n;
+      },
+      mean: sumS / T,   // ∫s dt / Td, with dt ∝ du / √s
+    };
+  }
+
   // Samples one drive at a given boat speed V. Velocities in the boat frame.
   function drive(p, V, steps = 240) {
     const Tc = 60 / p.rateSpm, Td = Tc * p.driveFraction, dt = Td / steps;
     const PADDLE = paddleOf(p), k = 0.5 * RHO * CD * PADDLE.area;
+    const timing = driveTiming(p);
     const out = [];
     for (let i = 0; i <= steps; i++) {
-      const u = i / steps, du = 1e-3;
+      const tau = i / steps, dtau = 1e-3;
+      const ta = Math.max(0, tau - dtau), tb = Math.min(1, tau + dtau);
+      const u = timing.at(tau);
       const P = pose(p, u);
-      const Pa = pose(p, Math.max(0, u - du)), Pb = pose(p, Math.min(1, u + du));
-      const span = (Math.min(1, u + du) - Math.max(0, u - du)) * Td;
+      const Pa = pose(p, timing.at(ta)), Pb = pose(p, timing.at(tb));
+      const span = (tb - ta) * Td;
       // Velocity of the shaft-axis point level with the blade centre.
       const sC = PADDLE.throat + PADDLE.copFromThroat;
       let vAxis = mul(sub(Pb.at(sC), Pa.at(sC)), 1 / span);
@@ -244,7 +300,7 @@
       const lift = vn > 0 && vmag > 0 ? F * Math.sqrt(Math.max(0, 1 - (vn / vmag) * (vn / vmag))) : 0;
       const thrust = mul(B.n, -F);                             // on the boat
       out.push({
-        u, t: u * Td, dt: i === 0 || i === steps ? dt / 2 : dt,
+        u, t: tau * Td, dt: i === 0 || i === steps ? dt / 2 : dt,
         P, B, F, thrust, lift,
         paddler: F * dot(B.n, vBlade),
         useful: thrust[0] * V,
@@ -429,17 +485,20 @@
 
   // A switch's lost time, in strokes at this rate.
   const switchLossStrokes = (p) => (p.switchLossS * p.rateSpm) / 60;
+  // The stroke as paddled: heel brings the hands in, rotation and a hinge
+  // reach further and travel further.
+  const paddled = (p) => Object.assign({}, p, {
+    handOutM: Math.max(0.1, p.handOutM - 0.9 * Math.sin(rad(p.heelDeg || 0))),
+    catchDeg: p.catchDeg + 15 * (p.rotation || 0) + 8 * (p.hinge || 0),
+    handTravelM: p.handTravelM + 0.12 * (p.rotation || 0) + 0.15 * (p.hinge || 0),
+  });
   function simulate(params) {
     const p = Object.assign({}, DEFAULTS, params);
     // Heeling the boat toward the paddle brings the hands (about 0.9 m up)
     // nearer the keel line: the stroke works as if the top hand were further in.
     // Trunk rotation and a hinge from the waist reach further at the catch and
     // carry the hands further.
-    const pg = Object.assign({}, p, {
-      handOutM: Math.max(0.1, p.handOutM - 0.9 * Math.sin(rad(p.heelDeg || 0))),
-      catchDeg: p.catchDeg + 15 * (p.rotation || 0) + 8 * (p.hinge || 0),
-      handTravelM: p.handTravelM + 0.12 * (p.rotation || 0) + 0.15 * (p.hinge || 0),
-    });
+    const pg = paddled(p);
     const k = HULL_K * Math.pow(p.massKg / MASS_REF, 2 / 3);  // drag ∝ wetted area
     // Boat speed: mean thrust falls as the boat speeds up (less slip), so
     // bisect for thrust (less the time lost switching) = hull drag.
@@ -630,9 +689,19 @@
   // drive 10% (kayak studies: blocking the legs costs ~10–16% of power) and
   // a hinge from the waist, the hips and back, 8%.
   // Over a longer race it fades as hours^-0.07 (82% for 16 h).
+  // With strength by position on, a stroke that spends more of its drive
+  // where you're weak tires you sooner: what you can hold scales with your
+  // average strength through the drive, against the default stroke's.
+  function strengthFactor(p) {
+    const q = Object.assign({}, DEFAULTS, p);
+    if (!q.strengthOn) return 1;
+    const ref = Object.assign({}, q, { catchDeg: DEFAULTS.catchDeg, exitDeg: DEFAULTS.exitDeg, rotation: 0, hinge: 0, legDrive: 0, dropM: 0 });
+    return driveTiming(paddled(q)).mean / driveTiming(paddled(ref)).mean;
+  }
   function capacity(p, hours = 1) {
     const q = Object.assign({}, DEFAULTS, p);
-    return q.fitnessW * (0.7 + 0.12 * q.rotation + 0.1 * q.legDrive + 0.08 * q.hinge) * Math.pow(Math.max(1, hours), -0.07);
+    return q.fitnessW * (0.7 + 0.12 * q.rotation + 0.1 * q.legDrive + 0.08 * q.hinge) * strengthFactor(q) *
+      Math.pow(Math.max(1, hours), -0.07);
   }
 
   // Shallow water (The Science of Paddling, Part 4): the boat's own wave, wavelength
@@ -971,9 +1040,9 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 33;
+  const API_LEVEL = 34;
   const PADDLE = paddleOf(DEFAULTS);
-  const api = { API_LEVEL, simulate, race, capacity, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
+  const api = { API_LEVEL, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.StrokeSim = api;
 })(typeof window !== "undefined" ? window : globalThis);
