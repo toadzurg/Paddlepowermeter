@@ -360,6 +360,10 @@ console.log("\nStroke simulator physics");
       check(`${tag}: phone: the race view runs edge to edge, drawn bigger`, rv.width >= width - 34 && rv.height > 135,
             `${rv.width.toFixed(0)} × ${rv.height.toFixed(0)} px`);
     }
+    await page.click(".race-power button.info");
+    check(`${tag}: race power explains what each can hold`, /fitness × the muscle used/.test(await text("#tip")) &&
+          (await page.$eval("#tip", (e) => !e.hidden)));
+    await page.click(".race-power button.info");
     check(`${tag}: race tab: boat picker and race power on top`, (await visible("#boats")) && (await visible("#effA")) &&
           (await visible("#effB")) && !(await visible("#c-effortW")));
     await goTab("boat");
