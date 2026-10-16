@@ -922,9 +922,45 @@ console.log("\nPaddle fit");
       await page.waitForTimeout(400);
       await page.screenshot({ path: path.join(process.argv[2], `sim-${scheme}.png`), fullPage: true });
     }
+    // Open-Meteo replies (mocked): now, or every hour from start_date to end_date. 60 km/h at 21:00
+    // on 2023-07-29, 5 km/h otherwise; 18 °C, 60%; the course's clock 4 h behind UTC.
+    const meteo = [];
+    const meteoReply = (route) => {
+      const url = new URL(route.request().url()); meteo.push(url.href);
+      const q = (k) => url.searchParams.get(k);
+      let body;
+      if (q("current")) body = { utc_offset_seconds: -14400, current: { time: "2026-10-16T12:00", wind_speed_10m: 25, wind_direction_10m: 222, temperature_2m: 28.4, relative_humidity_2m: 71 } };
+      else {
+        const time = [];
+        for (let t = Date.parse(q("start_date")); t <= Date.parse(q("end_date")) + 23 * 3600e3; t += 3600e3) time.push(new Date(t).toISOString().slice(0, 16));
+        body = { utc_offset_seconds: -14400, hourly: { time, wind_speed_10m: time.map((h) => (h === "2023-07-29T21:00" ? 60 : 5)), wind_direction_10m: time.map(() => 95),
+          temperature_2m: time.map(() => 18), relative_humidity_2m: time.map(() => 60) } };
+      }
+      route.fulfill({ status: 200, contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: JSON.stringify(body) });
+    };
+    const noGauges = (route) => route.fulfill({ status: 200, contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: '{"value":{"timeSeries":[]}}' });
+    await page.route("https://*.open-meteo.com/**", meteoReply);
+    await page.route("https://waterservices.usgs.gov/**", noGauges);
     // Real course: the AuSable preset, sections to edit, a GPX of your own.
     await page.click("#water >> text=AuSable / GPX");
     await page.waitForFunction(() => document.querySelectorAll("#cb-secs tbody tr").length > 10, null, { timeout: 10000 });
+    // It loads with its race's weather and flow: the last Saturday in July at 9 pm, this
+    // year's once the forecast reaches it (15 days), else last year's.
+    const raceDay = (y) => { const d = new Date(Date.UTC(y, 7, 0)); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 1) % 7)); return d.toISOString().slice(0, 10); };
+    let race = raceDay(new Date().getFullYear());
+    if (Date.parse(race) - Date.now() > 15 * 864e5) race = raceDay(new Date().getFullYear() - 1);
+    await page.waitForFunction(() => /^\d{4} race start/.test(document.getElementById("cb-weather-info").textContent) &&
+      /No USGS gauges/.test(document.getElementById("cb-gauge-info").textContent), null, { timeout: 5000 });
+    const today = new Date().toISOString().slice(0, 10);
+    check(`${tag}: real course: the AuSable loads with its race-day weather and flow`,
+          (await page.$eval("#cb-weather-time", (e) => e.value)) === `${race}T21:00` &&
+          (await text("#cb-weather-info")).startsWith(`${race.slice(0, 4)} race start, ${race} 21:00: 18 °C, 60% humidity`) &&
+          (await page.$eval("#temp", (e) => e.value)) === "18" && (await page.$eval("#humid", (e) => e.value)) === "60" &&
+          (await page.$eval("#cb-gauge-date", (e) => e.value)) === (race < today ? race : ""),
+          `${await page.$eval("#cb-weather-time", (e) => e.value)} | ${await text("#cb-weather-info")} | ${meteo.slice(-1)}`);
+    await page.unroute("https://*.open-meteo.com/**");
+    await page.unroute("https://waterservices.usgs.gov/**");
+    await page.fill("#cb-weather-time", ""); await page.fill("#cb-gauge-date", "");
     const rows = () => page.$$eval("#cb-secs tbody tr", (r) => r.length);
     check(`${tag}: real course: the AuSable loads in sections`, (await rows()) >= 20 &&
           /^AuSable River Canoe Marathon · 180\.\d km · 6 portages/.test(await text("#cb-info")) && !(await page.isVisible("#dist")), await text("#cb-info"));
@@ -987,15 +1023,7 @@ console.log("\nPaddle fit");
     check(`${tag}: gauges: no connection says so`, true);
     await page.unroute("https://waterservices.usgs.gov/**");
     // Wind from Open-Meteo (replies mocked): now, a past hour from the archive, and no connection.
-    const meteo = [];
-    const hours = Array.from({ length: 24 }, (_, h) => `2023-07-29T${String(h).padStart(2, "0")}:00`);
-    await page.route("https://*.open-meteo.com/**", (route) => {
-      const url = route.request().url(); meteo.push(url);
-      const body = url.includes("current=") ? { current: { time: "2026-10-16T12:00", wind_speed_10m: 25, wind_direction_10m: 222, temperature_2m: 28.4, relative_humidity_2m: 71 } } :
-        { hourly: { time: hours, wind_speed_10m: hours.map((_, h) => (h === 21 ? 60 : 5)), wind_direction_10m: hours.map(() => 95),
-          temperature_2m: hours.map(() => 18), relative_humidity_2m: hours.map(() => 60) } };
-      route.fulfill({ status: 200, contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: JSON.stringify(body) });
-    });
+    await page.route("https://*.open-meteo.com/**", meteoReply);
     const weatherInfo = () => text("#cb-weather-info");
     const tCalm = secs(await text("#t-a"));
     await page.click("#cb-weather");
@@ -1014,7 +1042,7 @@ console.log("\nPaddle fit");
     check(`${tag}: weather: a past hour comes from the archive`, (await page.$eval("#wind", (e) => e.value)) === "40" &&
           (await page.$eval("#windDir", (e) => e.value)) === "90" && (await page.$eval("#temp", (e) => e.value)) === "18" &&
           /slider stops at 40/.test(await weatherInfo()) &&
-          meteo.some((u) => u.startsWith("https://archive-api.open-meteo.com/v1/archive") && u.includes("start_date=2023-07-29")),
+          meteo.some((u) => u.startsWith("https://archive-api.open-meteo.com/v1/archive") && u.includes("start_date=2023-07-28") && u.includes("end_date=2023-07-30")),
           `${await weatherInfo()} | ${meteo.slice(-1)}`);
     await slide("#wind", 0);
     check(`${tag}: weather: moving the wind takes it off the weather`, (await weatherInfo()) === "Weather is set by hand.");
@@ -1040,7 +1068,10 @@ console.log("\nPaddle fit");
       await page.unroute("https://waterservices.usgs.gov/**");
     }
     // Your own GPX: a 3 km straight with a dam halfway.
-    const trk = Array.from({ length: 61 }, (_, i) => `<trkpt lat="44.0" lon="${(-84 + (i / 60) * 0.03745).toFixed(6)}"></trkpt>`).join("");
+    const trk = Array.from({ length: 61 }, (_, i) => `<trkpt lat="44.0" lon="${(-84 + (i / 60) * 0.03745).toFixed(6)}">` +
+      `<time>${new Date(Date.parse("2023-07-30T01:00:00Z") + i * 60e3).toISOString()}</time></trkpt>`).join("");
+    await page.route("https://*.open-meteo.com/**", meteoReply);
+    await page.route("https://waterservices.usgs.gov/**", noGauges);
     const gpx = `<?xml version="1.0"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><wpt lat="44.0003" lon="-83.98127"><name>TEST DAM</name></wpt>` +
       `<wpt lat="44.0" lon="-83.99"><name>FEED: Test Dam</name></wpt><trk><name>t</name><trkseg>${trk}</trkseg></trk></gpx>`;
     await page.setInputFiles("#cb-file", { name: "mine.gpx", mimeType: "application/gpx+xml", buffer: Buffer.from(gpx) });
@@ -1048,6 +1079,16 @@ console.log("\nPaddle fit");
     check(`${tag}: real course: import a GPX`, /^mine\.gpx · 3\.0 km · 1 portage from waypoints$/.test(await text("#cb-info")) &&
           JSON.stringify(await page.$$eval("#cb-secs tbody tr td:nth-child(3)", (ts) => ts.map((t) => t.textContent))) ===
           '["River to Test Dam","Test Dam portage","River to the finish"]', await text("#cb-info"));
+    // Recorded 01:00 UTC on the 30th: 21:00 on the 29th there, the hour of the 60 km/h wind.
+    await page.waitForFunction(() => /^When the track/.test(document.getElementById("cb-weather-info").textContent) &&
+      /No USGS gauges/.test(document.getElementById("cb-gauge-info").textContent), null, { timeout: 5000 });
+    check(`${tag}: real course: a GPX loads with the weather when it was recorded`,
+          (await page.$eval("#cb-weather-time", (e) => e.value)) === "2023-07-29T21:00" && (await page.$eval("#wind", (e) => e.value)) === "40" &&
+          /^When the track was recorded, 2023-07-29 21:00: 18 °C/.test(await text("#cb-weather-info")) &&
+          (await page.$eval("#cb-gauge-date", (e) => e.value)) === "2023-07-29", await text("#cb-weather-info"));
+    await page.unroute("https://*.open-meteo.com/**");
+    await page.unroute("https://waterservices.usgs.gov/**");
+    await slide("#wind", 0); await slide("#windDir", 0); await slide("#temp", 10); await slide("#humid", 50);
     await page.setInputFiles("#cb-file", { name: "nope.gpx", mimeType: "text/plain", buffer: Buffer.from("hello") });
     await page.waitForFunction(() => /nope\.gpx/.test(document.getElementById("cb-info").textContent), null, { timeout: 5000 });
     check(`${tag}: real course: a bad file says so`, /^Couldn't read nope\.gpx: /.test(await text("#cb-info")), await text("#cb-info"));

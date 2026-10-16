@@ -637,7 +637,7 @@
           <table class="secs" id="cb-gauge-list" hidden><tbody></tbody></table>
           <div class="row" style="margin-top:8px"><button id="cb-weather">Weather on the course</button>
             <input type="datetime-local" id="cb-weather-time" aria-label="Hour for the weather, local time on the course (empty: now)">
-            <button type="button" class="info" data-tip="Uses Open-Meteo's weather at the middle of the course: now, the forecast, or the record for a past hour (local time there). Sets wind, temperature and humidity. Its wind is measured 10 m up; near the water it's about 80% of that." aria-label="What is this?">?</button></div>
+            <button type="button" class="info" data-tip="Uses Open-Meteo's weather at the middle of the course: now, the forecast, or the record for a past hour (local time there). Sets wind, temperature and humidity. A course loads with its race's: the AuSable at its start (last Saturday in July, 9 pm), a GPX when it was recorded, else now; the gauges follow the same day. Its wind is measured 10 m up; near the water it's about 80% of that." aria-label="What is this?">?</button></div>
           <div class="sub" id="cb-weather-info">Weather is set by hand.</div>
           <svg class="cmap" id="cb-map" role="img" aria-label="Course map: tap a section to edit it"></svg>
           <div class="note">Colour: current. Tap a section to edit it.</div>
@@ -2029,6 +2029,9 @@ function parseGpx(text, fileName) {
   }
   if (raw.length < 2) throw new Error("no track in that file");
   const c = prepCourse({ name: fileName.replace(/\.gpx$/i, ""), points: simplify(raw, 3), ponds: [], portages: [] });
+  // When it was recorded (UTC), from the first timed point.
+  const t = doc.querySelector("trkpt > time, rtept > time, metadata > time");
+  if (t && isFinite(Date.parse(t.textContent))) c.recorded = Date.parse(t.textContent);
   for (const w of doc.getElementsByTagName("wpt")) {
     const n = w.getElementsByTagName("name")[0], name = n ? n.textContent.trim() : "";
     if (!(/portag|carry/i.test(name) || /\bdam$/i.test(name)) || /^feed/i.test(name)) continue;
@@ -2083,6 +2086,7 @@ function loadCourse(c, info) {
   raceZoom = 1;
   renderBuilder();
   updateRace();
+  autoConditions();
 }
 // The AuSable preset is a separate script, loaded the first time it's needed.
 function loadPreset() {
@@ -2347,12 +2351,12 @@ function drawGauges() {
     `<td>${kmText(g.d)}</td><td>${g.name}</td><td>${g.q === null ? "no reading" : flowText(g.q)}${flowLabel(g) ? `<br><small>${flowLabel(g)} for race week</small>` : ""}</td></tr>`).join("");
   $("cb-gauge-list").toggleAttribute("hidden", !gs || !gs.length);
 }
-$("cb-gauges").addEventListener("click", async () => {
-  if (!cb) return;
-  const date = $("cb-gauge-date").value, info = $("cb-gauge-info");
+async function fetchGauges(date) {
+  const at = cb, info = $("cb-gauge-info");
   info.textContent = "Asking USGS…";
   try {
     const gs = await findGauges(date);
+    if (cb !== at) return;   // another course loaded meanwhile
     cb.gauges = gs;
     for (const s of cb.sections) if (s.gauge === null) delete s.gauge;   // a new reading resets hand edits
     const live = gs.filter((g) => g.q !== null);
@@ -2360,10 +2364,12 @@ $("cb-gauges").addEventListener("click", async () => {
       `${gs.length} gauge${gs.length > 1 ? "s" : ""} on the course, ${date ? `daily mean on ${date}` : "latest reading"}` +
       (live.length < gs.length ? ` (${gs.length - live.length} with no reading)` : "") + ". River current follows the flow.";
   } catch (err) {
+    if (cb !== at) return;
     info.textContent = `Couldn't reach USGS (${err.message}). Set the current by hand.`;
   }
   renderBuilder(); updateSoon();
-});
+}
+$("cb-gauges").addEventListener("click", () => { if (cb) fetchGauges($("cb-gauge-date").value); });
 $("cb-gauge-list").addEventListener("change", (e) => {
   const i = e.target.dataset.g;
   if (i === undefined) return;
@@ -2376,7 +2382,7 @@ $("cb-gauge-list").addEventListener("change", (e) => {
 // the paddler is.
 const METEO = "https://api.open-meteo.com/v1/forecast", METEO_PAST = "https://archive-api.open-meteo.com/v1/archive";
 const WIND_AT_PADDLER = 0.8;
-async function courseWeather(when) {
+async function courseWeather(when, utc) {
   const [lat, lon] = cb.points[Math.floor(cb.points.length / 2)];
   const q = `latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}&wind_speed_unit=kmh&timezone=auto`;
   const get = (url) => fetch(url).then(async (r) => {
@@ -2384,35 +2390,66 @@ async function courseWeather(when) {
     if (!r.ok || j.error) throw new Error(j.reason || `Open-Meteo said ${r.status}`);
     return j;
   });
-  if (!when) {
+  if (!when && !utc) {
     const c = (await get(`${METEO}?${q}&current=wind_speed_10m,wind_direction_10m,temperature_2m,relative_humidity_2m`)).current;
     return { speed: c.wind_speed_10m, from: c.wind_direction_10m, temp: c.temperature_2m, humid: c.relative_humidity_2m };
   }
   // The forecast covers the last two months and two weeks ahead; older days are in the archive.
-  const day = when.slice(0, 10), hour = `${when.slice(0, 13)}:00`;
+  // A day either side, so a UTC time (a GPX's) is in the local hours too.
+  const day = when ? when.slice(0, 10) : new Date(utc).toISOString().slice(0, 10);
+  const shift = (n) => new Date(Date.parse(day) + n * 864e5).toISOString().slice(0, 10);
   const old = Date.now() - Date.parse(day) > 60 * 864e5;
-  const h = (await get(`${old ? METEO_PAST : METEO}?${q}&hourly=wind_speed_10m,wind_direction_10m,temperature_2m,relative_humidity_2m&start_date=${day}&end_date=${day}`)).hourly;
-  const i = h.time.indexOf(hour);
+  const j = await get(`${old ? METEO_PAST : METEO}?${q}&hourly=wind_speed_10m,wind_direction_10m,temperature_2m,relative_humidity_2m&start_date=${shift(-1)}&end_date=${shift(1)}`);
+  const local = when || new Date(utc + (j.utc_offset_seconds || 0) * 1000).toISOString().slice(0, 16);
+  const h = j.hourly, hour = `${local.slice(0, 13)}:00`, i = h.time.indexOf(hour);
   if (i < 0 || h.wind_speed_10m[i] === null) throw new Error(`no wind for ${hour.replace("T", " ")}`);
-  return { speed: h.wind_speed_10m[i], from: h.wind_direction_10m[i], temp: h.temperature_2m[i], humid: h.relative_humidity_2m[i] };
+  return { speed: h.wind_speed_10m[i], from: h.wind_direction_10m[i], temp: h.temperature_2m[i], humid: h.relative_humidity_2m[i], when: local };
 }
-$("cb-weather").addEventListener("click", async () => {
-  if (!cb) return;
-  const when = $("cb-weather-time").value, info = $("cb-weather-info");
+async function fetchWeather(when, utc, what = "") {
+  const at = cb, info = $("cb-weather-info");
   info.textContent = "Asking Open-Meteo…";
   try {
-    const w = await courseWeather(when), near = w.speed * WIND_AT_PADDLER;
+    const w = await courseWeather(when, utc), near = w.speed * WIND_AT_PADDLER;
+    if (cb !== at) return;
+    if (w.when) when = $("cb-weather-time").value = w.when;
     $("wind").value = Math.min(40, Math.round(near));
     $("windDir").value = (Math.round(w.from / 15) * 15) % 360;
     $("temp").value = Math.round(w.temp); $("humid").value = Math.round(w.humid / 5) * 5;
-    info.textContent = `${when ? when.replace("T", " ") : "Now"}: ${fmtNum(w.temp, 0)} °C, ${fmtNum(w.humid, 0)}% humidity; ` +
+    info.textContent = `${what}${when ? when.replace("T", " ") : "Now"}: ${fmtNum(w.temp, 0)} °C, ${fmtNum(w.humid, 0)}% humidity; ` +
       `wind ${fmtNum(w.speed, 0)} km/h from the ${compass(w.from)} at 10 m, ${fmtNum(near, 0)} km/h at the paddler${near > 40.5 ? " (the slider stops at 40)" : ""}.`;
   } catch (err) {
-    info.textContent = `Couldn't get the weather (${err.message}). Set it by hand.`;
-    return;
+    if (cb === at) info.textContent = `Couldn't get the weather (${err.message}). Set it by hand.`;
+    return null;
   }
   updateSoon();
-});
+  return when;
+}
+$("cb-weather").addEventListener("click", () => { if (cb) fetchWeather($("cb-weather-time").value); });
+// A course loads with its race's weather and river flow: a course with a race
+// day (the AuSable) at its start, the coming one once the forecast reaches
+// it, else the last one; a GPX at the time it was recorded; otherwise now.
+function raceDay(r, year) {
+  const d = new Date(Date.UTC(year, r.month, 0));   // the month's last day
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() - r.weekday + 7) % 7));
+  return d.toISOString().slice(0, 10);
+}
+function raceStart(r) {
+  const y = new Date().getFullYear();
+  let day = raceDay(r, y);
+  if (Date.parse(day) - Date.now() > 15 * 864e5) day = raceDay(r, y - 1);
+  return `${day}T${r.time}`;
+}
+async function autoConditions() {
+  const at = cb, when = cb.race ? raceStart(cb.race) : "", utc = !when && cb.recorded ? cb.recorded : null;
+  $("cb-weather-time").value = when;
+  const what = cb.race ? `${when.slice(0, 4)} race start, ` : utc ? "When the track was recorded, " : "";
+  const got = await fetchWeather(when, utc, what);
+  // The gauges' daily mean that day, or their latest reading for a day still to come.
+  const day = (got || when || (utc ? new Date(utc).toISOString() : "")).slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+  $("cb-gauge-date").value = day && day < today ? day : "";
+  if (cb === at) fetchGauges($("cb-gauge-date").value);
+}
 for (const id of ["wind", "windDir", "temp", "humid"])
   $(id).addEventListener("input", () => { if (cb) $("cb-weather-info").textContent = "Weather is set by hand."; });
 // The race on the real course, from above: north up, a fixed scale centred
