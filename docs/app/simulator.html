@@ -3080,6 +3080,8 @@ onTap($("switch-anim"), () => {
   b.setAttribute("aria-pressed", String(b.getAttribute("aria-pressed") !== "true"));
 });
 const switchAnim = () => $("switch-anim").getAttribute("aria-pressed") === "true";
+// How high the recovery lifts the blade, m (stateAt), and so how high it's carried into a switch.
+const RECOVERY_LIFT = 0.45;
 // Where boat x is at time t: its stroke phase, which side (m = 1 for the
 // right, −1 for the left, in between while switching) and how high the
 // paddle is lifted. With switching: n strokes on the right, a switch of
@@ -3090,15 +3092,23 @@ function timeline(x, t) {
   const n = Math.max(1, Math.round(r.strokesPerSide)), Tsw = Math.max(0.05, r.params.switchLossS);
   const Ts = n * Tc + Tsw, tt = (((t % (2 * Ts)) + 2 * Ts) % (2 * Ts));
   const side = tt < Ts ? 1 : -1, u = side > 0 ? tt : tt - Ts;
-  if (u < n * Tc) return { ph: (u % Tc) / Tc, m: side, lift: 0, stroke: Math.floor(u / Tc) + 1, n };
-  // The switch: the paddle lifts and swings over the boat to the other side.
-  const w = (u - n * Tc) / Tsw;
-  return { ph: 1 - 1e-6, m: side * Math.cos(Math.PI * w), lift: 0.35 * Math.sin(Math.PI * w), stroke: 0, n };
+  if (u < n * Tc) {
+    const ph = (u % Tc) / Tc, stroke = Math.floor(u / Tc) + 1;
+    // The last recovery on a side keeps the blade up for the switch, rather
+    // than setting it down at the catch only to lift it again.
+    const back = (ph - r.params.driveFraction) / (1 - r.params.driveFraction);
+    const lift = stroke === n && back > 0.5 ? RECOVERY_LIFT * (1 - Math.sin(Math.PI * back)) : 0;
+    return { ph, m: side, lift, stroke, n };
+  }
+  // The switch: the paddle swings over the boat to the other side, coming
+  // down to the catch there (no jumps in height or speed at either end).
+  const w = (u - n * Tc) / Tsw, down = (1 + Math.cos(Math.PI * w)) / 2;
+  return { ph: 1 - 1e-6, m: side * Math.cos(Math.PI * w), lift: RECOVERY_LIFT * down + 0.2 * Math.sin(Math.PI * w) ** 2, stroke: 0, n };
 }
 onTap($("slow"), () => { slow = !slow; $("slow").textContent = slow ? "Normal speed" : "Slow motion"; });
 
 // Pose and forces at cycle phase ∈ [0, 1): drive, then a recovery that lifts
-// the blade out and swings it back to the catch.
+// the blade out (RECOVERY_LIFT at its highest) and swings it back to the catch.
 function stateAt(r, ph, extraLift = 0) {
   const df = r.params.driveFraction;
   if (ph < df) {
@@ -3110,7 +3120,7 @@ function stateAt(r, ph, extraLift = 0) {
   const u = (ph - df) / (1 - df);             // recovery progress
   const back = 1 - (1 - Math.cos(Math.PI * u)) / 2;
   const P = S.pose(r.geom, back);             // reverse through the arc
-  const lift = 0.45 * Math.sin(Math.PI * u) + extraLift;
+  const lift = RECOVERY_LIFT * Math.sin(Math.PI * u) + extraLift;
   const liftAt = (s) => { const q = P.at(s); return [q[0], q[1], q[2] + lift]; };
   const Pl = Object.assign({}, P, { at: liftAt });
   const face = [-Math.cos(P.th), 0, Math.sin(P.th)];
@@ -3132,7 +3142,24 @@ function shoulders(sh, rotation, s, half = 0.2) {
 }
 // The body fitted to the paddle (stroke-sim.js fitBody), at each moment.
 const figCache = new Map();
-function paddlerFig(P, x, ph, tint = false, lift = 0) {
+// Switching sides, without flipping the paddler through the centreline: each
+// shoulder keeps to its own side and the hands trade places on the shaft as
+// the paddle goes over (the lower hand slides up to the grip, the top hand
+// down). j: the joints paddling right; m: the side, as timeline() gives it;
+// at(s): the paddle s m from the grip, paddling right. Drawing only.
+function acrossTheBoat(j, m, at, sLow) {
+  const a = (1 + m) / 2, mir = (q) => [q[0], -q[1], q[2]];
+  const mix = (l, r) => l.map((v, i) => v + (r[i] - v) * a);
+  const body = (q) => mix(mir(q), q);
+  const onPaddle = (s) => { const q = at(s); return [q[0], m * q[1], q[2]]; };
+  return { hip: body(j.hip), knee: body(j.knee), foot: body(j.foot), sh: body(j.sh), head: body(j.head),
+    // Paddling right, the left shoulder is the off side holding the grip;
+    // paddling left, it's the paddle side holding the shaft lower down.
+    left: mix(mir(j.pad), j.off), leftHand: onPaddle(sLow * (1 - a)),
+    right: mix(mir(j.off), j.pad), rightHand: onPaddle(sLow * a) };
+}
+// P: the view's projection; m: the side (1 right, −1 left, between mid-switch).
+function paddlerFig(P, x, ph, tint = false, lift = 0, m = 1) {
   const r = results[x], c = hullCyc[x], p = r.params, st = stateAt(r, ph, lift), df = p.driveFraction;
   const i = c ? Math.min(c.t.length - 1, Math.floor(ph * c.t.length)) : 0;
   const bx = c ? c.bodyX[i] : 0, bz = c ? c.bodyZ[i] : 0;
@@ -3140,7 +3167,7 @@ function paddlerFig(P, x, ph, tint = false, lift = 0) {
   // torso about x / (0.6 · 0.3) rad; rotation winds up at the catch.
   const lean = rad(Math.max(-20, Math.min(55, LEAN0 + (bx / 0.18) * 180 / Math.PI)));
   const s = ph < df ? Math.cos(Math.PI * ph / df) : -Math.cos(Math.PI * (ph - df) / (1 - df));
-  const grip = st.P.at(0), low = st.P.at(S.lowerHand(r.geom));
+  const sLow = S.lowerHand(r.geom), grip = st.P.at(0), low = st.P.at(sLow);
   // One fit per boat and moment, shared by every view drawing it.
   const key = `${x}|${ph.toFixed(4)}|${lift.toFixed(3)}|${r.body.seatX}`;
   let b = figCache.get(key);
@@ -3150,11 +3177,12 @@ function paddlerFig(P, x, ph, tint = false, lift = 0) {
     figCache.set(key, b);
   }
   const HIP = b.hip, sh = b.centre, off = b.off, pad = b.pad, k = (p.heightM || 1.78) / 1.78;
-  const head = add3(sh, b.up.map((v) => v * 0.24 * k));
+  const head0 = add3(sh, b.up.map((v) => v * 0.24 * k));
   const legDz = 0.04 * (p.legDrive || 0) * (ph < df ? Math.sin(Math.PI * ph / df) : 0);
   const along = (a, d, len) => { const n = Math.hypot(...d); return a.map((v, j) => v + (d[j] / n) * len); };
-  const knee = along(HIP, [0.42, 0, 0.16], p.thighM); knee[2] -= legDz;
-  const foot = along(knee, [0.36, 0, -0.30], p.shinM);
+  const knee0 = along(HIP, [0.42, 0, 0.16], p.thighM); knee0[2] -= legDz;
+  const foot0 = along(knee0, [0.36, 0, -0.30], p.shinM);
+  const J = acrossTheBoat({ hip: HIP, knee: knee0, foot: foot0, sh, head: head0, off, pad }, m, st.P.at, sLow);
   // Elbows: upper arm and forearm, bent down and out (straight if the hand is at full reach).
   const ua = p.upperArmM, fa = p.forearmM;
   const elbow = (a, b, out) => {
@@ -3168,9 +3196,9 @@ function paddlerFig(P, x, ph, tint = false, lift = 0) {
   const sc = Math.max(...[[1, 0, 0], [0, 1, 0], [0, 0, 1]].map((e) => Math.hypot(P(e)[0] - P([0, 0, 0])[0], P(e)[1] - P([0, 0, 0])[1])));
   const ink = tint ? `color-mix(in srgb, ${COL[x]} 60%, var(--muted))` : "", ga = tint && x === "b" ? ` opacity="0.75"` : "";
   const seg = (pts, w, cls = "") => { const q = pts.filter(Boolean).map(P); return `<path class="fig-body fig-${x} ${cls}"${ink ? ` style="stroke:${ink}"` : ""}${ga} stroke-width="${(w * sc).toFixed(1)}" d="M${q.map(f2).join(" L")}"/>`; };
-  const hd = P(head);
-  return `${seg([HIP, knee, foot], 0.1, "fig-leg")}${seg([pad, elbow(pad, low, -1), low], 0.06)}${seg([HIP, sh], 0.15)}${seg([off, pad], 0.09)}` +
-    `${seg([off, elbow(off, grip, 1), grip], 0.06)}<circle class="fig-head fig-${x}"${ink ? ` style="fill:${ink}"` : ""}${ga} cx="${hd[0].toFixed(1)}" cy="${hd[1].toFixed(1)}" r="${(0.1 * k * sc).toFixed(1)}"/>`;
+  const hd = P(J.head);
+  return `${seg([J.hip, J.knee, J.foot], 0.1, "fig-leg")}${seg([J.right, elbow(J.right, J.rightHand, -1), J.rightHand], 0.06)}` +
+    `${seg([J.hip, J.sh], 0.15)}${seg([J.left, J.right], 0.09)}${seg([J.left, elbow(J.left, J.leftHand, 1), J.leftHand], 0.06)}<circle class="fig-head fig-${x}"${ink ? ` style="fill:${ink}"` : ""}${ga} cx="${hd[0].toFixed(1)}" cy="${hd[1].toFixed(1)}" r="${(0.1 * k * sc).toFixed(1)}"/>`;
 }
 // One boat's paddle, blade path and push, in its colour.
 // Pp: the projection for the blade's path and pushes (always one side, even mid-switch).
@@ -3239,7 +3267,7 @@ function drawView(svg, name, tl) {
   const order = same ? ["a", "b"] : bs;
   // Paddlers: one when both boats are set the same, else both, B under A, each in its colour.
   const two = bs.length > 1 && !same;
-  for (const x of two ? ["b", "a"] : [bs[0]]) g += paddlerFig(Pm(x), x, tl[x].ph, two, tl[x].lift);
+  for (const x of two ? ["b", "a"] : [bs[0]]) g += paddlerFig(P, x, tl[x].ph, two, tl[x].lift, tl[x].m);
   for (const x of order)
     g += `<g class="${bs.length > 1 && x === "b" ? (same ? "blend-b" : "overlay-b") : ""}">` +
       `${drawBoat(name, Pm(x), x, tl[x].ph, maxF, tl[x].lift, Pm(x, tl[x].m < 0 ? -1 : 1))}</g>`;
