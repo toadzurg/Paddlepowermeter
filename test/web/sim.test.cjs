@@ -1017,6 +1017,11 @@ console.log("\nPaddle fit");
       return { gap: +note.getAttribute("y") - legendY, inside: +note.getAttribute("y") <= svg.viewBox.baseVal.height };
     });
     check(`${tag}: hull: the power chart's note clears its legend`, powerFit.gap >= 14 && powerFit.inside, JSON.stringify(powerFit));
+    // Bob, pitch and roll each draw the paddler with the paddle in hand.
+    const figs = await page.evaluate(() => ["hp-bob", "hp-pitch", "hp-roll"].map((id) => {
+      const el = document.getElementById(id); return [el.querySelectorAll(".fig-head").length, el.querySelectorAll(".paddle-hv").length];
+    }));
+    check(`${tag}: hull: bob, pitch and roll draw the paddler and paddle`, figs.every(([h, p]) => h >= 1 && p >= 1), JSON.stringify(figs));
     check(`${tag}: hull: roll and its balance`, /^A Lifts the paddle side up to \d+ N·m; balance with hips \d+ mm toward the paddle side\. Held still: ±[\d.]+°/.test(await text("#hull-roll-read")), await text("#hull-roll-read"));
     await page.$eval("#hull-card", (e) => e.scrollIntoView());   // it only redraws while on screen
     const surgeSvg = () => page.$eval("#hp-surge", (e) => e.innerHTML);
