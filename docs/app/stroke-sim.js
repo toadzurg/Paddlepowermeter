@@ -167,6 +167,10 @@
     strengthOn: 0,
     strengthPeakDeg: 0,        // shaft angle you pull hardest at; + = behind vertical
     strengthDrop: 0.4,
+    // Gearing (off by default): the arms hold the most power at one speed.
+    gearOn: 0,
+    armBestMs: 0.9,            // the lower hand's speed against its shoulder you hold the most power at, m/s
+    gearDrop: 0.15,            // share of the arms' power lost at half or 1.5 times it
     // The paddler's body, m, fitted to the paddle each moment (see fitBody).
     // Results change through strength by position: by angle, the arm length;
     // from the arms, every length. Otherwise it's for the drawings and the
@@ -183,7 +187,7 @@
 
   // Who's paddling, as opposed to how.
   const PROFILE_KEYS = ["heightM", "torsoM", "shoulderM", "upperArmM", "forearmM", "thighM", "shinM", "massKg", "fitnessW",
-                        "strengthOn", "strengthPeakDeg", "strengthDrop"];
+                        "strengthOn", "strengthPeakDeg", "strengthDrop", "gearOn", "armBestMs", "gearDrop"];
   const rad = (d) => (d * Math.PI) / 180;
   const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
   const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -339,9 +343,11 @@
     const D = det(A) || 1e-12;
     return [0, 1, 2].map((k) => det(A.map((row, i) => row.map((x, j) => (j === k ? b[i] : x)))) / D);
   }
-  // The technique's own posture at drive progress u: leaning LEAN0, the
+  // The technique's own posture at drive progress u: leaning LEAN0, further
+  // at the catch and less at the exit with a hinge (HINGE_TILT), and the
   // shoulders wound up at the catch by the rotation, unwinding to the exit.
-  const neutralAt = (p, u) => [LEAN0, 0, rad(25 * (p.rotation || 0) * Math.cos(Math.PI * u))];
+  const neutralAt = (p, u) => [LEAN0 + HINGE_TILT * (p.hinge || 0) * Math.cos(Math.PI * u), 0,
+                               rad(25 * (p.rotation || 0) * Math.cos(Math.PI * u))];
   // Where the blade leaves the water, fore and aft: the shaft-axis point level
   // with the blade centre at the end of the drive (as in drive()).
   const exitX = (pg) => pose(pg, 1).at(paddleOf(pg).throat + paddleOf(pg).copFromThroat)[0];
@@ -377,17 +383,28 @@
   }
   // The body through the drive: how stretched each arm is, how far forward
   // the trunk leans (rad), and how far short of the hands the arms fall
-  // where they can't reach (m).
+  // where they can't reach (m). armSpeed: the lower hand's average speed
+  // against its shoulder through the drive (m/s), what the arm's muscles
+  // move at; the trunk carries the rest of the hand's travel.
+  const bodyCache = new Map();
   function bodyThroughDrive(pg, n = 20) {
+    const key = JSON.stringify(pg);
+    if (bodyCache.has(key)) return bodyCache.get(key);
     const seatX = seatFor(pg), arm = armOf(pg), out = [];
-    let prev = null;
+    let prev = null, rel = null, path = 0;
     for (let i = 0; i <= n; i++) {
-      const u = i / n, P = pose(pg, u), nn = neutralAt(pg, u);
-      const b = fitBody(pg, seatX, P.at(0), P.at(lowerHand(pg)), nn, 0, prev || nn);
+      const u = i / n, P = pose(pg, u), nn = neutralAt(pg, u), low = P.at(lowerHand(pg));
+      const b = fitBody(pg, seatX, P.at(0), low, nn, 0, prev || nn);
       prev = b.pose;
+      const r = sub(low, b.pad);
+      if (rel) path += dist(r, rel);
+      rel = r;
       out.push({ u, top: b.top, low: b.low, lean: b.pose[0], short: Math.max(0, (Math.max(b.top, b.low) - 1) * arm) });
     }
-    return { seatX, frames: out, short: Math.max(...out.map((f) => f.short)) };
+    const body = { seatX, frames: out, short: Math.max(...out.map((f) => f.short)), armSpeed: path / (60 / pg.rateSpm * pg.driveFraction) };
+    if (bodyCache.size > 60) bodyCache.clear();
+    bodyCache.set(key, body);
+    return body;
   }
   // From the arms: strongest with the arm about ARM_BEST of full stretch,
   // weaker folded up or stretched out; the lower (pulling) arm counts most.
@@ -619,7 +636,7 @@
   // A full hinge swings the torso about ±20° from the hips: head, arms and
   // trunk (about 60% of you) move about ±10 cm, ±6 cm for the whole body,
   // aft through the drive. It adds to any body swing set by hand.
-  const HINGE_SWING_M = 0.06;
+  const HINGE_SWING_M = 0.06, HINGE_TILT = rad(20);
   function swingVel(p, Tc, Td) {
     const a = bodySwingVel(p.swingM || 0, p.swingTiming, Tc, Td), b = bodySwingVel(HINGE_SWING_M * (p.hinge || 0), 1, Tc, Td);
     return (t) => a(t) + b(t);
@@ -881,9 +898,29 @@
     const ref = Object.assign({}, DEFAULTS, Object.fromEntries(PROFILE_KEYS.map((k) => [k, q[k]])));
     return driveTiming(paddled(q)).mean / driveTiming(paddled(ref)).mean;
   }
+  // Gearing (off by default): muscles make the most power at one speed. A
+  // linear force–velocity line makes power a parabola in speed, so the arms
+  // hold less the further their speed (armSpeed, set by the stroke rate,
+  // the drive's share, the stroke's length and the hands' spacing) is from
+  // armBestMs, losing gearDrop at half or 1.5 times it. It sets the arms'
+  // share of what you hold; trunk and legs move at their own speeds.
+  // Assumed until measured: the meter's force and shaft speed at a few
+  // rates give the paddler's own line.
+  function gearFactor(p) {
+    const q = Object.assign({}, DEFAULTS, p);
+    if (!q.gearOn) return 1;
+    const x = bodyThroughDrive(paddled(q)).armSpeed / q.armBestMs - 1;
+    return Math.max(STRENGTH_MIN, 1 - 4 * q.gearDrop * x * x);
+  }
+  // The stroke rate that puts the arms at their best speed: arm speed is the
+  // arm's path over the drive's time, so it goes as the rate.
+  const bestRate = (p) => {
+    const q = Object.assign({}, DEFAULTS, p);
+    return q.rateSpm * q.armBestMs / bodyThroughDrive(paddled(q)).armSpeed;
+  };
   function capacity(p, hours = 1) {
     const q = Object.assign({}, DEFAULTS, p);
-    return q.fitnessW * (0.7 + 0.12 * q.rotation + 0.1 * q.legDrive + 0.08 * q.hinge) * strengthFactor(q) *
+    return q.fitnessW * (0.7 * gearFactor(q) + 0.12 * q.rotation + 0.1 * q.legDrive + 0.08 * q.hinge) * strengthFactor(q) *
       Math.pow(Math.max(1, hours), -0.07);
   }
 
@@ -1223,9 +1260,9 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 37;
+  const API_LEVEL = 38;
   const PADDLE = paddleOf(DEFAULTS);
-  const api = { API_LEVEL, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
+  const api = { API_LEVEL, gearFactor, bestRate, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.StrokeSim = api;
 })(typeof window !== "undefined" ? window : globalThis);

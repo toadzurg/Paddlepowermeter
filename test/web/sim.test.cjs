@@ -386,6 +386,26 @@ console.log("\nStroke simulator physics");
   const farFor = (a) => S.simulate({ catchDeg: 60, handOutM: 0.85, leanDeg: 40, upperArmM: a, forearmM: a }).body.short;
   check("body: longer arms reach further", farFor(0.34) < farFor(0.30) - 0.05 && farFor(0.30) < farFor(0.26) - 0.05,
         [0.26, 0.30, 0.34].map((a) => `${(farFor(a) * 100).toFixed(0)} cm`).join(" / "));
+  // Gearing: the arms hold the most power at one speed of the lower hand
+  // against its shoulder.
+  const gear = (x) => Object.assign({ gearOn: 1 }, x), gF = (x) => S.gearFactor(gear(x)), armV = (x) => S.simulate(x).body.armSpeed;
+  check("gearing: off by default, changes nothing", !S.DEFAULTS.gearOn && S.gearFactor({ rateSpm: 85 }) === 1 &&
+        S.capacity({ rateSpm: 85 }) === S.capacity({}));
+  check("gearing: the default stroke moves the arms at about their best speed", Math.abs(gF({}) - 1) < 0.005,
+        `${armV({}).toFixed(2)} m/s, ×${gF({}).toFixed(3)}`);
+  check("gearing: arm speed goes as the stroke rate", Math.abs(armV({ rateSpm: 75 }) / armV({}) - 75 / 60) < 1e-9);
+  check("gearing: too fast or too slow a rate holds less", gF({ rateSpm: 80 }) < gF({ rateSpm: 70 }) && gF({ rateSpm: 70 }) < 0.99 && gF({ rateSpm: 45 }) < 0.99,
+        `45 spm ×${gF({ rateSpm: 45 }).toFixed(3)}, 70 ×${gF({ rateSpm: 70 }).toFixed(3)}, 80 ×${gF({ rateSpm: 80 }).toFixed(3)}`);
+  const lrBest = S.bestRate(gear(LR));
+  check("gearing: a longer stroke suits a lower rate, and its best rate puts the arms at their best",
+        lrBest < 50 && gF(Object.assign({}, LR, { rateSpm: lrBest })) > 1 - 1e-9, `${lrBest.toFixed(0)} spm`);
+  check("gearing: loses gearDrop at 1.5 times the best arm speed", Math.abs(gF({ armBestMs: armV({}) / 1.5 }) - (1 - S.DEFAULTS.gearDrop)) < 1e-9);
+  check("gearing: the trunk carries rotation's and a hinge's travel, wider hands move the arms faster",
+        Math.abs(armV({ rotation: 1 }) / armV({}) - 1) < 0.05 && Math.abs(armV({ hinge: 1 }) / armV({}) - 1) < 0.05 &&
+        armV({ lowerHandM: 0.7 }) > armV({}) * 1.05, `rotation ${armV({ rotation: 1 }).toFixed(2)}, hinge ${armV({ hinge: 1 }).toFixed(2)}, wide ${armV({ lowerHandM: 0.7 }).toFixed(2)} m/s`);
+  const capOf = (x) => S.capacity(x), rot80 = { rotation: 1, rateSpm: 80 };
+  check("gearing: sets only the arms' share of what you hold",
+        Math.abs(capOf(gear(rot80)) - capOf(rot80) + 0.7 * S.DEFAULTS.fitnessW * (1 - gF(rot80))) < 1e-9);
   const armCurve = S.simulate(arms(LR)).strengthCurve;
   let bumpy = 0; for (let i = 2; i < armCurve.length; i++) bumpy = Math.max(bumpy, Math.abs(armCurve[i][1] - 2 * armCurve[i - 1][1] + armCurve[i - 2][1]));
   check("strength from the arms: a smooth curve through the drive (no steps)", bumpy < 0.1, bumpy.toFixed(3));
@@ -1058,6 +1078,12 @@ console.log("\nStroke simulator physics");
           /Arms at up to \d+% \(lower\)/.test(await text("#strength-read")) && !(await visible("#c-strengthPeakDeg")));
     await page.click("#strength-mode >> text=Off");
     await page.click("#presets >> text=Defaults"); await settle();
+    check(`${tag}: gearing: off by default, its settings hidden`, !(await visible("#c-armBestMs")));
+    await page.click("#gear-mode >> text=On"); await slide("#c-rateSpm", 80); await settle();
+    check(`${tag}: gearing: arm speed, what the arms hold and the best rate`, (await visible("#c-armBestMs")) &&
+          /moves [\d.]+ m\/s against its shoulder.*×0\.\d\d.*best at \d+ spm/.test(await text("#gear-read")) && /Gearing: your arms hold ×0\.\d\d/.test(await text("#engine-box")),
+          await text("#gear-read"));
+    await page.click("#gear-mode >> text=Off"); await slide("#c-rateSpm", 60); await settle();
     check(`${tag}: reach warning gone when in reach`, !(await visible("#reach-warn")));
     // Back to the defaults for what follows.
     await page.evaluate(() => { const S = window.StrokeSim; for (const x of ["a", "b"]) for (const k of ["heightM", "torsoM", "shoulderM", "upperArmM", "forearmM", "thighM", "shinM", "fitnessW", "strengthOn"]) window.sim.boats[x][k] = S.DEFAULTS[k]; });
