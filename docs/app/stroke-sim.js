@@ -38,8 +38,8 @@
 //  - The push comes in pulses (drive, then recovery), so the boat surges:
 //    faster during the drive, slower in the recovery. Drag grows with V², so
 //    an uneven speed costs more than a steady one at the same average
-//    (mean of V³ > V̄³). Only the paddle's push is modelled, not your body
-//    moving fore and aft in the boat.
+//    (mean of V³ > V̄³). The body's own motion (swing, drop, hinge) adds to
+//    the surge and bob: see swingVel and bodyDropAcc.
 //  - Boat speed is where mean thrust (counting the switches) balances hull
 //    drag k·V² plus leeway drag. Then paddler power = moving the boat
 //    (k·V³) + leeway + slip (power into the water), exactly. With quadratic

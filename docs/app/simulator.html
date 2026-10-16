@@ -670,21 +670,23 @@
       <details>
         <summary>How this works</summary>
         <ul>
-          <li><b>Blade:</b> pivots on the shaft and stays buried to the throat. Its force grows with
-            the square of its speed through the water. The water hits it at an angle, so part of the
-            force is lift.</li>
-          <li><b>Boat:</b> a C1 marathon hull, calibrated from a coast-down test. Speed settles where
-            the average forward push equals drag.</li>
-          <li><b>Steering:</b> off-centre pushes turn the boat. Switching sides fixes it but costs part
-            of a stroke each time, and the zigzag costs distance.</li>
+          <li><b>Blade:</b> stays buried to the throat. Its force grows with the square of its speed
+            through the water. The water hits it at an angle, so part of the force is lift.</li>
+          <li><b>Boat:</b> a C1 marathon hull. Drag is from a coast-down test, scaled to the paddler's
+            weight, plus an estimate of wave drag at race pace. Speed settles where the average forward
+            push equals drag.</li>
+          <li><b>Steering:</b> off-centre pushes turn the boat. Switching sides fixes it but loses the
+            time you set for each switch, and the zigzag costs distance.</li>
           <li><b>Other losses:</b> sideways push makes the hull crab, speed surges through each stroke,
-            and the blade pushes the boat up or down.</li>
-          <li><b>Race:</b> wind, current, shallow water, and in a river the current across the channel
-            and the inside of bends.</li>
+            the blade pushes the boat up or down, and your body's motion (swing, drop, hinge) rocks and
+            bobs the boat.</li>
+          <li><b>Race:</b> wind (a crosswind turns the bow), current, shallow water, portages, and in a
+            river the current across the channel and the inside of bends. Load the AuSable or your own
+            GPX, with current from USGS gauges.</li>
         </ul>
-        <p>A simplified model for comparing strokes. It treats the flow as steady and ignores chop,
-          wakes, your body moving and your strength in each position. Absolute speeds are rough; the
-          differences are what count.</p>
+        <p>A simplified model for comparing strokes. It treats the flow as steady and ignores chop and
+          wakes. Your strength enters only as the power you can hold, not how hard you can pull at each
+          point in the stroke. Absolute speeds are rough; the differences are what count.</p>
       </details>
   </section>
 </main>
@@ -692,7 +694,7 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of stroke-sim.js (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. -->
-<script src="stroke-sim.js?v=0e23ff567c"></script>
+<script src="stroke-sim.js?v=43dc192985"></script>
 <script>
 (() => {
 "use strict";
