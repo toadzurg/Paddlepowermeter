@@ -237,7 +237,7 @@
 
   /* Race */
   .race-cols { display: grid; gap: 0 20px; }
-  @media (min-width: 760px) { .race-cols { grid-template-columns: repeat(3, 1fr); } }
+  @media (min-width: 760px) { .race-cols { grid-template-columns: repeat(3, 1fr); } .race-cols.two { grid-template-columns: repeat(2, 1fr); } }
   .race-cols section h3 { margin-top: 12px; }
   #effA { accent-color: var(--series-1); }
   .result { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 12px; }
@@ -578,9 +578,9 @@
 
       <section class="card" id="conditions-card">
         <h2>Conditions</h2>
-        <div class="race-cols">
-          <section>
-            <div class="river-only map-too" hidden>
+        <div class="race-cols" id="conditions-cols">
+          <section class="river-only map-too" hidden>
+            <div>
               <h3>Lines</h3>
               <div class="ctl"><div class="top"><span><span class="a-dot"></span>Boat A line</span></div>
                 <div class="row chips" id="line-a" role="group" aria-label="Boat A line" style="margin-top:6px"></div></div>
@@ -667,6 +667,14 @@
         <h2>Along the course</h2>
           <h3 class="first">Speed along the course<button type="button" class="info" data-tip="Each boat's speed over the ground at each point. Shaded: bends. Drag the slider above to move the marker." aria-label="What is this?">?</button></h3>
           <svg class="curve" id="race-speed" role="img" aria-label="Each boat's speed along the course"></svg>
+          <div class="split2">
+            <div><h3>Heading now<button type="button" class="info" data-tip="Each boat's bow either side of straight over its last strokes, at the moment on the slider: it swings off course between switches and back after each one. Live with the replay." aria-label="What is this?">?</button></h3>
+              <svg class="hv" id="race-heading" viewBox="0 0 360 130" role="img" aria-label="Each boat's heading over its last strokes"></svg>
+              <div class="hull-read" id="race-heading-read"></div></div>
+            <div><h3>Shallow water now<button type="button" class="info" data-tip="Extra hull drag by speed through the water and depth (as on the Boat tab), with each boat where it is at the moment on the slider: its speed through the water and the depth under it. Live with the replay." aria-label="What is this?">?</button></h3>
+              <svg class="hv" id="race-shallow" viewBox="0 0 360 230" role="img" aria-label="Each boat's speed and depth on the shallow-water drag map"></svg>
+              <div class="hull-read" id="race-shallow-read"></div></div>
+          </div>
           <h3>At this point<button type="button" class="info" data-tip="Where each boat is at the time on the slider, and how it got there. Drag to replay any part of the race." aria-label="What is this?">?</button></h3>
           <table class="cmp stats" id="race-stats"><thead><tr><th></th><th><span class="a-dot"></span>A</th><th><span class="b-dot"></span>B</th></tr></thead><tbody></tbody></table>
       </section>
@@ -776,7 +784,7 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of each engine file (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. The fit builds on the stroke engine. -->
-<script src="stroke-sim.js?v=4f828038b1"></script>
+<script src="stroke-sim.js?v=205a0389c6"></script>
 <script src="fit-sim.js?v=c4843125f4"></script>
 <script>
 (() => {
@@ -820,7 +828,7 @@ function shown(el) {
 }
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 41;
+const NEEDS_API = 42;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -1567,6 +1575,8 @@ function renderCourse() {
   const map = water === "map";
   for (const el of document.querySelectorAll(".river-only"))
     el.toggleAttribute("hidden", !(water === "river" || (map && el.classList.contains("map-too"))));
+  // The lines column is only there on a river or a real course: two columns without it.
+  $("conditions-cols").classList.toggle("two", !(water === "river" || map));
   for (const el of document.querySelectorAll(".simple-only")) el.toggleAttribute("hidden", map);
   $("builder").toggleAttribute("hidden", !map);
   $("race-view").toggleAttribute("hidden", water !== "open");
@@ -2631,46 +2641,126 @@ function drawPower() {
     g += `<text class="strong" x="${x0}" y="${y - 4}" style="fill:${COL[x]}">${NAME[x]}</text><text x="${W - 8}" y="${y - 4}" text-anchor="end">moves the boat: ${fmtNum((ps[0][1] + ps[1][1]) * 100, 0)}%</text>`;
     for (const [, v, c] of ps) { const w = (Math.max(0, v) / tot) * bw; g += `<rect x="${xx}" y="${y}" width="${Math.max(0.5, w)}" height="18" fill="${c}"/>`; xx += w; }
   });
-  parts(hullFocus()).forEach(([nm, v, c], i) => {
+  const legend = parts(hullFocus()), rows = Math.ceil(legend.length / 2), noteY = 104 + rows * 18;
+  legend.forEach(([nm, v, c], i) => {
     const tx = x0 + (i % 2) * 180, ty = 104 + Math.floor(i / 2) * 18;
     g += `<rect x="${tx}" y="${ty - 9}" width="10" height="10" fill="${c}"/><text x="${tx + 14}" y="${ty}">${nm} <tspan style="fill:var(--text-primary);font-weight:600">${fmtNum(v * 100, v < 0.01 ? 1 : 0)}%</tspan></text>`;
   });
   const sink = results[hullFocus()].at(effortW).shares.sink;
-  g += `<text x="${x0}" y="${104 + 4 * 18}">${NAME[hullFocus()]}'s figures. Riding ${sink < 0 ? "higher saves" : "lower costs"} ${fmtNum(Math.abs(sink) * 100, 1)}% more.</text>`;
+  // Under the legend, however many rows it has; the drawing grows to fit.
+  g += `<text x="${x0}" y="${noteY}">${NAME[hullFocus()]}'s figures. Riding ${sink < 0 ? "higher saves" : "lower costs"} ${fmtNum(Math.abs(sink) * 100, 1)}% more.</text>`;
+  $("hull-power").setAttribute("viewBox", `0 0 ${W} ${noteY + 8}`);
   $("hull-power").innerHTML = g;
 }
-function drawShallow() {
-  const W = 360, H = 230, m = { l: 40, r: 14, t: 10, b: 34 }, pw = W - m.l - m.r, ph = H - m.t - m.b;
-  const XV = (v) => m.l + ((v - 1.5) / 2.6) * pw, YD = (d) => m.t + ph - ((d - 0.3) / 2.7) * ph;
+// The shallow-water map: extra hull drag by speed through the water and
+// depth, shared by the Boat tab and the race. Wave drag (a 0.23 share of hull
+// drag at 2.5 m/s, as V⁴) grows by the shallow factor.
+const SHALLOW = { W: 360, H: 230, m: { l: 40, r: 14, t: 10, b: 34 }, vMin: 1.5, vSpan: 2.6, dMin: 0.3, dSpan: 2.7 };
+const shallowX = (v) => SHALLOW.m.l + ((v - SHALLOW.vMin) / SHALLOW.vSpan) * (SHALLOW.W - SHALLOW.m.l - SHALLOW.m.r);
+const shallowY = (d) => { const ph = SHALLOW.H - SHALLOW.m.t - SHALLOW.m.b; return SHALLOW.m.t + ph - ((d - SHALLOW.dMin) / SHALLOW.dSpan) * ph; };
+const extraDragPct = (v, d) => 0.23 * Math.pow(v / 2.5, 4) * (S.shallowFactor(v, d) - 1) * 100;
+// Deeper than the map: no extra drag to speak of.
+const SHALLOW_DEEP = SHALLOW.dMin + SHALLOW.dSpan;
+let shallowMapSvg = "";
+function shallowMap() {
+  if (shallowMapSvg) return shallowMapSvg;
+  const { W, H, m } = SHALLOW, pw = W - m.l - m.r, ph = H - m.t - m.b;
   const nx = 26, ny = 27, cw = pw / nx, ch = ph / ny;
   const col = (p) => p < 1 ? "var(--surface-1)" : `color-mix(in srgb, var(--cat-side) ${Math.round(Math.min(1, p / 100) ** 0.6 * 100)}%, var(--surface-1))`;
-  const extra = (v, d) => 0.23 * Math.pow(v / 2.5, 4) * (S.shallowFactor(v, d) - 1) * 100;
   let g = "";
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-    const v = 1.5 + (i + 0.5) * (2.6 / nx), d = 0.3 + (j + 0.5) * (2.7 / ny);
-    g += `<rect x="${(m.l + i * cw).toFixed(1)}" y="${(m.t + ph - (j + 1) * ch).toFixed(1)}" width="${(cw + 0.5).toFixed(1)}" height="${(ch + 0.5).toFixed(1)}" fill="${col(extra(v, d))}"/>`;
+    const v = SHALLOW.vMin + (i + 0.5) * (SHALLOW.vSpan / nx), d = SHALLOW.dMin + (j + 0.5) * (SHALLOW.dSpan / ny);
+    g += `<rect x="${(m.l + i * cw).toFixed(1)}" y="${(m.t + ph - (j + 1) * ch).toFixed(1)}" width="${(cw + 0.5).toFixed(1)}" height="${(ch + 0.5).toFixed(1)}" fill="${col(extraDragPct(v, d))}"/>`;
   }
   let c = "";
-  for (let d = 0.3; d <= 1.75; d += 0.02) { const v = Math.sqrt(9.81 * d); if (v <= 4.1) c += `${c ? "L" : "M"}${XV(v).toFixed(1)},${YD(d).toFixed(1)}`; }
-  g += `<path d="${c}" fill="none" stroke="var(--text-primary)" stroke-dasharray="4 3"/><text x="${XV(Math.sqrt(9.81 * 1.2)) - 6}" y="${YD(1.2) - 6}" text-anchor="end" style="fill:var(--text-primary)">wave speed √(g·depth)</text>`;
-  for (const kmh of [6, 8, 10, 12, 14]) g += `<text x="${XV(kmh / 3.6)}" y="${H - 18}" text-anchor="middle">${kmh}</text>`;
-  g += `<text x="${m.l + pw / 2}" y="${H - 4}" text-anchor="middle">speed, km/h</text>`;
-  for (const d of [0.5, 1, 1.5, 2, 2.5, 3]) g += `<text x="${m.l - 5}" y="${YD(d) + 4}" text-anchor="end">${d}${d === 3 ? " m" : ""}</text>`;
+  for (let d = 0.3; d <= 1.75; d += 0.02) { const v = Math.sqrt(9.81 * d); if (v <= 4.1) c += `${c ? "L" : "M"}${shallowX(v).toFixed(1)},${shallowY(d).toFixed(1)}`; }
+  g += `<path d="${c}" fill="none" stroke="var(--text-primary)" stroke-dasharray="4 3"/><text x="${shallowX(Math.sqrt(9.81 * 1.2)) - 6}" y="${shallowY(1.2) - 6}" text-anchor="end" style="fill:var(--text-primary)">wave speed √(g·depth)</text>`;
+  for (const kmh of [6, 8, 10, 12, 14]) g += `<text x="${shallowX(kmh / 3.6)}" y="${H - 18}" text-anchor="middle">${kmh}</text>`;
+  g += `<text x="${m.l + pw / 2}" y="${H - 4}" text-anchor="middle">speed through the water, km/h</text>`;
+  for (const d of [0.5, 1, 1.5, 2, 2.5, 3]) g += `<text x="${m.l - 5}" y="${shallowY(d) + 4}" text-anchor="end">${d}${d === 3 ? " m" : ""}</text>`;
+  return (shallowMapSvg = g);
+}
+const SHALLOW_READ = "Colour: extra hull drag, from none to +100% or more. Below the dashed line the boat's wave can't keep up and drag climbs fast.";
+function drawShallow() {
+  const { m } = SHALLOW, ph = SHALLOW.H - m.t - m.b;
+  let g = shallowMap();
   // Each boat's pace; the depth it's racing in, if shallow.
   const depth = water === "map" && cb ? Math.min(...cb.sections.filter((s) => s.kind !== "portage").map((s) => s.depth)) : parseFloat($("depth").value);
   BOATS.forEach((x, k) => {
-    const v = results[x].at(effortW).waterSpeed, px = XV(v), cl = x === "a" ? "--series-1" : "--series-2";
+    const v = results[x].at(effortW).waterSpeed, px = shallowX(v), cl = x === "a" ? "--series-1" : "--series-2";
     g += `<line x1="${px}" x2="${px}" y1="${m.t}" y2="${m.t + ph}" stroke="var(${cl})" stroke-width="1.5"/><text x="${px + (k ? -4 : 4)}" y="${m.t + 12}" text-anchor="${k ? "end" : "start"}" style="fill:var(${cl})">${x.toUpperCase()}</text>`;
-    if (depth < 3) g += `<circle cx="${px}" cy="${YD(depth)}" r="5" fill="var(${cl})" stroke="var(--surface-1)" stroke-width="2"/>`;
+    if (depth < SHALLOW_DEEP) g += `<circle cx="${px}" cy="${shallowY(depth)}" r="5" fill="var(${cl})" stroke="var(--surface-1)" stroke-width="2"/>`;
   });
-  if (depth < 3) {
-    const v = results[hullFocus()].at(effortW).waterSpeed, px = XV(v);
-    g += `<rect x="${px - 128}" y="${YD(depth) - 13}" width="120" height="17" rx="4" fill="var(--surface-1)" opacity=".9"/>` +
-      `<text class="strong" x="${px - 10}" y="${YD(depth) + 1}" text-anchor="end">${fmtNum(depth, 1)} m deep: +${fmtNum(extra(v, depth), 0)}%</text>`;
+  if (depth < SHALLOW_DEEP) {
+    const v = results[hullFocus()].at(effortW).waterSpeed, px = shallowX(v);
+    g += `<rect x="${px - 128}" y="${shallowY(depth) - 13}" width="120" height="17" rx="4" fill="var(--surface-1)" opacity=".9"/>` +
+      `<text class="strong" x="${px - 10}" y="${shallowY(depth) + 1}" text-anchor="end">${fmtNum(depth, 1)} m deep: +${fmtNum(extraDragPct(v, depth), 0)}%</text>`;
   }
   $("hull-shallow").innerHTML = g;
-  $("hull-shallow-read").innerHTML = `<span>Colour: extra hull drag, from none to +100% or more. Below the dashed line the boat's wave can't keep up and drag climbs fast.</span>` +
-    (depth < 3 ? `<span>Dots: ${water === "map" ? "the shallowest section of your course" : "the race's water depth"}.</span>` : "");
+  $("hull-shallow-read").innerHTML = `<span>${SHALLOW_READ}</span>` +
+    (depth < SHALLOW_DEEP ? `<span>Dots: ${water === "map" ? "the shallowest section of your course" : "the race's water depth"}.</span>` : "");
+}
+// Live in the race: each boat's speed through the water against the depth
+// under it, at the moment on the slider. The map is drawn once; only the
+// boats move.
+function drawShallowNow(st) {
+  const svg = $("race-shallow");
+  if (!svg.querySelector("#race-shallow-now")) svg.innerHTML = `<g>${shallowMap()}</g><g id="race-shallow-now"></g>`;
+  const now = BOATS.map((x) => {
+    const s = st[x.toUpperCase()], g = s.g, cl = x === "a" ? "--series-1" : "--series-2";
+    // The depth under the boat: its section's, or the race's (open water).
+    const depth = isFinite(g.depth) ? g.depth : parseFloat($("depth").value);
+    // Through the water (the course's own speed, along a bend's line too); a
+    // recorded run's pieces may lack it: over the ground, less the current.
+    const v = Math.max(0, isFinite(g.water) ? g.water : s.v - (g.current || 0));
+    return { x, cl, depth, v, carrying: g.kind === "portage", done: s.fin !== null && st.t >= s.fin };
+  });
+  let g = "";
+  for (const b of now) {
+    if (b.carrying || b.done || !(b.v > 0)) continue;
+    const cx = Math.min(SHALLOW.W - SHALLOW.m.r, Math.max(SHALLOW.m.l, shallowX(b.v))), deep = b.depth >= SHALLOW_DEEP;
+    const cy = shallowY(Math.min(SHALLOW_DEEP, b.depth));
+    g += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="6" fill="${deep ? "var(--surface-1)" : `var(${b.cl})`}" stroke="var(${b.cl})" stroke-width="2.5"/>` +
+      `<text class="strong" x="${(cx + (b.x === "a" ? 9 : -9)).toFixed(1)}" y="${(cy + 4).toFixed(1)}" text-anchor="${b.x === "a" ? "start" : "end"}" style="fill:var(${b.cl})">${b.x.toUpperCase()}</text>`;
+  }
+  $("race-shallow-now").innerHTML = g;
+  $("race-shallow-read").innerHTML = now.map((b) => `<span><b>${b.x.toUpperCase()}</b> ` + (b.done ? "finished" : b.carrying ? "carrying" :
+    `${fmtNum(b.v * 3.6, 1)} km/h through the water, ${b.depth >= SHALLOW_DEEP ? "deep water (hollow dot): no extra drag" : `${fmtNum(b.depth, 1)} m deep: +${fmtNum(extraDragPct(b.v, b.depth), 0)}% drag`}`) + "</span>").join("") +
+    `<span>${SHALLOW_READ}</span>`;
+}
+// Live in the race: each boat's heading over its last strokes. Between
+// switches the bow swings steadily from one side of straight to the other,
+// through the switch too (it keeps turning), so the heading is a zigzag
+// whose half-period is the strokes per side plus the switch's strokes and
+// whose height is the boat's wander.
+const HEADING_WINDOW = 20;   // strokes shown
+function drawHeadingNow(st) {
+  const W = 360, H = 130, m = { l: 40, r: 14, t: 12, b: 26 }, pw = W - m.l - m.r, ph = H - m.t - m.b;
+  const wan = (x) => Math.max(0.1, results[x].headingWanderDeg), lim = Math.max(1, Math.ceil(Math.max(...BOATS.map(wan))));
+  const X = (k) => m.l + (k / HEADING_WINDOW) * pw, Y = (d) => m.t + ph / 2 - (d / (lim * 1.25)) * (ph / 2);
+  let g = "";
+  for (const d of [-lim, 0, lim]) g += `<line class="${d ? "grid" : "axis"}" x1="${m.l}" x2="${W - m.r}" y1="${Y(d)}" y2="${Y(d)}"/><text x="${m.l - 5}" y="${Y(d) + 4}" text-anchor="end">${d > 0 ? "+" : ""}${d}°</text>`;
+  const read = [];
+  for (const x of BOATS) {
+    const s = st[x.toUpperCase()], seg = s.g, w = wan(x), cl = x === "a" ? "--series-1" : "--series-2";
+    if (!(seg.rate > 0)) { read.push(`<span><b>${x.toUpperCase()}</b> ${s.fin !== null && st.t >= s.fin ? "finished" : "carrying"}</span>`); continue; }
+    // Stroke slots so far (switches included), stopped at the finish.
+    const tEnd = s.fin !== null ? Math.min(st.t, s.fin) : st.t, p = (tEnd * seg.rate) / 60;
+    const L = Math.max(0.5, seg.perSide + seg.loss), at = (q) => {
+      const u = ((q % (2 * L)) + 2 * L) % (2 * L);
+      return u < L ? -w + (2 * w * u) / L : w - (2 * w * (u - L)) / L;
+    };
+    let d = "";
+    for (let k = 0; k <= HEADING_WINDOW * 10; k++) { const q = p - HEADING_WINDOW + k / 10; d += `${k ? "L" : "M"}${X(k / 10).toFixed(1)},${Y(at(q)).toFixed(1)}`; }
+    g += `<path d="${d}" fill="none" stroke="var(${cl})" stroke-width="2"${x === "b" ? ' stroke-dasharray="6 4"' : ""}/>` +
+      `<circle cx="${X(HEADING_WINDOW)}" cy="${Y(at(p)).toFixed(1)}" r="4.5" fill="var(${cl})" stroke="var(--surface-1)" stroke-width="2"/>`;
+    const u = ((p % (2 * L)) + 2 * L) % (2 * L), toSwitch = Math.max(0, (u < L ? L : 2 * L) - u - seg.loss);
+    read.push(`<span><b>${x.toUpperCase()}</b> ${fmtNum(Math.abs(at(p)), 1)}° off straight, ` +
+      (toSwitch > 0 ? `switching in ${fmtNum(toSwitch, 1)} strokes` : "switching now") + `</span>`);
+  }
+  g += `<text x="${m.l}" y="${H - 8}">${HEADING_WINDOW} strokes ago</text><text x="${W - m.r}" y="${H - 8}" text-anchor="end">now</text>`;
+  $("race-heading").innerHTML = g;
+  $("race-heading-read").innerHTML = read.join("");
 }
 
 // ------------------------------------------------------------ race score
@@ -2845,6 +2935,8 @@ function showAt(t) {
   $("scrub-where").textContent = [w("A") && `A ${w("A")}`, w("B") && `B ${w("B")}`].filter(Boolean).join(" · ");
   drawStats(st);
   drawSpeed(st);
+  drawHeadingNow(st);
+  drawShallowNow(st);
 }
 function drawStats(st) {
   const row = (label, a, b, unitA = "", unitB = unitA) =>
