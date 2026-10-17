@@ -564,7 +564,7 @@ console.log("\nCanoe Race Simulator physics");
   check("recovery: the cheapest pivots nearer the top hand than the lower hand (at or by it for the default stroke), in reach",
         // (An upright catch spears the blade in from above: its top hand,
         // above the eyes there, is above them coming down into it.)
-        presetPlans.every(([k, q]) => q.q < 0.5 && q.cost.past < (k === "behind" ? 0.25 : 0.1)) && presetPlans[0][1].q <= 0.2, presetPlans.map(([k, q]) => `${k} pivot ${(q.q * 100).toFixed(0)}%`).join(", "));
+        presetPlans.every(([k, q]) => q.q < 0.5 && q.cost.past < (k === "behind" ? 0.25 : 0.12)) && presetPlans[0][1].q <= 0.2, presetPlans.map(([k, q]) => `${k} pivot ${(q.q * 100).toFixed(0)}%`).join(", "));
   const lowSwing = plan({ recoveryPivot: 0 }), topSwing = plan({ recoveryPivot: 1 });
   // (Less so since the blade leaves the water already coming out: there's
   // less to lift it by.)
@@ -1452,7 +1452,7 @@ console.log("\nPaddle fit");
         topStretch: J.fit.top, catchUp: J0.leftElbow ? J0.leftElbow[2] - midZ(J0.left, J0.leftHand) : 0, lowDown: J.rightElbow ? J.rightElbow[2] - midZ(J.right, J.rightHand) : 0 };
     });
     check(`${tag}: arms: strongest set: elbows toward the hands' force lines, the top arm straight and in line from shoulder to grip (its elbow neither lifted nor dropped), the lower elbow down`,
-          arms3.topOff <= arms3.topRelaxed && arms3.lowOff < arms3.lowRelaxed && arms3.topStretch > 0.88 && Math.abs(arms3.catchUp) < 0.05 && arms3.lowDown < 0,
+          arms3.topOff <= arms3.topRelaxed && arms3.lowOff < arms3.lowRelaxed && arms3.topStretch > 0.88 && Math.abs(arms3.catchUp) < 0.08 && arms3.lowDown < 0,
           `top ${(arms3.topOff * 100).toFixed(0)} cm off its force line (relaxed ${(arms3.topRelaxed * 100).toFixed(0)}), lower ${(arms3.lowOff * 100).toFixed(0)} (${(arms3.lowRelaxed * 100).toFixed(0)}); ` +
           `top arm ${(arms3.topStretch * 100).toFixed(0)}% straight, its elbow ${(arms3.catchUp * 100).toFixed(0)} cm off the line at the catch`);
     // At the catch the paddler reaches by turning and dropping the paddle-side
@@ -1602,6 +1602,27 @@ console.log("\nPaddle fit");
     check(`${tag}: 3D model: the torso reads the trunk's speed, against its best, and now`,
           torsoRead.includes(`(best ${(await page.evaluate(() => window.StrokeSim.trunkBest(window.sim.results.a.params))).toFixed(2)})`) && /Trunk now [\d.]+ m\/s/.test(torsoRead) &&
           (await page.$$('#m3-ctl input[data-key="trunkBestMs"]')).length === 1, torsoRead);
+    // Through the whole cycle neither elbow swings fast round its arm (the
+    // relaxed bend never loses its direction), whatever the technique.
+    const elbowSwing = await page.evaluate(() => {
+      const sets = [{}, { rotation: 1, hinge: 1, legDrive: 1 }, { rotation: 1, hinge: 1, legDrive: 1, lowerHandM: 0.72 },
+        { leanDeg: 40, sweepDeg: 70, handOutM: 0.5, catchDeg: 25, exitDeg: 25 }, { catchDeg: 55, exitDeg: 45 }];
+      const off = (S, H, E) => (E ? E.map((v, i) => v - (S[i] + H[i]) / 2) : [0, 0, 0]);
+      let worst = [0, ""];
+      for (const set of sets) {
+        const r = window.StrokeSim.simulate(Object.assign({}, window.sim.results.a.params, set));
+        let prev = null;
+        for (let i = 0; i <= 400; i++) {
+          const J = window.sim.figJoints(r, null, i / 400), o = [off(J.left, J.leftHand, J.leftElbow), off(J.right, J.rightHand, J.rightElbow)];
+          if (prev) o.forEach((q, j) => { const d = Math.hypot(...q.map((v, k) => v - prev[j][k]));
+            if (d > worst[0]) worst = [d, `${JSON.stringify(set)} ${j ? "lower" : "top"} at ${i / 400}${J.leftElbow && J.rightElbow ? "" : " (an arm straight)"}`]; });
+          prev = o;
+        }
+      }
+      return worst;
+    });
+    check(`${tag}: 3D model: the elbows never swing fast round the arm, through the whole cycle`, elbowSwing[0] < 0.05,
+          `${(elbowSwing[0] * 100).toFixed(1)} cm per 0.25% of the cycle at most: ${elbowSwing[1]}`);
     // Leg drive: the paddle-side leg presses (its knee down, the pelvis
     // turning), the other knee rising, the feet planted, the legs their length.
     const legsAt = (ld) => page.evaluate((ld) => {

@@ -1323,8 +1323,13 @@
     if (L >= ua + fa - 1e-6) return add(a, mul(d, ua / (ua + fa)));
     const u = mul(d, 1 / L), perp = (v) => sub(v, mul(u, dot(v, u)));
     // Relaxed: the top elbow bends out and a little down (not lifted), the
-    // lower one back, out and down.
-    const rest = unit(perp(side > 0 ? [-0.2, 1, -0.4] : [-0.8, -0.6, -1]));
+    // lower one back, out and down. As the top arm swings to point out the
+    // direction square to it is lost, so a second (down) takes over smoothly.
+    let rest = unit(perp([-0.8, -0.6, -1]));
+    if (side > 0) {
+      const p1 = perp(unit([-0.2, 1, -0.4])), lost = smooth(1 - norm(p1) / 0.6);
+      rest = unit(add(p1, mul(unit(perp([0, 0.3, -1])), lost)));
+    }
     let n = rest;
     if (f && w > 0 && norm(f) > 1e-9) {
       const fu = unit(f), m = mul(add(a, b), 0.5), x = add(b, mul(fu, dot(sub(m, b), fu)));   // the force line's nearest point to the arm
