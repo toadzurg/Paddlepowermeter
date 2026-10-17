@@ -764,7 +764,15 @@
   const switchLossStrokes = (p) => (p.noSwitching ? 0 : (p.switchLossS * p.rateSpm) / 60);
   // The stroke as paddled: heel brings the hands in, rotation and a hinge
   // reach further and travel further.
+  // A quicker rate mostly shortens the recovery: drive time falls only as
+  // rate^-DRIVE_TIME_EXP (rowing: ~0.9 s at 20 strokes/min to ~0.75 s at 36,
+  // the drive's share rising with rate, r = 0.85; Kleshnev), and elite
+  // kayakers spend more of each stroke in the water. So the drive's share
+  // is driveFraction at 60 spm, rising as rate^(1 - DRIVE_TIME_EXP).
+  const DRIVE_TIME_EXP = 0.3, DRIVE_SHARE_MAX = 0.8, RATE_MIN = 30, RATE_MAX = 90;
+  const driveShareAt = (p) => Math.min(DRIVE_SHARE_MAX, p.driveFraction * Math.pow(p.rateSpm / 60, 1 - DRIVE_TIME_EXP));
   const paddled = (p) => Object.assign({}, p, {
+    driveFraction: driveShareAt(p),
     handOutM: Math.max(0.1, p.handOutM - 0.9 * Math.sin(rad(p.heelDeg || 0))),
     catchDeg: p.catchDeg + 15 * (p.rotation || 0) + 8 * (p.hinge || 0),
     handTravelM: p.handTravelM + 0.12 * (p.rotation || 0) + 0.15 * (p.hinge || 0),
@@ -815,7 +823,7 @@
       if (cache.has(key)) return cache.get(key);
       const scale = Math.pow(watts / pd, 2 / 3);
       const Vw = V * Math.cbrt(watts / pd);
-      const Tc1 = 60 / p.rateSpm, Td1 = Tc1 * p.driveFraction;
+      const Tc1 = 60 / p.rateSpm, Td1 = Tc1 * pg.driveFraction;
       const fz = replay(samples, Td0, Td1, scale, 2), mp = p.massKg - BOAT_KG;
       const h = heave(fz, Tc1, p.massKg);
       // Between switches the blade pulls at full strength: the switches
@@ -882,7 +890,7 @@
     // the mean (m, toward the paddle side when +).
     function cycleAt(watts, n = 200) {
       const e = at(watts), scale = Math.pow(watts / pd, 2 / 3);
-      const Tc1 = 60 / p.rateSpm, Td1 = Tc1 * p.driveFraction, dt = Tc1 / n;
+      const Tc1 = 60 / p.rateSpm, Td1 = Tc1 * pg.driveFraction, dt = Tc1 / n;
       const sampleAt = (t) => (t > Td1 ? null : samples[Math.min(samples.length - 1, Math.round((t / Td1) * (samples.length - 1)))]);
       const t = [], push = [], side = [], up = [], roll = [];
       for (let i = 0; i < n; i++) {
@@ -1075,16 +1083,41 @@
     const q = Object.assign({}, DEFAULTS, p);
     return q.gearOn ? parabola(bodyThroughDrive(paddled(q)).trunkSpeed, trunkBest(q), q.trunkDrop) : 1;
   }
+  // The stroke rate that's fastest for this stroke at what you can hold:
+  // the water (a quicker rate, more of each stroke in the drive) and the
+  // muscles (their best speeds) together. A golden-section search over whole
+  // strokes a minute.
+  const fastCache = new Map();
+  function fastestRate(p) {
+    const q = Object.assign({}, DEFAULTS, p), key = JSON.stringify(q);
+    if (fastCache.has(key)) return fastCache.get(key);
+    const memo = new Map(), speed = (r) => {
+      if (!memo.has(r)) { const x = Object.assign({}, q, { rateSpm: r }); memo.set(r, simulate(x).speedAt(capacity(x))); }
+      return memo.get(r);
+    };
+    let lo = RATE_MIN, hi = RATE_MAX;
+    while (hi - lo > 2) {
+      const a = Math.round(lo + (hi - lo) * 0.382), b = Math.round(lo + (hi - lo) * 0.618);
+      if (speed(a) < speed(b)) lo = a; else hi = b;
+    }
+    let best = lo;
+    for (let r = lo; r <= hi; r++) if (speed(r) > speed(best)) best = r;
+    if (fastCache.size > 40) fastCache.clear();
+    fastCache.set(key, best);
+    return best;
+  }
   // The power rotation and a hinge add, as a share of fitness.
   const trunkShareOf = (q) => 0.12 * (q.rotation || 0) + 0.08 * (q.hinge || 0);
-  // The stroke rate that holds the most: arm and trunk speeds both go as the
-  // rate, so it's where the two curves, weighted by the power each sets,
+  // The stroke rate that holds the most: arm and trunk speeds both go with
+  // the rate, so it's where the two curves, weighted by the power each sets,
   // peak together. With no rotation or hinge, the rate that puts the arms
   // at their best.
   const bestRate = (p) => {
     const q = Object.assign({}, DEFAULTS, p), b = bodyThroughDrive(paddled(q)), aB = armBest(q), tB = trunkBest(q), wT = trunkShareOf(q);
-    const held = (r) => 0.7 * parabola(b.armSpeed * r / q.rateSpm, aB, q.gearDrop) + wT * parabola(b.trunkSpeed * r / q.rateSpm, tB, q.trunkDrop);
-    let lo = 10, hi = 200;
+    // Arm and trunk speeds go as 1 / drive time.
+    const Td = (r) => driveShareAt(Object.assign({}, q, { rateSpm: r })) / r, k = (r) => Td(q.rateSpm) / Td(r);
+    const held = (r) => 0.7 * parabola(b.armSpeed * k(r), aB, q.gearDrop) + wT * parabola(b.trunkSpeed * k(r), tB, q.trunkDrop);
+    let lo = RATE_MIN, hi = RATE_MAX;   // within what you can paddle
     for (let i = 0; i < 80; i++) { const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3; if (held(m1) < held(m2)) lo = m1; else hi = m2; }
     return (lo + hi) / 2;
   };
@@ -1675,9 +1708,9 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 53;
+  const API_LEVEL = 54;
   const PADDLE = paddleOf(DEFAULTS);
-  const api = { API_LEVEL, shaftDir, typicalFitness, armBest, trunkBest, paddled, paddleOf, gearFactor, trunkGearFactor, bestRate, recoveryPlan, recoveryPose, recoveryCost, recoveryClear, elbowAt, handForces, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
+  const api = { API_LEVEL, driveShareAt, fastestRate, shaftDir, typicalFitness, armBest, trunkBest, paddled, paddleOf, gearFactor, trunkGearFactor, bestRate, recoveryPlan, recoveryPose, recoveryCost, recoveryClear, elbowAt, handForces, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.StrokeSim = api;
 })(typeof window !== "undefined" ? window : globalThis);
