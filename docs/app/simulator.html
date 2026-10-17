@@ -861,7 +861,7 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of each engine file (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. The fit builds on the stroke engine. -->
-<script src="stroke-sim.js?v=30d90cc8b8"></script>
+<script src="stroke-sim.js?v=e5d08e5039"></script>
 <script src="fit-sim.js?v=c12c9edd44"></script>
 <script>
 (() => {
@@ -905,7 +905,7 @@ function shown(el) {
 }
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 49;
+const NEEDS_API = 50;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -3705,10 +3705,22 @@ const SWITCH_OVER = 0.2;
 const recoveryClear = S.recoveryClear;
 // The recovery each result paddles: the engine's plan (stroke-sim.js
 // recoveryPlan: the cheapest in reach, or the pivot set), one per result.
-const plans = new WeakMap();
+// Its search takes tens of ms, so an animation frame never waits for it:
+// while a slider moves, a new result borrows the last plan found and its
+// own follows just after. Anything else gets the plan at once.
+const plans = new WeakMap(), planWaiting = new Set();
+let lastPlan = null, planTimer = 0, animating = false;
 function planOf(r) {
-  if (!plans.has(r)) plans.set(r, S.recoveryPlan(r.geom));
-  return plans.get(r);
+  if (plans.has(r)) return plans.get(r);
+  if (animating && lastPlan) {
+    planWaiting.add(r);
+    clearTimeout(planTimer);
+    planTimer = setTimeout(() => { for (const q of planWaiting) planOf(q); planWaiting.clear(); m3.dirty = true; }, 150);
+    return lastPlan;
+  }
+  const plan = S.recoveryPlan(r.geom);
+  plans.set(r, plan); lastPlan = plan;
+  return plan;
 }
 // Pose and forces at cycle phase ∈ [0, 1): the drive, then the recovery
 // (drawing only: no forces in it). lift (from timeline()): { clear, top,
@@ -3760,6 +3772,7 @@ function acrossTheBoat(j, m, at, sLow) {
 }
 // The paddler's joints for result r (c: its cycle, r.cycleAt) at phase ph,
 // world metres: shared by the views and the 3D model. m: the side.
+const smooth01 = (x) => { const t = Math.min(1, Math.max(0, x)); return t * t * (3 - 2 * t); };
 function figJoints(r, c, ph, lift = null, m = 1) {
   const p = r.params, st = stateAt(r, ph, lift), df = p.driveFraction;
   const i = c ? Math.min(c.t.length - 1, Math.floor(ph * c.t.length)) : 0;
@@ -3788,21 +3801,14 @@ function figJoints(r, c, ph, lift = null, m = 1) {
   const foot0 = along(knee0, [0.36, 0, -0.30], p.shinM);
   const J = acrossTheBoat({ hip: HIP, knee: knee0, foot: foot0, sh, head: head0, off, pad }, m, st.P.at, sLow);
   J.k = k; J.fit = b; J.st = st;
-  // Elbows: upper arm and forearm (straight if the hand is at full reach),
-  // bent the way an elbow goes: down, out to its own side and back. The
-  // lower arm's points further back, so at the exit, with the hand behind
-  // the shoulder, it folds back and up behind the body as in a pull, not
-  // forward.
-  const ua = p.upperArmM, fa = p.forearmM;
-  const elbow = (a, b, out) => {
-    const d = sub3(b, a), L = Math.hypot(...d);
-    if (L >= ua + fa || L <= Math.abs(ua - fa)) return null;
-    const u = d.map((v) => v / L), hint = [out > 0 ? -0.3 : -0.8, 0.6 * out, -1], hu = hint.reduce((q, v, j) => q + v * u[j], 0);
-    let n = hint.map((v, j) => v - hu * u[j]); const nl = Math.hypot(...n) || 1; n = n.map((v) => v / nl);
-    const x0 = (ua * ua - fa * fa + L * L) / (2 * L), h = Math.sqrt(Math.max(0, ua * ua - x0 * x0));
-    return a.map((v, j) => v + u[j] * x0 + n[j] * h);
-  };
-  J.rightElbow = elbow(J.right, J.rightHand, -1); J.leftElbow = elbow(J.left, J.leftHand, 1);
+  // Elbows (stroke-sim.js elbowAt): toward each hand's force line as the
+  // blade loads, so the arm is strongest (the top elbow up, its arm in line
+  // from shoulder to grip; the lower elbow down); relaxed with no force.
+  // Paddling left (m < 0) the forces mirror with the body.
+  const ua = p.upperArmM, fa = p.forearmM, mir = (v) => [v[0], m * v[1], v[2]];
+  const hf = st.inDrive && st.F > 0 ? S.handForces(st.P, st.B, st.thrust, sLow) : null, w = hf ? smooth01(st.F / (0.2 * r.peakForce)) : 0;
+  const elbow = (a, b, side, f) => (Math.hypot(...sub3(b, a)) >= ua + fa ? null : S.elbowAt(a, b, ua, fa, side, f && mir(f), w));
+  J.rightElbow = elbow(J.right, J.rightHand, -1, hf && hf.low); J.leftElbow = elbow(J.left, J.leftHand, 1, hf && hf.top);
   return J;
 }
 // P: the view's projection; m: the side (1 right, −1 left, between mid-switch).
@@ -3900,6 +3906,11 @@ function drawView(svg, name, tl) {
 }
 
 function frame(now) {
+  animating = true;
+  try { frameBody(now); } finally { animating = false; }
+  requestAnimationFrame(frame);
+}
+function frameBody(now) {
   // The first frame's timestamp can precede the clock read at startup, so
   // clamp: a negative step would put the phase outside the drive samples.
   const dt = Math.max(0, Math.min(0.1, (now - lastT) / 1000));
@@ -3915,7 +3926,6 @@ function frame(now) {
     drawHullLive(phase);
     if (tab === "fit") m3Frame(dt);
   }
-  requestAnimationFrame(frame);
 }
 
 // --------------------------------------------------------------- help tips

@@ -321,7 +321,7 @@
       const d1 = dist(b.off, grip), d2 = dist(b.pad, low);
       const o1 = beyond(d1 - max), o2 = beyond(d2 - max);
       // A mild liking for comfortably bent arms, as a paddler sits to have.
-      const comfy = ((d1 / arm - ARM_BEST) / 0.3) ** 2 + ((d2 / arm - ARM_BEST) / 0.3) ** 2;
+      const comfy = ((d1 / arm - TOP_ARM_BEST) / 0.3) ** 2 + ((d2 / arm - ARM_BEST) / 0.3) ** 2;
       // The face stays behind the top hand: to reach far forward, turn the
       // shoulders and drop the paddle-side one rather than putting the head
       // past the hand.
@@ -452,10 +452,13 @@
     bodyCache.set(key, body);
     return body;
   }
-  // From the arms: strongest with the arm about ARM_BEST of full stretch,
-  // weaker folded up or stretched out; the lower (pulling) arm counts most.
-  const ARM_BEST = 0.72, ARM_SPAN = 0.25;
-  const armStrength = (p, e) => Math.max(STRENGTH_MIN, 1 - p.strengthDrop * ((Math.min(1.05, e) - ARM_BEST) / ARM_SPAN) ** 2);
+  // From the arms: the lower arm pulls, strongest with the elbow near 90°
+  // (elbow flexors' torque peaks about there): ARM_BEST of full stretch. The
+  // top arm pushes, the paddle's fulcrum, and pushing is strongest nearer
+  // straight (an ascending strength curve, as in a press): TOP_ARM_BEST.
+  // Weaker folded up or stretched out; the lower (pulling) arm counts most.
+  const ARM_BEST = 0.72, TOP_ARM_BEST = 0.9, ARM_SPAN = 0.25;
+  const armStrength = (p, e, best = ARM_BEST) => Math.max(STRENGTH_MIN, 1 - p.strengthDrop * ((Math.min(1.05, e) - best) / ARM_SPAN) ** 2);
   // Reaching far with the trunk is weaker too: wound up, it can't brace
   // the pull. Each way it goes past the technique's own posture costs
   // strength as the square of the excess: leaning past LEAN0 (losing
@@ -488,7 +491,7 @@
       const P = pose(p, u), nn = neutralAt(p, u);
       const b = fitBody(p, seatX, P.at(0), P.at(lowerHand(p)), nn, 0, prev || nn);
       prev = b.pose;
-      return (0.75 * armStrength(p, b.low) + 0.25 * armStrength(p, b.top)) * trunkStrength(p, b.pose, nn);
+      return (0.75 * armStrength(p, b.low) + 0.25 * armStrength(p, b.top, TOP_ARM_BEST)) * trunkStrength(p, b.pose, nn);
     };
     for (let i = 1; i <= n; i++) {
       const u = (i - 0.5) / n, s = sAt(u);
@@ -1084,12 +1087,37 @@
     }
     return st;
   }
-  // An elbow between shoulder a and hand b: bent down, out to its own side
-  // and back (the lower arm's further back); straight past full reach.
-  function elbowOf(a, b, ua, fa, side) {
+  // The forces the hands put on the paddle to hold the water's force on the
+  // blade (water: on the blade, = the push on the boat), the paddle a lever
+  // with no weight: the lower hand pulls, the top hand pushes, across the
+  // shaft (along it is undetermined; the lower hand takes it).
+  function handForces(P, B, water, sLow) {
+    const d = P.d, grip = P.at(0), sC = dot(sub(B.cop, grip), d), across = sub(water, mul(d, dot(water, d)));
+    const low = add(mul(across, -sC / sLow), mul(d, -dot(water, d)));
+    return { top: mul(across, sC / sLow - 1), low };
+  }
+  // An elbow between shoulder a and hand b (straight past full reach). Where
+  // it goes about the shoulder–hand line is the arm's free choice. With the
+  // hand pushing or pulling with force f, a joint's torque is the force
+  // times its distance from the force's line, so the strongest arm puts the
+  // elbow as near that line as it can: the top arm, pushing forward at about
+  // head height, lifts its elbow toward the line through the grip and lines
+  // up shoulder, elbow and hand; the lower arm, pulling aft low, drops its
+  // elbow. It leans that way as the force builds (w: 0 to 1). With no force
+  // (the catch, the exit, the recovery): the top arm (side +1, the off side)
+  // keeps its elbow up and out to its own side, as a paddler holds the top
+  // hand over the paddle; the lower arm's hangs down, out and back.
+  function elbowAt(a, b, ua, fa, side, f = null, w = 0) {
     const d = sub(b, a), L = norm(d);
     if (L >= ua + fa - 1e-6) return add(a, mul(d, ua / (ua + fa)));
-    const u = mul(d, 1 / L), hint = [side > 0 ? -0.3 : -0.8, 0.6 * side, -1], n = unit(sub(hint, mul(u, dot(hint, u))));
+    const u = mul(d, 1 / L), perp = (v) => sub(v, mul(u, dot(v, u)));
+    const rest = unit(perp(side > 0 ? [-0.2, 1, 0.25] : [-0.8, -0.6, -1]));
+    let n = rest;
+    if (f && w > 0 && norm(f) > 1e-9) {
+      const fu = unit(f), m = mul(add(a, b), 0.5), x = add(b, mul(fu, dot(sub(m, b), fu)));   // the force line's nearest point to the arm
+      const toward = perp(sub(x, m));
+      if (norm(toward) > 1e-4) { const mixd = add(mul(rest, 1 - w), mul(unit(toward), w)); n = norm(mixd) > 1e-6 ? unit(mixd) : unit(toward); }
+    }
     const x0 = (ua * ua - fa * fa + L * L) / (2 * L), h = Math.sqrt(Math.max(0, ua * ua - x0 * x0));
     return add(add(a, mul(u, x0)), mul(n, h));
   }
@@ -1109,7 +1137,7 @@
       const off = sh("off"), pad = sh("pad"), head = sh("head"), centre = sh("centre");
       const grip = P.at(0), low = P.at(sLow), pts = [];
       for (const [S, H, side] of [[off, grip, 1], [pad, low, -1]]) {
-        const E = elbowOf(S, H, p.upperArmM, p.forearmM, side);
+        const E = elbowAt(S, H, p.upperArmM, p.forearmM, side);
         for (const [a, b, m, c, g] of [[S, E, sm[0], SEG.com[0], SEG.gyr[0]], [E, H, sm[1], SEG.com[1], SEG.gyr[1]]]) {
           const com = add(a, mul(sub(b, a), c)), r = mul(sub(b, a), g);
           pts.push([add(com, r), m / 2], [sub(com, r), m / 2]);   // a dumbbell with the segment's radius of gyration
@@ -1529,9 +1557,9 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 49;
+  const API_LEVEL = 50;
   const PADDLE = paddleOf(DEFAULTS);
-  const api = { API_LEVEL, shaftDir, paddled, paddleOf, gearFactor, trunkGearFactor, bestRate, recoveryPlan, recoveryPose, recoveryCost, recoveryClear, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
+  const api = { API_LEVEL, shaftDir, paddled, paddleOf, gearFactor, trunkGearFactor, bestRate, recoveryPlan, recoveryPose, recoveryCost, recoveryClear, elbowAt, handForces, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.StrokeSim = api;
 })(typeof window !== "undefined" ? window : globalThis);
