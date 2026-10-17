@@ -256,9 +256,9 @@ measures a C1 paddler's trunk on its own):
   the triceps' lateral head 32–40%; slow fibres reach peak power at a
   lower speed ([Rome et al. 1988](https://www.nature.com/articles/335824a0)),
   so the trunk's best speed needn't be the arms'. Isokinetic trunk rotation
-  still gains power up to 120°/s ([Kim et al.](https://pmc.ncbi.nlm.nih.gov/articles/PMC3996988/)): its peak is broad.
+  still gains power up to 120°/s ([isokinetic axial rotation, 2014](https://pmc.ncbi.nlm.nih.gov/articles/PMC3996988/)): its peak is broad.
 - Lower rates are more economical below race pace in double poling
-  ([Lindinger & Holmberg 2011](https://www.frontiersin.org/journals/sports-and-active-living/articles/10.3389/fspor.2022.849731/pdf)),
+  ([Lindinger & Holmberg 2011](https://www.springermedicine.com/how-do-elite-cross-country-skiers-adapt-to-different-double-poli/21068888)),
   and the power-best rate exceeds the efficiency-best one by 1.7–2.4×
   depending on fibre type in cycling (Kohler & Boutellier).
 
