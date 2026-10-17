@@ -1275,6 +1275,7 @@
   // (the catch, the exit, the recovery): the top arm (side +1, the off side)
   // keeps its elbow up and out to its own side, as a paddler holds the top
   // hand over the paddle; the lower arm's hangs down, out and back.
+  const ELBOW_NEAR = 0.1;
   function elbowAt(a, b, ua, fa, side, f = null, w = 0) {
     const d = sub(b, a), L = norm(d);
     if (L >= ua + fa - 1e-6) return add(a, mul(d, ua / (ua + fa)));
@@ -1283,8 +1284,16 @@
     let n = rest;
     if (f && w > 0 && norm(f) > 1e-9) {
       const fu = unit(f), m = mul(add(a, b), 0.5), x = add(b, mul(fu, dot(sub(m, b), fu)));   // the force line's nearest point to the arm
-      const toward = perp(sub(x, m));
-      if (norm(toward) > 1e-4) { const mixd = add(mul(rest, 1 - w), mul(unit(toward), w)); n = norm(mixd) > 1e-6 ? unit(mixd) : unit(toward); }
+      const toward = perp(sub(x, m)), off = norm(toward);
+      // Turn from the relaxed side toward the force line, about the arm's
+      // axis, by w of the angle between; less as the line nears the arm
+      // (within ELBOW_NEAR it could lie either side) or lies opposite (the
+      // turn either way round), so the elbow never jumps.
+      if (off > 1e-9) {
+        const t = unit(toward), ang = Math.atan2(dot(cross(rest, t), u), dot(rest, t));
+        const ww = w * smooth(off / ELBOW_NEAR) * smooth((Math.PI - Math.abs(ang)) / (Math.PI / 4));
+        n = turnAbout(rest, u, ww * ang);
+      }
     }
     const x0 = (ua * ua - fa * fa + L * L) / (2 * L), h = Math.sqrt(Math.max(0, ua * ua - x0 * x0));
     return add(add(a, mul(u, x0)), mul(n, h));
