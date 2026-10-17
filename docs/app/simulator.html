@@ -812,7 +812,7 @@
         <div id="strength-ctl"><div id="ctl-strength"></div>
           <svg class="hv" id="strength-curve" role="img" aria-label="Strength at each paddle angle, with this stroke's range"></svg>
           <div class="help" id="strength-read"></div></div>
-        <h4 class="sub-h">Gearing<button type="button" class="info" data-tip="Off: you hold the same power at any stroke rate. On: your arms hold the most power moving at one speed, like a cyclist's best cadence. Arm speed is your lower hand against its shoulder through the drive: a higher rate, a longer stroke or wider hands move it faster. Trunk rotation and a hinge hardly do: your trunk carries their extra travel. It changes what you can hold. Assumed until measured: your paddle can find your best speed from strokes at a few rates." aria-label="What is this?">?</button></h4>
+        <h4 class="sub-h">Gearing<button type="button" class="info" data-tip="Off: you hold the same power at any stroke rate. On: your arms hold the most power moving at one speed, like a cyclist's best cadence. Arm speed is your lower hand against its shoulder through the drive: a higher rate, a longer stroke or wider hands move it faster. Trunk rotation and a hinge don't: your trunk carries their extra travel. Only the pull counts: your shoulder rising or dropping across it is your trunk's work. The trunk's share shows too. It changes what you can hold. Assumed until measured: your paddle can find your best speed from strokes at a few rates." aria-label="What is this?">?</button></h4>
         <div class="row chips" id="gear-mode" role="group" aria-label="Gearing"></div>
         <div id="gear-ctl"><div id="ctl-gear"></div><div class="help" id="gear-read"></div></div>
         <h4 class="sub-h">Body<button type="button" class="info" data-tip="Height scales every length; then set any one. Female: shoulders 3.4% and forearms 3.5% shorter for the same height (ANSUR II, radius lengths); the rest scales alike. You sit with your hips where the blade leaves the water on the Defaults stroke (further forward only if you can't reach it from there); every technique is paddled from that seat, and the body leans, turns and drops the paddle-side shoulder at each moment so both hands are within reach, the face behind the top hand. With strength from the arms, every length changes results; by paddle angle, only the arms do." aria-label="What is this?">?</button></h4>
@@ -861,8 +861,8 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of each engine file (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. The fit builds on the stroke engine. -->
-<script src="stroke-sim.js?v=1953777622"></script>
-<script src="fit-sim.js?v=6033546e48"></script>
+<script src="stroke-sim.js?v=215eb5c888"></script>
+<script src="fit-sim.js?v=454fd0985e"></script>
 <script>
 (() => {
 "use strict";
@@ -905,7 +905,7 @@ function shown(el) {
 }
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 46;
+const NEEDS_API = 47;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -942,15 +942,20 @@ const BOATS_KEY = "ppm.sim.boats";
 // Saves carry SAVE_VERSION. A default changed since a save was made: the
 // saved value that was the old default follows the new one (it was never
 // chosen); any other value is kept. Saves before versions were added are 1.
-const SAVE_VERSION = 2;
-const RETIRED_DEFAULTS = [{ key: "switchLossS", was: 0.3, until: 2 }];   // the default was 0.3 s before version 2
+const SAVE_VERSION = 3;
+const RETIRED_DEFAULTS = [
+  { key: "switchLossS", was: 0.3, until: 2 },   // the default was 0.3 s before version 2
+  { key: "armBestMs", was: 0.9, until: 3 },     // 0.9 m/s before arm speed counted only the pull (version 3)
+];
+// Whether saved value v of setting k, from a save of `version`, was the default then.
+const retiredIn = (version, k, v) => RETIRED_DEFAULTS.some((d) => d.key === k && version < d.until && Math.abs(v - d.was) < 1e-9);
 // Saved settings, on top of the starting ones: a setting added since they
 // were saved keeps its default, and anything unknown or not a number is dropped.
 function loadBoats() {
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(BOATS_KEY)); } catch {}
   const version = saved && typeof saved.version === "number" ? saved.version : 1;
-  const retired = (k, v) => RETIRED_DEFAULTS.some((d) => d.key === k && version < d.until && Math.abs(v - d.was) < 1e-9);
+  const retired = (k, v) => retiredIn(version, k, v);
   const out = {};
   for (const x of ["a", "b"]) {
     out[x] = STARTING[x]();
@@ -1259,7 +1264,8 @@ function showGear() {
   if (!r || !boats[editing].gearOn) return;
   const p = r.params;
   $("gear-read").innerHTML = `Your lower hand moves <b>${fmtNum(r.body.armSpeed, 2)} m/s</b> against its shoulder (best ${fmtNum(p.armBestMs, 2)}): ` +
-    `your arms hold <b>×${fmtNum(S.gearFactor(p), 2)}</b>. This stroke suits your arms best at <b>${fmtNum(S.bestRate(p), 0)} spm</b>.`;
+    `your arms hold <b>×${fmtNum(S.gearFactor(p), 2)}</b>. This stroke suits your arms best at <b>${fmtNum(S.bestRate(p), 0)} spm</b>. ` +
+    `Your trunk carries <b>${fmtNum(r.body.trunkShare * 100, 0)}%</b> of the pull, its shoulder moving ${fmtNum(r.body.trunkSpeed, 2)} m/s.`;
 }
 // Strength at each paddle angle, and the part of it this stroke uses.
 function drawStrength() {
@@ -1319,13 +1325,18 @@ function renderProfiles(pick = $("profile-pick").value) {
 $("profile-pick").addEventListener("change", () => {
   const all = loadProfiles(), name = $("profile-pick").value;
   $("profile-delete").disabled = !name;
-  if (name && all[name]) { Object.assign(boats[editing], S.DEFAULTS && profileOf(Object.assign({}, S.DEFAULTS, all[name]))); changed(editing); }
+  if (name && all[name]) {
+    // A setting saved at what was then its default follows today's default.
+    const saved = all[name], version = typeof saved.version === "number" ? saved.version : 1;
+    const kept = Object.fromEntries(Object.entries(saved).filter(([k, v]) => k !== "version" && !retiredIn(version, k, v)));
+    Object.assign(boats[editing], profileOf(Object.assign({}, S.DEFAULTS, kept))); changed(editing);
+  }
 });
 $("profile-save").addEventListener("click", () => {
   const name = (prompt("Name this profile", $("profile-pick").value || "") || "").trim();
   if (!name) return;
   const all = loadProfiles();
-  all[name] = profileOf(boats[editing]);
+  all[name] = Object.assign(profileOf(boats[editing]), { version: SAVE_VERSION });
   if (!saveProfiles(all)) alert("This browser can't save profiles.");
   renderProfiles(name);
 });
@@ -4081,6 +4092,7 @@ function showFit() {
     row("10 km", clock(10000 / now.speed), clock(10000 / best.speed)) +
     row("Metacentric height", `${fmtNum(now.GM * 100, 0)} cm`, `${fmtNum(best.GM * 100, 0)} cm`) +
     row("Arm speed", `${fmtNum(now.armSpeed, 2)} m/s`, `${fmtNum(best.armSpeed, 2)} m/s`) +
+    row("Trunk carries", `${fmtNum(now.trunkShare * 100, 0)}%`, `${fmtNum(best.trunkShare * 100, 0)}%`) +
     row("Strokes per side", fmtNum(now.strokesPerSide, 1), fmtNum(best.strokesPerSide, 1));
   const why = [];
   why.push(s.seatZM < F.RANGES.seatZM[1] - 1e-6
@@ -4539,7 +4551,8 @@ function m3Reads({ J, r }) {
     topHand: [["From the centreline", cmTrim(p.handOutM)], ["Above shoulders now", cm(st.P.at(0)[2] - J.fit.centre[2])], ["Arm stretch", `${fmtNum(J.fit.top * 100, 0)}%`]],
     lowHand: [["Below the grip", cmTrim(S.lowerHand(r.geom))], ["Arm stretch", `${fmtNum(J.fit.low * 100, 0)}%`], ["Arm speed", `${fmtNum(r.body.armSpeed, 2)} m/s`]],
     arms: [["Top arm", `${fmtNum(J.fit.top * 100, 0)}%`], ["Lower arm", `${fmtNum(J.fit.low * 100, 0)}%`], ["Arm speed", `${fmtNum(r.body.armSpeed, 2)} m/s`]],
-    torso: [["Lean", deg(J.fit.pose[0])], ["Roll", deg(J.fit.pose[1])], ["Twist", deg(J.fit.pose[2])]],
+    torso: [["Lean", deg(J.fit.pose[0])], ["Roll", deg(J.fit.pose[1])], ["Twist", deg(J.fit.pose[2])],
+      ["Carries", `${fmtNum(r.body.trunkShare * 100, 0)}% of the pull`], ["Shoulder", `${fmtNum(r.body.trunkSpeed, 2)} m/s`]],
     head: [["Height", cm(p.heightM)], ["Can hold", `${fmtNum(S.capacity(p), 0)} W for an hour`]],
     legs: [["Thigh", cmTrim(p.thighM)], ["Shin", cmTrim(p.shinM)]],
     path: [["Catch", `${fmtNum(p.catchDeg, 0)}°`], ["Exit", `${fmtNum(p.exitDeg, 0)}°`], speed, ["Strokes a side", fmtNum(r.strokesPerSide, 1)]],

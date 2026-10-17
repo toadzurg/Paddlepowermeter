@@ -170,7 +170,7 @@
     strengthDrop: 0.4,
     // Gearing (off by default): the arms hold the most power at one speed.
     gearOn: 0,
-    armBestMs: 0.9,            // the lower hand's speed against its shoulder you hold the most power at, m/s
+    armBestMs: 0.87,           // the lower hand's speed against its shoulder (along the pull) you hold the most power at, m/s: the default stroke's at 60 spm
     gearDrop: 0.15,            // share of the arms' power lost at half or 1.5 times it
     // The paddler's body, m, fitted to the paddle each moment (see fitBody).
     // Results change through strength by position: by angle, the arm length;
@@ -409,26 +409,37 @@
   }
   // The body through the drive: how stretched each arm is, how far forward
   // the trunk leans (rad), how high the top hand is above the shoulders (m),
-  // and how far short of the hands the arms fall where they can't reach (m). armSpeed: the lower hand's average speed
-  // against its shoulder through the drive (m/s), what the arm's muscles
-  // move at; the trunk carries the rest of the hand's travel.
+  // and how far short of the hands the arms fall where they can't reach (m).
+  // armSpeed: the lower hand's average speed against its shoulder along the
+  // pull through the drive (m/s), what the arm's muscles move at. The trunk
+  // carries the rest: trunkShare of the hand's travel, its paddle-side
+  // shoulder moving at trunkSpeed (m/s).
   const bodyCache = new Map();
   function bodyThroughDrive(pg, n = 20) {
     const key = JSON.stringify(pg);
     if (bodyCache.has(key)) return bodyCache.get(key);
     const seatX = seatFor(pg), arm = armOf(pg), out = [];
-    let prev = null, rel = null, path = 0;
+    let prev = null, last = null, path = 0, hand = 0, carried = 0, trunk = 0;
     for (let i = 0; i <= n; i++) {
       const u = i / n, P = pose(pg, u), nn = neutralAt(pg, u), low = P.at(lowerHand(pg));
       const b = fitBody(pg, seatX, P.at(0), low, nn, 0, prev || nn);
       prev = b.pose;
-      const r = sub(low, b.pad), grip = P.at(0);
-      if (rel) path += dist(r, rel);
-      rel = r;
+      const grip = P.at(0);
+      if (last) {
+        // Along the pull: the hand's step, less what the shoulder carries
+        // that way. The shoulder moving across the pull (rising out of a
+        // drop as the hand goes aft) is the trunk's doing, not the arm's.
+        const dh = sub(low, last.low), ds = sub(b.pad, last.pad), along = unit(dh), withHand = dot(ds, along);
+        path += Math.abs(norm(dh) - withHand);
+        hand += norm(dh); carried += withHand; trunk += norm(ds);
+      }
+      last = { low, pad: b.pad };
       out.push({ u, top: b.top, low: b.low, lean: b.pose[0], roll: b.pose[1], twist: b.pose[2], above: grip[2] - b.centre[2],
                  short: Math.max(0, (Math.max(b.top, b.low) - 1) * arm) });
     }
-    const body = { seatX, frames: out, short: Math.max(...out.map((f) => f.short)), armSpeed: path / (60 / pg.rateSpm * pg.driveFraction) };
+    const T = 60 / pg.rateSpm * pg.driveFraction;
+    const body = { seatX, frames: out, short: Math.max(...out.map((f) => f.short)), armSpeed: path / T,
+      trunkSpeed: trunk / T, trunkShare: hand > 0 ? carried / hand : 0 };
     if (bodyCache.size > 60) bodyCache.clear();
     bodyCache.set(key, body);
     return body;
@@ -1322,7 +1333,7 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 46;
+  const API_LEVEL = 47;
   const PADDLE = paddleOf(DEFAULTS);
   const api = { API_LEVEL, shaftDir, paddled, paddleOf, gearFactor, bestRate, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
