@@ -27,6 +27,8 @@
     --water-line: #86b6ef;
     --button: #0b0b0b;
     --button-text: #fcfcfb;
+    /* The 3D model (Fit tab): hull, clothes, skin, shorts, seat, and a part picked. */
+    --m3-hull: #ecebe4; --m3-cloth: #d9d7cf; --m3-skin: #d6b08f; --m3-legs: #4a4a47; --m3-seat: #8a6a48; --m3-pick: #e0a020;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -48,6 +50,7 @@
       --water-line: #1c5cab;
       --button: #f0efec;
       --button-text: #1a1a19;
+      --m3-hull: #9a9993; --m3-cloth: #6f6e69; --m3-skin: #b8916f; --m3-legs: #55554f; --m3-seat: #7a5c3e; --m3-pick: #f0b030;
     }
   }
   * { box-sizing: border-box; }
@@ -110,6 +113,34 @@
   .hull-legend i.fit-worst { background: color-mix(in srgb, var(--cat-useful) 20%, var(--surface-1)); }
   .hull-legend i.fit-now { background: none; border: 2px solid var(--text-primary); height: 10px; }
   .hull-legend i.fit-sug { background: none; border: 2px dashed var(--series-1); height: 10px; }
+  /* 3D model (Fit tab) */
+  .m3-wrap { position: relative; margin-top: 8px; }
+  svg#m3 { display: block; width: 100%; height: auto; border-radius: 10px; background: var(--surface-0); touch-action: none;
+    cursor: grab; user-select: none; -webkit-user-select: none; }
+  svg#m3.grabbing { cursor: grabbing; }
+  svg#m3:focus-visible { outline: 2px solid var(--series-1); outline-offset: 2px; }
+  svg#m3 [data-part] { cursor: pointer; }
+  svg#m3 .ghost { opacity: 0.4; pointer-events: none; }
+  svg#m3 .fade { opacity: 0.22; pointer-events: none; }
+  svg#m3 .hl, svg#m3 .shine, svg#m3 .dim, svg#m3 text { pointer-events: none; }
+  svg#m3 .water { fill: var(--water-line); fill-opacity: 0.22; }
+  svg#m3 .water-grid { stroke: var(--water-line); stroke-width: 1; opacity: 0.45; }
+  svg#m3 .gunwale { stroke: var(--axis); stroke-linecap: round; }
+  svg#m3 .dim { stroke: var(--text-primary); stroke-width: 1.2; stroke-dasharray: 4 3; fill: none; }
+  svg#m3 .dim-end { fill: var(--text-primary); }
+  svg#m3 text { font-size: 12px; font-weight: 600; fill: var(--text-primary); paint-order: stroke; stroke: var(--surface-0);
+    stroke-width: 3px; stroke-linejoin: round; }
+  svg#m3 text.axis { font-weight: 500; fill: var(--text-secondary); }
+  .m3-tools { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; }
+  .m3-tools button { min-width: 34px; background: color-mix(in srgb, var(--surface-1) 88%, transparent); }
+  .m3-bar { margin-top: 8px; }
+  .m3-bar input[type=range] { flex: 1; min-width: 120px; margin: 0; }
+  #m3-phase-read { min-width: 9em; }
+  .m3-panel { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-0); }
+  .m3-panel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .m3-panel-head h3 { margin: 0; }
+  .m3-panel .hull-read { margin-top: 6px; }
+  .m3-hint { margin-top: 8px; }
   .race-power .ctl { margin: 2px 0; }
   @media (min-width: 560px) { .race-power { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
     .race-power .ctx-head, .race-power #effort-mode { grid-column: 1 / -1; } }
@@ -692,6 +723,36 @@
 
     </div>
     <div class="tab-body" id="tab-fit" role="tabpanel" hidden>
+      <!-- ------------------------------------------------------ 3D model -->
+      <section class="card" id="m3-card">
+        <div class="card-head">
+          <h2>3D model<button type="button" class="info" data-tip="The boat, paddle and paddler from the same model as the stroke views: the seat, the paddle's path and the body fitted to it at each moment. Drag to turn it, pinch or Ctrl + scroll to zoom, Shift-drag (or two fingers) to move it. Tap a part, or pick it below, to zoom in on it and set it: the sliders change the boat being edited, as the ones beside do." aria-label="What is this?">?</button></h2>
+          <div class="row chips" id="m3-show" role="group" aria-label="Setup shown"></div>
+        </div>
+        <div class="sub" id="m3-sub"></div>
+        <div class="m3-wrap">
+          <svg id="m3" tabindex="0" role="img" aria-label="3D model of the boat, paddle and paddler. Drag to turn, tap a part to set it."></svg>
+          <div class="m3-tools">
+            <button type="button" class="small" id="m3-out" aria-label="Zoom out">−</button><button type="button" class="small" id="m3-in" aria-label="Zoom in">+</button><button type="button" class="small" id="m3-home">Reset</button>
+          </div>
+        </div>
+        <div class="row m3-bar">
+          <button type="button" class="small" id="m3-play">Pause</button>
+          <input type="range" id="m3-phase" min="0" max="0.995" step="0.005" value="0" aria-label="Moment in the stroke">
+          <span class="sub num" id="m3-phase-read"></span>
+        </div>
+        <div class="row chips" id="m3-views" role="group" aria-label="Look from"></div>
+        <h3>Parts</h3>
+        <div class="row chips" id="m3-parts" role="group" aria-label="Parts"></div>
+        <div class="m3-panel" id="m3-panel" hidden>
+          <div class="m3-panel-head"><h3 id="m3-part-name"></h3><button type="button" class="small" id="m3-done">Done</button></div>
+          <div class="help" id="m3-part-about"></div>
+          <div class="hull-read" id="m3-part-read"></div>
+          <div class="note warn" id="m3-part-warn" hidden></div>
+          <div id="m3-ctl"></div>
+        </div>
+        <div class="help m3-hint">Drag to turn · pinch or Ctrl + scroll to zoom · Shift-drag or two fingers to move · tap a part to zoom in and set it.</div>
+      </section>
       <!-- ------------------------------------------------------ fit -->
       <section class="card" id="fit-card">
         <h2>Fit: seat, paddle and hands<button type="button" class="info" data-tip="The seat goes as high as your water allows (a higher seat gives leverage the model doesn't count yet, and costs stability, which it does). Then paddle length, lower hand and top hand are searched for the most speed at what you can hold, with both hands in reach and the top hand between chin and forehead. A new paddle length keeps your blade path: the blade goes in and comes out where it does now, so a longer paddle sweeps less angle and your arms move slower, like a higher gear." aria-label="What is this?">?</button></h2>
@@ -3628,7 +3689,7 @@ function shoulders(sh, rotation, s, half = 0.2) {
            pad: [sh[0] + half * Math.sin(twist), -half * Math.cos(twist), sh[2]] };
 }
 // The body fitted to the paddle (stroke-sim.js fitBody), at each moment.
-const figCache = new Map();
+const figCache = new WeakMap();   // per result: phase → body
 // Switching sides, without flipping the paddler through the centreline: each
 // shoulder keeps to its own side and the hands trade places on the shaft as
 // the paddle goes over (the lower hand slides up to the grip, the top hand
@@ -3645,9 +3706,10 @@ function acrossTheBoat(j, m, at, sLow) {
     left: mix(mir(j.pad), j.off), leftHand: onPaddle(sLow * (1 - a)),
     right: mix(mir(j.off), j.pad), rightHand: onPaddle(sLow * a) };
 }
-// P: the view's projection; m: the side (1 right, −1 left, between mid-switch).
-function paddlerFig(P, x, ph, tint = false, lift = null, m = 1) {
-  const r = results[x], c = hullCyc[x], p = r.params, st = stateAt(r, ph, lift), df = p.driveFraction;
+// The paddler's joints for result r (c: its cycle, r.cycleAt) at phase ph,
+// world metres: shared by the views and the 3D model. m: the side.
+function figJoints(r, c, ph, lift = null, m = 1) {
+  const p = r.params, st = stateAt(r, ph, lift), df = p.driveFraction;
   const i = c ? Math.min(c.t.length - 1, Math.floor(ph * c.t.length)) : 0;
   const bx = c ? c.bodyX[i] : 0, bz = c ? c.bodyZ[i] : 0;
   // The technique's posture: a hinge or swing of x m (whole body) turns the
@@ -3655,13 +3717,15 @@ function paddlerFig(P, x, ph, tint = false, lift = null, m = 1) {
   const lean = rad(Math.max(-20, Math.min(55, LEAN0 + (bx / 0.18) * 180 / Math.PI)));
   const s = ph < df ? Math.cos(Math.PI * ph / df) : -Math.cos(Math.PI * (ph - df) / (1 - df));
   const sLow = S.lowerHand(r.geom), grip = st.P.at(0), low = st.P.at(sLow);
-  // One fit per boat and moment, shared by every view drawing it.
-  const key = `${x}|${ph.toFixed(4)}|${lift ? [lift.clear, lift.top, lift.over].map((v) => v.toFixed(3)).join(",") : "-"}|${r.body.seatX}`;
-  let b = figCache.get(key);
+  // One fit per result and moment, shared by every view drawing it.
+  const key = `${ph.toFixed(4)}|${lift ? [lift.clear, lift.top, lift.over].map((v) => v.toFixed(3)).join(",") : "-"}`;
+  if (!figCache.has(r)) figCache.set(r, new Map());
+  const fits = figCache.get(r);
+  let b = fits.get(key);
   if (!b) {
-    if (figCache.size > 64) figCache.clear();
+    if (fits.size > 64) fits.clear();
     b = S.fitBody(r.geom, r.body.seatX, grip, low, [lean, 0, rad(25 * (p.rotation || 0) * s)], 1.6 * bz);
-    figCache.set(key, b);
+    fits.set(key, b);
   }
   const HIP = b.hip, sh = b.centre, off = b.off, pad = b.pad, k = (p.heightM || 1.78) / 1.78;
   const head0 = add3(sh, b.up.map((v) => v * 0.24 * k));
@@ -3670,6 +3734,7 @@ function paddlerFig(P, x, ph, tint = false, lift = null, m = 1) {
   const knee0 = along(HIP, [0.42, 0, 0.16], p.thighM); knee0[2] -= legDz;
   const foot0 = along(knee0, [0.36, 0, -0.30], p.shinM);
   const J = acrossTheBoat({ hip: HIP, knee: knee0, foot: foot0, sh, head: head0, off, pad }, m, st.P.at, sLow);
+  J.k = k; J.fit = b; J.st = st;
   // Elbows: upper arm and forearm, bent down and out (straight if the hand is at full reach).
   const ua = p.upperArmM, fa = p.forearmM;
   const elbow = (a, b, out) => {
@@ -3680,12 +3745,18 @@ function paddlerFig(P, x, ph, tint = false, lift = null, m = 1) {
     const x0 = (ua * ua - fa * fa + L * L) / (2 * L), h = Math.sqrt(Math.max(0, ua * ua - x0 * x0));
     return a.map((v, j) => v + u[j] * x0 + n[j] * h);
   };
+  J.rightElbow = elbow(J.right, J.rightHand, -1); J.leftElbow = elbow(J.left, J.leftHand, 1);
+  return J;
+}
+// P: the view's projection; m: the side (1 right, −1 left, between mid-switch).
+function paddlerFig(P, x, ph, tint = false, lift = null, m = 1) {
+  const J = figJoints(results[x], hullCyc[x], ph, lift, m), k = J.k;
   const sc = Math.max(...[[1, 0, 0], [0, 1, 0], [0, 0, 1]].map((e) => Math.hypot(P(e)[0] - P([0, 0, 0])[0], P(e)[1] - P([0, 0, 0])[1])));
   const ink = tint ? `color-mix(in srgb, ${COL[x]} 60%, var(--muted))` : "", ga = tint && x === "b" ? ` opacity="0.75"` : "";
   const seg = (pts, w, cls = "") => { const q = pts.filter(Boolean).map(P); return `<path class="fig-body fig-${x} ${cls}"${ink ? ` style="stroke:${ink}"` : ""}${ga} stroke-width="${(w * sc).toFixed(1)}" d="M${q.map(f2).join(" L")}"/>`; };
   const hd = P(J.head);
-  return `${seg([J.hip, J.knee, J.foot], 0.1, "fig-leg")}${seg([J.right, elbow(J.right, J.rightHand, -1), J.rightHand], 0.06)}` +
-    `${seg([J.hip, J.sh], 0.15)}${seg([J.left, J.right], 0.09)}${seg([J.left, elbow(J.left, J.leftHand, 1), J.leftHand], 0.06)}<circle class="fig-head fig-${x}"${ink ? ` style="fill:${ink}"` : ""}${ga} cx="${hd[0].toFixed(1)}" cy="${hd[1].toFixed(1)}" r="${(0.1 * k * sc).toFixed(1)}"/>`;
+  return `${seg([J.hip, J.knee, J.foot], 0.1, "fig-leg")}${seg([J.right, J.rightElbow, J.rightHand], 0.06)}` +
+    `${seg([J.hip, J.sh], 0.15)}${seg([J.left, J.right], 0.09)}${seg([J.left, J.leftElbow, J.leftHand], 0.06)}<circle class="fig-head fig-${x}"${ink ? ` style="fill:${ink}"` : ""}${ga} cx="${hd[0].toFixed(1)}" cy="${hd[1].toFixed(1)}" r="${(0.1 * k * sc).toFixed(1)}"/>`;
 }
 // One boat's paddle, blade path and push, in its colour.
 // Pp: the projection for the blade's path and pushes (always one side, even mid-switch).
@@ -3785,6 +3856,7 @@ function frame(now) {
     for (const svg of document.querySelectorAll("svg.view")) if (shown(svg)) drawView(svg, svg.closest(".pair").dataset.view, tl);
     if (shown($("curve-live-g").closest("svg"))) drawCurveLive(phase);
     drawHullLive(phase);
+    if (tab === "fit") m3Frame(dt);
   }
   requestAnimationFrame(frame);
 }
@@ -3842,6 +3914,7 @@ function frame(now) {
 let tab = "stroke";
 function redrawShown() {
   if (!results.a || !results.b) return;
+  m3.dirty = true;
   drawCurve();
   updateHull();
   if (water === "map" && cb) renderBuilder();
@@ -3895,6 +3968,7 @@ function showFitIntro() {
     "Gearing and strength by position are off (Paddler profile), so setups inside the limits are about as fast. Turn them on to rank them; both are assumed curves until measured.";
   $("fit-go").textContent = `Find a fit for ${NAME[editing]}`;
   $("fit-card").classList.toggle("editing-b", (fit ? fit.x : editing) === "b");
+  m3Sync();
 }
 // Runs a search a slice at a time, so the page keeps drawing; null if a
 // newer search started meanwhile.
@@ -4002,6 +4076,542 @@ function drawFitMap() {
     `<span><i class="fit-now"></i>Your seat and paddle</span><span><i class="fit-sug"></i>Suggested</span>`;
   $("fit-map-read").textContent = "";
 }
+// ---------------------------------------------------------------- 3D model
+// The boat, paddle and paddler in 3D, from the same engine as the views: the
+// seat, the paddle at each moment and the body fitted to it. Drag to turn,
+// pinch or Ctrl + scroll to zoom; tap a part to zoom to it and set it. Drawn
+// as SVG far to near (no depth buffer), with the water a tinted plane drawn
+// between what's under it and what's above.
+const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const unit3 = (a) => { const n = Math.hypot(...a) || 1; return a.map((v) => v / n); };
+const mix3 = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+const LIGHT3 = unit3([0.35, -0.45, 0.85]);   // from ahead, the paddle side and above
+// The hull as quads: the widest section (as the end view draws it), gunwale
+// to keel, scaled at each station to the gunwale and beam there, and from
+// keel to sheer. side: +1 port, −1 starboard. Outward normals.
+const HULL3 = (() => {
+  const g = C1.gun, b = C1.beam, z0 = C1.mid, zw = C1.wide, k = C1.keel;
+  const bez = (p0, p1, p2, p3, t) => [0, 1].map((i) => (1 - t) ** 3 * p0[i] + 3 * (1 - t) ** 2 * t * p1[i] + 3 * (1 - t) * t * t * p2[i] + t ** 3 * p3[i]);
+  const sec = [];
+  for (let i = 0; i < 4; i++) sec.push(bez([g, z0], [0.29, z0 - 0.03], [b - 0.01, 0.1], [b, zw], i / 4));
+  for (let i = 0; i < 4; i++) sec.push(bez([b, zw], [b, -0.05], [0.3, k], [0.1, k], i / 4));
+  sec.push([0.1, k], [0, k]);
+  const xs = Array.from({ length: 33 }, (_, i) => -C1.half + (2 * C1.half * i) / 32);
+  const ring = (x, side) => {
+    const gr = c1Gun(x) / C1.gun, br = c1Beam(x) / C1.beam, kx = c1Keel(x), sx = c1Sheer(x);
+    return sec.map(([y, z], i) => {
+      const f = Math.min(1, i / 4), w = (1 - f) * gr + f * br;
+      return [x, side * y * w, kx + (z - k) * (sx - kx) / (z0 - k)];
+    });
+  };
+  const quads = [], gunwale = { 1: [], [-1]: [] };
+  for (const side of [1, -1]) {
+    const rings = xs.map((x) => ring(x, side));
+    rings.forEach((r) => gunwale[side].push(r[0]));
+    for (let j = 0; j + 1 < xs.length; j++)
+      for (let i = 0; i + 1 < sec.length; i++) {
+        const pts = [rings[j][i], rings[j + 1][i], rings[j + 1][i + 1], rings[j][i + 1]];
+        const c = pts.reduce((a, p) => add3(a, p.map((v) => v / 4)), [0, 0, 0]);
+        let n = unit3(cross3(sub3(pts[2], pts[0]), sub3(pts[3], pts[1])));
+        if (dot3(n, sub3(c, [c[0], 0, 0.05])) < 0) n = n.map((v) => -v);
+        if (Math.hypot(...sub3(pts[0], pts[2])) > 1e-4 || Math.hypot(...sub3(pts[1], pts[3])) > 1e-4) quads.push({ pts, n, c });
+      }
+  }
+  return { quads, gunwale };
+})();
+// Cut a polygon by a plane: the part where f(p) ≥ 0 (f linear in p).
+function clipPoly(pts, f) {
+  const out = [];
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length], fa = f(a), fb = f(b);
+    if (fa >= 0) out.push(a);
+    if ((fa >= 0) !== (fb >= 0)) out.push(mix3(a, b, fa / (fa - fb)));
+  }
+  return out;
+}
+function clipSeg(a, b, f) {
+  const fa = f(a), fb = f(b);
+  if (fa < 0 && fb < 0) return null;
+  if (fa >= 0 && fb >= 0) return [a, b];
+  const m = mix3(a, b, fa / (fa - fb));
+  return fa >= 0 ? [a, m] : [m, b];
+}
+// The parts to tap, what each is, and the sliders it brings up (CONTROLS keys).
+const M3_PARTS = [
+  { id: "hull", label: "Hull", keys: ["massKg"],
+    about: "A USCA C1 marathon canoe: 18′6″ long, 32″ at its widest, 17″ at the gunwale. Heavier sits deeper: more drag." },
+  { id: "seat", label: "Seat", keys: ["seatZM", "hipRock"],
+    about: "Your hips above the water. Higher is less stable: it keeps less metacentric height. The Fit search puts it as high as your water allows." },
+  { id: "shaft", label: "Paddle", keys: ["paddleLenM", "bendDeg", "leanDeg", "pivotFromGrip"],
+    about: "Grip to tip, and how it's held. A longer paddle on the same blade path sweeps less angle: a higher gear." },
+  { id: "blade", label: "Blade", keys: ["bladeLenM", "bladeWidthM", "pitchDeg"],
+    about: "The blade and the water's push on it (the arrow), through the drive." },
+  { id: "topHand", label: "Top hand", keys: ["handOutM", "handTravelM"],
+    about: "On the grip: between chin and forehead, and out from the centreline by the top-hand setting." },
+  { id: "lowHand", label: "Lower hand", keys: ["lowerHandM", "pivotFromGrip"],
+    about: "Down the shaft from the grip. Further down: more leverage, and a longer reach for the lower arm." },
+  { id: "arms", label: "Arms", keys: ["upperArmM", "forearmM"],
+    about: "How stretched each arm is: shoulder to hand against the arm's length. Past 97% the hand is out of reach." },
+  { id: "torso", label: "Torso", keys: ["torsoM", "shoulderM", "rotation", "hinge", "swingM", "dropM"],
+    about: "Leans and twists each moment so both hands stay in reach, as near your technique's own posture as it can." },
+  { id: "head", label: "Paddler", keys: ["heightM", "massKg", "fitnessW"],
+    about: "Height scales every length; then set any one under its own part." },
+  { id: "legs", label: "Legs", keys: ["thighM", "shinM", "legDrive"],
+    about: "Feet on the foot brace. Leg drive pushes from the paddle-side foot through the drive." },
+  { id: "path", label: "Stroke", keys: ["catchDeg", "exitDeg", "sweepDeg", "directionDeg", "rateSpm", "driveFraction"],
+    about: "The blade's path through the water, with the paddle at the catch and at the exit." },
+];
+// Parts that hide the one picked, drawn faint while it is.
+const M3_FADE = { seat: ["torso", "arms", "head", "legs", "topHand", "lowHand", "shaft"], legs: ["torso", "arms", "lowHand", "shaft"] };
+const M3_VIEWS = [
+  ["three", "¾ front", { yaw: rad(-55), pitch: rad(22), dist: 3.7, target: [-0.25, 0, 0.3] }],
+  ["side", "Paddle side", { yaw: rad(-90), pitch: rad(6), dist: 4.2, target: [-0.15, 0, 0.3] }],
+  ["front", "Bow", { yaw: 0, pitch: rad(10), dist: 4.2, target: [-0.15, 0, 0.35] }],
+  ["behind", "Behind", { yaw: rad(160), pitch: rad(24), dist: 3.4, target: [-0.1, 0, 0.45] }],
+  ["top", "Above", { yaw: Math.PI, pitch: rad(86), dist: 5.2, target: [-0.15, 0, 0] }],
+];
+const m3 = {
+  cam: Object.assign({}, M3_VIEWS[0][2]), goal: null, view: "three",
+  ph: 0, playing: true, sel: null, show: "now", dirty: true, drawn: null, frame: null, parts: {}, sug: null,
+};
+// Each result's cycle at the effort compared (the seat's metacentric height).
+const cycles = new WeakMap();
+function cycleOf(r) {
+  const c = cycles.get(r);
+  if (c && c.effortW === effortW) return c.c;
+  const cc = r.cycleAt(effortW);
+  cycles.set(r, { effortW, c: cc });
+  return cc;
+}
+// The suggested setup from the last fit, if it's for the boat being edited.
+function m3Suggested() {
+  if (!fit || fit.x !== editing) return null;
+  if (!m3.sug || m3.sug.fit !== fit) m3.sug = { fit, r: S.simulate(Object.assign({}, boats[fit.x], fitSettings(), { effortW })) };
+  return m3.sug.r;
+}
+// Everything to draw for one result: polys, capsules (seg), balls and lines
+// (a seg drawn px wide), each with its part. ghost: drawn faint, not tappable.
+function m3Scene(r, x, ph, ghost) {
+  const p = r.params, J = figJoints(r, cycleOf(r), ph), st = J.st, k = J.k, out = [];
+  const col = COL[x], shirt = `color-mix(in srgb, ${col} 50%, var(--m3-cloth))`;
+  const add = (o) => out.push(Object.assign(o, { ghost }));
+  const seg = (a, b, rr, fill, part) => a && b && add({ kind: "seg", a, b, r: rr, fill, part });
+  const ball = (c, rr, fill, part) => add({ kind: "ball", c, r: rr, fill, part });
+  // Seat: a box under the hips, down to the floor.
+  const hip = J.hip, top = hip[2] - 0.07, floor = Math.min(top - 0.01, c1Keel(hip[0]) + 0.03);
+  const sx = [hip[0] - 0.16, hip[0] + 0.1], sy = [-0.15, 0.15];
+  const box = (a, b, c, d, n) => add({ kind: "poly", pts: [a, b, c, d], n, fill: "var(--m3-seat)", part: "seat", solid: true });
+  const v = (i, j, z) => [sx[i], sy[j], z];
+  box(v(0, 0, top), v(1, 0, top), v(1, 1, top), v(0, 1, top), [0, 0, 1]);
+  box(v(1, 0, top), v(1, 1, top), v(1, 1, floor), v(1, 0, floor), [1, 0, 0]);
+  box(v(0, 0, top), v(0, 1, top), v(0, 1, floor), v(0, 0, floor), [-1, 0, 0]);
+  box(v(0, 0, top), v(1, 0, top), v(1, 0, floor), v(0, 0, floor), [0, -1, 0]);
+  box(v(0, 1, top), v(1, 1, top), v(1, 1, floor), v(0, 1, floor), [0, 1, 0]);
+  // Legs to a foot brace, both sides.
+  const brace = J.foot[0] + 0.04;
+  seg([brace, -0.17, J.foot[2] - 0.02], [brace, 0.17, J.foot[2] - 0.02], 0.022, "var(--m3-seat)", "legs");
+  for (const s of [1, -1]) {
+    const o = (q, dy) => [q[0], q[1] + s * dy, q[2]];
+    seg(o(J.hip, 0.09), o(J.knee, 0.11), 0.065 * k, "var(--m3-legs)", "legs");
+    seg(o(J.knee, 0.11), o(J.foot, 0.12), 0.05 * k, "var(--m3-legs)", "legs");
+    ball(o(J.foot, 0.12), 0.05 * k, "var(--m3-legs)", "legs");
+  }
+  // Trunk, shoulders, neck and head.
+  seg(add3(J.hip, [0, 0.09, 0]), add3(J.hip, [0, -0.09, 0]), 0.1 * k, "var(--m3-legs)", "torso");
+  seg(J.hip, mix3(J.hip, J.sh, 0.82), 0.115 * k, shirt, "torso");
+  seg(J.left, J.right, 0.065 * k, shirt, "torso");
+  seg(J.sh, mix3(J.sh, J.head, 0.55), 0.045 * k, "var(--m3-skin)", "head");
+  ball(J.head, 0.1 * k, "var(--m3-skin)", "head");
+  // Arms: the left holds the grip (top hand), the right the shaft lower down.
+  for (const [s, e, h, part] of [[J.left, J.leftElbow, J.leftHand, "topHand"], [J.right, J.rightElbow, J.rightHand, "lowHand"]]) {
+    const el = e || mix3(s, h, p.upperArmM / (p.upperArmM + p.forearmM));
+    seg(s, el, 0.047 * k, shirt, "arms");
+    seg(el, h, 0.038 * k, "var(--m3-skin)", "arms");
+    ball(h, 0.048 * k, "var(--m3-skin)", part);
+  }
+  // Paddle: shaft and T-grip, and the blade, flat, across its face.
+  const B = st.B, grip = st.P.at(0), along = unit3(sub3(B.tip, B.throat)), across = unit3(cross3(along, B.n));
+  seg(grip, B.throat, 0.015, col, "shaft");
+  seg(add3(grip, across.map((q) => q * 0.055)), add3(grip, across.map((q) => q * -0.055)), 0.018, col, "shaft");
+  const w = p.bladeWidthM / 2, L = p.bladeLenM, at = (t, f) => add3(add3(B.throat, along.map((q) => q * L * t)), across.map((q) => q * w * f));
+  add({ kind: "poly", pts: [at(0, 0.3), at(0.2, 0.92), at(0.35, 1), at(0.97, 1), at(1, 0.8), at(1, -0.8), at(0.97, -1), at(0.35, -1), at(0.2, -0.92), at(0, -0.3)],
+    n: B.n, fill: col, part: "blade", sheet: true, dry: !st.inDrive });
+  // The water's push on the blade (= on the boat).
+  if (st.F > 1) {
+    const maxF = Math.max(1, ...r.samples.map((q) => q.F)), s = 0.5 / maxF, end = add3(B.cop, st.thrust.map((q) => q * s));
+    if (Math.hypot(...sub3(end, B.cop)) > 0.03) { add({ kind: "line", a: B.cop, b: end, px: 2.5, fill: "var(--text-primary)", part: "blade" }); ball(end, 0.02, "var(--text-primary)", "blade"); }
+  }
+  // The blade's path, and with the stroke picked, the paddle at the catch and exit.
+  const path = r.samples.filter((q) => q.B.wet > 0.05).map((q) => q.B.cop);
+  for (let i = 0; i + 1 < path.length; i += 2) add({ kind: "line", a: path[i], b: path[Math.min(path.length - 1, i + 2)], px: 2, fill: col, part: "path", faint: true });
+  if (m3.sel === "path" && !ghost)
+    for (const q of [r.samples[0], r.samples[r.samples.length - 1]]) {
+      add({ kind: "line", a: q.P.at(0), b: q.B.throat, px: 2, fill: col, part: "path", faint: true });
+      add({ kind: "line", a: q.B.throat, b: q.B.tip, px: 6, fill: col, part: "path", faint: true });
+    }
+  return { prims: out, J, r };
+}
+// Dimension lines and labels for the part picked: { a, b, text } or { at, text }.
+function m3Dims(sc) {
+  const { J, r } = sc, p = r.params, st = J.st, B = st.B, grip = st.P.at(0), cm = (v) => `${fmtNum(v * 100, 0)} cm`;
+  const offset = (a, b, d) => [add3(a, d), add3(b, d)];
+  switch (m3.sel) {
+    case "seat": { const x = J.hip[0], y = -C1.beam - 0.12; return [{ a: [x, y, 0], b: [x, y, J.hip[2]], text: `Seat ${cm(p.seatZM)}` }]; }
+    case "shaft": { const d = unit3(cross3(st.P.d, [0, 0, 1])).map((q) => q * 0.09), [a, b] = offset(grip, B.tip, d); return [{ a, b, text: `${fmtNum(p.paddleLenM / 0.0254, 1)} in` }]; }
+    case "blade": { const d = unit3(cross3(st.P.d, [0, 0, 1])).map((q) => q * 0.16), [a, b] = offset(B.throat, B.tip, d); return [{ a, b, text: `${fmtNum(p.bladeLenM / 0.0254, 1)} × ${fmtNum(p.bladeWidthM / 0.0254, 1)} in` }]; }
+    case "lowHand": { const d = unit3(cross3(st.P.d, [0, 0, 1])).map((q) => q * -0.09), [a, b] = offset(grip, J.rightHand, d); return [{ a, b, text: cm(S.lowerHand(r.geom)) }]; }
+    case "topHand": return [{ a: [grip[0], 0, grip[2]], b: grip, text: `${cm(Math.abs(grip[1]))} out` },
+      { a: [grip[0], grip[1], J.fit.centre[2]], b: grip, text: `${cm(grip[2] - J.fit.centre[2])} above shoulders` }];
+    case "arms": return [{ at: J.leftHand, text: `${fmtNum(J.fit.top * 100, 0)}%` }, { at: J.rightHand, text: `${fmtNum(J.fit.low * 100, 0)}%` }];
+    case "torso": return [{ at: add3(J.sh, [0, 0, 0.12]), text: `lean ${fmtNum(J.fit.pose[0] * 180 / Math.PI, 0)}°, twist ${fmtNum(J.fit.pose[2] * 180 / Math.PI, 0)}°` }];
+    case "head": return [{ at: add3(J.head, [0, 0, 0.18 * J.k]), text: `${fmtNum(p.heightM * 100, 0)} cm, ${fmtNum(p.massKg - S.BOAT_KG, 0)} kg` }];
+    case "legs": return [{ at: J.knee, text: `thigh ${cm(p.thighM)}, shin ${cm(p.shinM)}` }];
+    case "path": { const s0 = r.samples[0], s1 = r.samples[r.samples.length - 1];
+      return [{ at: s0.P.at(0), text: `catch ${fmtNum(p.catchDeg, 0)}°` }, { at: s1.P.at(0), text: `exit ${fmtNum(p.exitDeg, 0)}°` }]; }
+    case "hull": return [{ a: [-C1.half, -C1.beam - 0.25, 0], b: [C1.half, -C1.beam - 0.25, 0], text: "18′6″ (5.64 m)" },
+      { a: [C1.xw, -C1.beam, C1.wide], b: [C1.xw, C1.beam, C1.wide], text: "32″" }];
+  }
+  return [];
+}
+function m3Render() {
+  const svg = $("m3"), W = Math.max(240, Math.round(widthOf(svg))) || 600, H = Math.round(Math.min(520, Math.max(280, W * 0.62)));
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const c = m3.cam, cp = Math.cos(c.pitch);
+  const eye = [c.target[0] + c.dist * cp * Math.cos(c.yaw), c.target[1] + c.dist * cp * Math.sin(c.yaw), c.target[2] + c.dist * Math.sin(c.pitch)];
+  const f = unit3(sub3(c.target, eye)), right = unit3(cross3(f, [0, 0, 1])), up = cross3(right, f), focal = 1.15 * Math.max(H, 0.62 * W);
+  m3.frame = { right, up, focal, W, H };
+  const NEAR = 0.06, view = (q) => { const v = sub3(q, eye); return [dot3(v, right), dot3(v, up), dot3(v, f)]; };
+  const scr = (v) => [W / 2 + (v[0] * focal) / v[2], H / 2 - (v[1] * focal) / v[2]];
+  const nearF = (v) => v[2] - NEAR;
+  const pt = (q) => `${q[0].toFixed(1)},${q[1].toFixed(1)}`;
+  const shade = (base, n, inside) => {
+    const l = Math.max(0, dot3(n, LIGHT3)), s = inside ? 0.5 + 0.25 * l : 0.62 + 0.38 * l;
+    return `color-mix(in srgb, ${base} ${Math.round(s * 50) * 2}%, black)`;
+  };
+  // Scenes: the setup(s) shown.
+  const sug = m3.show !== "now" ? m3Suggested() : null, now = results[editing];
+  const scenes = [];
+  if (m3.show !== "sug" || !sug) scenes.push(m3Scene(now, editing, m3.ph, false));
+  if (sug) scenes.push(m3Scene(sug, editing, m3.ph, m3.show === "both"));
+  m3.scene = scenes.find((s) => !s.prims[0].ghost) || scenes[0];
+  // Everything, split at the water: under it, then the water, then above.
+  const under = [], over = [];
+  const put = (o, z) => (z < 0 ? under : over).push(o);
+  for (const q of HULL3.quads) {
+    const outside = dot3(q.n, sub3(eye, q.c)) > 0, fill = shade("var(--m3-hull)", outside ? q.n : q.n.map((v) => -v), !outside);
+    for (const [g, s] of [[(p) => p[2], 1], [(p) => -p[2], -1]]) {
+      const pts = clipPoly(q.pts, g);
+      if (pts.length > 2) put({ kind: "poly", pts, fill, part: "hull" }, s > 0 ? 1 : -1);
+    }
+  }
+  for (const side of [1, -1]) {
+    const gw = HULL3.gunwale[side];
+    for (let i = 0; i + 1 < gw.length; i++) over.push({ kind: "line", a: gw[i], b: gw[i + 1], px: 2.5, cls: "gunwale", part: "hull" });
+  }
+  for (const sc of scenes)
+    for (const o of sc.prims) {
+      if (o.kind === "ball") { put(o, o.c[2]); continue; }
+      if (o.kind === "poly") {
+        let n = o.n;
+        if (o.solid && dot3(n, sub3(eye, o.pts[0])) <= 0) continue;   // the back of a box
+        if (o.sheet && dot3(n, sub3(eye, o.pts[0])) < 0) n = n.map((v) => -v);
+        const fill = shade(o.fill, n, false);
+        for (const [g, s] of [[(p) => p[2], 1], [(p) => -p[2], -1]]) {
+          const pts = clipPoly(o.pts, g);
+          if (pts.length > 2) put(Object.assign({}, o, { pts, fill }), s);
+        }
+        continue;
+      }
+      for (const [g, s] of [[(p) => p[2], 1], [(p) => -p[2], -1]]) {
+        const ab = clipSeg(o.a, o.b, g);
+        if (ab) put(Object.assign({}, o, { a: ab[0], b: ab[1] }), s);
+      }
+    }
+  // To the screen, far to near.
+  const draw = (list) => {
+    const items = [];
+    for (const o of list) {
+      let svgEl = "", depth = 0;
+      const faded = (M3_FADE[m3.sel] || []).includes(o.part), cls = o.ghost ? "ghost" : faded ? "fade" : "";
+      const tag = `${o.part ? ` data-part="${o.part}"` : ""}${cls ? ` class="${cls}"` : ""}`, hl = !o.ghost && o.part && o.part === m3.sel;
+      if (o.kind === "poly") {
+        const v = clipPoly(o.pts.map(view), nearF);
+        if (v.length < 3) continue;
+        depth = v.reduce((a, q) => a + q[2], 0) / v.length;
+        const d = `M${v.map((q) => pt(scr(q))).join(" L")} Z`;
+        const fill = hl ? `color-mix(in srgb, var(--m3-pick) 55%, ${o.fill})` : o.fill;
+        svgEl = `<path${tag} d="${d}" fill="${fill}"${o.dry ? ` fill-opacity="0.75"` : ""} stroke="${fill}" stroke-width="0.6" stroke-linejoin="round"/>`;
+      } else if (o.kind === "ball") {
+        const v = view(o.c);
+        if (v[2] < NEAR) continue;
+        depth = v[2];
+        const s = scr(v), rr = (o.r * focal) / v[2];
+        svgEl = `<g${tag}>${hl ? `<circle class="hl" cx="${s[0].toFixed(1)}" cy="${s[1].toFixed(1)}" r="${(rr + 3).toFixed(1)}" fill="var(--m3-pick)"/>` : ""}` +
+          `<circle cx="${s[0].toFixed(1)}" cy="${s[1].toFixed(1)}" r="${rr.toFixed(1)}" fill="${o.fill}"/>` +
+          `<circle class="shine" cx="${(s[0] - rr * 0.3).toFixed(1)}" cy="${(s[1] - rr * 0.35).toFixed(1)}" r="${(rr * 0.4).toFixed(1)}" fill="white" fill-opacity="0.22"/></g>`;
+      } else {
+        const ab = clipSeg(view(o.a), view(o.b), nearF);
+        if (!ab) continue;
+        depth = (ab[0][2] + ab[1][2]) / 2;
+        const a = scr(ab[0]), b = scr(ab[1]), xy = `x1="${a[0].toFixed(1)}" y1="${a[1].toFixed(1)}" x2="${b[0].toFixed(1)}" y2="${b[1].toFixed(1)}"`;
+        if (o.kind === "line") {
+          svgEl = `<g${tag}>${hl ? `<line class="hl" ${xy} stroke="var(--m3-pick)" stroke-width="${o.px + 4}" stroke-linecap="round"/>` : ""}` +
+            `<line ${xy} ${o.cls ? `class="${o.cls}"` : `stroke="${o.fill}"`} stroke-width="${o.px}" stroke-linecap="round"${o.faint ? ` opacity="0.6"` : ""}/>` +
+            (o.part ? `<line ${xy} stroke="transparent" stroke-width="12"/>` : "") + `</g>`;
+        } else {
+          const wpx = (2 * o.r * focal) / depth;
+          svgEl = `<g${tag}>${hl ? `<line class="hl" ${xy} stroke="var(--m3-pick)" stroke-width="${(wpx + 6).toFixed(1)}" stroke-linecap="round"/>` : ""}` +
+            `<line ${xy} stroke="${o.fill}" stroke-width="${wpx.toFixed(1)}" stroke-linecap="round"/>` +
+            `<line class="shine" ${xy} stroke="white" stroke-opacity="0.18" stroke-width="${(wpx * 0.35).toFixed(1)}" stroke-linecap="round" transform="translate(${(-wpx * 0.12).toFixed(1)} ${(-wpx * 0.16).toFixed(1)})"/>` +
+            (wpx < 12 ? `<line ${xy} stroke="transparent" stroke-width="12" stroke-linecap="round"/>` : "") + `</g>`;
+        }
+      }
+      items.push([depth, svgEl]);
+    }
+    return items.sort((a, b) => b[0] - a[0]).map((q) => q[1]).join("");
+  };
+  // The water: a tinted plane with a 50 cm grid.
+  const X = C1.half + 0.8, Y = 1.6;
+  let water = "";
+  const wv = clipPoly([[-X, -Y, 0], [X, -Y, 0], [X, Y, 0], [-X, Y, 0]].map(view), nearF);
+  if (wv.length > 2) water += `<path class="water" d="M${wv.map((q) => pt(scr(q))).join(" L")} Z"/>`;
+  const grid = (a, b) => {
+    const ab = clipSeg(view(a), view(b), nearF);
+    if (!ab) return "";
+    const p = scr(ab[0]), q = scr(ab[1]);
+    return `<line class="water-grid" x1="${p[0].toFixed(1)}" y1="${p[1].toFixed(1)}" x2="${q[0].toFixed(1)}" y2="${q[1].toFixed(1)}"/>`;
+  };
+  for (let x = -Math.floor(X * 2) / 2; x <= X; x += 0.5) water += grid([x, -Y, 0], [x, Y, 0]);
+  for (let y = -Math.floor(Y * 2) / 2; y <= Y; y += 0.5) water += grid([-X, y, 0], [X, y, 0]);
+  const above = eye[2] >= 0;
+  let g = above ? draw(under) + water + draw(over) : draw(over) + water + draw(under);
+  // Labels for the part picked, on top.
+  for (const d of m3Dims(m3.scene)) {
+    if (d.at) {
+      const v = view(d.at);
+      if (v[2] > NEAR) { const s = scr(v); g += `<text x="${s[0].toFixed(1)}" y="${(s[1] - 10).toFixed(1)}" text-anchor="middle">${d.text}</text>`; }
+      continue;
+    }
+    const ab = clipSeg(view(d.a), view(d.b), nearF);
+    if (!ab) continue;
+    const a = scr(ab[0]), b = scr(ab[1]), m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    g += `<line class="dim" x1="${a[0].toFixed(1)}" y1="${a[1].toFixed(1)}" x2="${b[0].toFixed(1)}" y2="${b[1].toFixed(1)}"/>` +
+      `<circle class="dim-end" cx="${a[0].toFixed(1)}" cy="${a[1].toFixed(1)}" r="2.5"/><circle class="dim-end" cx="${b[0].toFixed(1)}" cy="${b[1].toFixed(1)}" r="2.5"/>` +
+      `<text x="${(m[0] + 6).toFixed(1)}" y="${(m[1] - 6).toFixed(1)}">${d.text}</text>`;
+  }
+  // Which way is the bow.
+  const bow = view([C1.half + 0.35, 0, 0.3]);
+  if (bow[2] > NEAR) { const s = scr(bow); g += `<text class="axis" x="${s[0].toFixed(1)}" y="${s[1].toFixed(1)}" text-anchor="middle">bow</text>`; }
+  svg.innerHTML = g;
+  m3.dirty = false;
+}
+// Readings and sliders for the part picked.
+function m3Panel() {
+  const part = M3_PARTS.find((q) => q.id === m3.sel);
+  $("m3-panel").hidden = !part;
+  for (const b of $("m3-parts").children) b.setAttribute("aria-pressed", String(b.dataset.value === m3.sel));
+  if (!part) return;
+  $("m3-part-name").textContent = `${part.label}${m3.show === "sug" && m3Suggested() ? " (suggested)" : ""}`;
+  $("m3-part-about").textContent = part.about;
+  const ro = m3.show === "sug" && m3Suggested();
+  $("m3-ctl").innerHTML = part.keys.map((key) => {
+    const c = ctlOf(key);
+    return `<div class="ctl"><label class="top"><span>${c.label}</span><output id="m3-o-${key}"></output></label>` +
+      `<input type="range" data-key="${key}" min="${c.min}" max="${c.max}" step="${c.step}" aria-label="${c.label}"${ro ? " disabled" : ""}><div class="help">${c.help}</div></div>`;
+  }).join("") + (ro ? `<div class="help">The suggested setup. <b>Use it for ${NAME[editing]}</b> (above, in the fit) to set it from here.</div>` : "");
+  for (const el of $("m3-ctl").querySelectorAll("input")) el.addEventListener("input", () => {
+    // The same as moving the slider beside: it changes the boat being edited.
+    const main = $(`c-${el.dataset.key}`);
+    main.value = el.value;
+    main.dispatchEvent(new Event("input"));
+  });
+  m3SyncPanel();
+}
+function m3SyncPanel() {
+  if ($("m3-panel").hidden) return;
+  const r = m3.show === "sug" && m3Suggested() ? m3Suggested() : results[editing], p = r ? r.params : boats[editing];
+  for (const el of $("m3-ctl").querySelectorAll("input")) {
+    const k = el.dataset.key;
+    if (document.activeElement !== el) el.value = p[k];
+    $(`m3-o-${k}`).textContent = fmtValue(ctlOf(k), p[k]);
+  }
+}
+// Live readings for the part picked, at this moment of the stroke.
+function m3Read() {
+  if (!m3.sel || !m3.scene) return;
+  const { J, r } = m3.scene, p = r.params, st = J.st, cm = (v) => `${fmtNum(v * 100, 0)} cm`, deg = (v) => `${fmtNum(v * 180 / Math.PI, 0)}°`;
+  const it = (label, v) => `<span>${label} <b>${v}</b></span>`, c = cycleOf(r);
+  const shaftDeg = Math.atan2(st.P.d[0], -st.P.d[2]);
+  const read = {
+    hull: [it("Metacentric height", cm(c.GM)), it("Speed", `${fmtNum(r.speedAt(effortW), 2)} m/s at ${effortW} W`)],
+    seat: [it("Seat", cm(p.seatZM)), it("Hips", `${cm(Math.abs(r.body.seatX))} ${r.body.seatX < 0 ? "behind" : "ahead of"} the pivot`), it("Metacentric height", cm(c.GM)), it("Rolls every", `${fmtNum(c.rollPeriod, 2)} s`)],
+    shaft: [it("Length", `${fmtNum(p.paddleLenM / 0.0254, 1)} in`), it("Shaft now", `${deg(Math.abs(shaftDeg))} ${shaftDeg < 0 ? "behind" : "ahead of"} vertical`)],
+    blade: [it("Area", `${fmtNum(p.bladeLenM * p.bladeWidthM * 1e4, 0)} cm²`), it("Push now", `${fmtNum(st.F, 0)} N`), it("In the water", st.inDrive ? `${fmtNum(st.B.wet * 100, 0)}%` : "no, recovering")],
+    topHand: [it("Above shoulders", cm(st.P.at(0)[2] - J.fit.centre[2])), it("Out", cm(Math.abs(st.P.at(0)[1]))), it("Arm stretch", `${fmtNum(J.fit.top * 100, 0)}%`)],
+    lowHand: [it("Below the grip", cm(S.lowerHand(r.geom))), it("Arm stretch", `${fmtNum(J.fit.low * 100, 0)}%`), it("Arm speed", `${fmtNum(r.body.armSpeed, 2)} m/s`)],
+    arms: [it("Top arm", `${fmtNum(J.fit.top * 100, 0)}%`), it("Lower arm", `${fmtNum(J.fit.low * 100, 0)}%`), it("Arm speed", `${fmtNum(r.body.armSpeed, 2)} m/s`)],
+    torso: [it("Lean", deg(J.fit.pose[0])), it("Roll", deg(J.fit.pose[1])), it("Twist", deg(J.fit.pose[2]))],
+    head: [it("Height", cm(p.heightM)), it("Can hold", `${fmtNum(S.capacity(p), 0)} W for an hour`)],
+    legs: [it("Thigh", cm(p.thighM)), it("Shin", cm(p.shinM))],
+    path: [it("Catch", `${fmtNum(p.catchDeg, 0)}°`), it("Exit", `${fmtNum(p.exitDeg, 0)}°`), it("Speed", `${fmtNum(r.speedAt(effortW), 2)} m/s at ${effortW} W`), it("Strokes a side", fmtNum(r.strokesPerSide, 1))],
+  }[m3.sel] || [];
+  $("m3-part-read").innerHTML = read.join("");
+  const short = r.body.short;
+  $("m3-part-warn").hidden = !(short > 0.005) || !["arms", "topHand", "lowHand", "torso", "shaft", "path"].includes(m3.sel);
+  if (short > 0.005) $("m3-part-warn").textContent = `Out of reach by ${cm(short)} somewhere in the stroke: the arm is drawn at full stretch.`;
+}
+// Pick a part: zoom to it (keeping the angle) and bring up its settings.
+function m3Pick(id, zoom = true) {
+  m3.sel = id;
+  m3.dirty = true;
+  if (id && zoom) {
+    if (!m3.scene) m3Render();
+    const ps = [];
+    const sc = m3.scene;
+    if (id === "hull") ps.push([-C1.half, -C1.beam, -0.1], [C1.half, C1.beam, C1.bow]);
+    for (const o of sc.prims) if (o.part === id) ps.push(...(o.pts || [o.a, o.b, o.c].filter(Boolean)));
+    if (ps.length) {
+      const lo = [0, 1, 2].map((i) => Math.min(...ps.map((q) => q[i]))), hi = [0, 1, 2].map((i) => Math.max(...ps.map((q) => q[i])));
+      const size = Math.hypot(...sub3(hi, lo));
+      // The seat and legs are inside the hull: look down into the boat.
+      const pitch = Math.max(m3.cam.pitch, { seat: rad(55), legs: rad(40) }[id] || -Infinity);
+      m3.goal = Object.assign({}, m3.cam, { target: mix3(lo, hi, 0.5), pitch, dist: Math.min(6, Math.max(1.8, 1.8 * size + 0.9)) });
+    }
+  }
+  m3Panel();
+  m3Read();
+}
+function m3Chips(id, options, get, set) {
+  $(id).innerHTML = "";
+  for (const [v, label] of options) {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = label; b.dataset.value = v;
+    b.setAttribute("aria-pressed", String(get() === v));
+    b.addEventListener("click", () => set(v));
+    $(id).append(b);
+  }
+}
+function m3Controls() {
+  m3Chips("m3-views", M3_VIEWS.map(([v, label]) => [v, label]), () => m3.view, (v) => {
+    m3.view = v; m3.goal = Object.assign({}, M3_VIEWS.find((q) => q[0] === v)[2]); m3Controls();
+  });
+  m3Chips("m3-parts", M3_PARTS.map((q) => [q.id, q.label]), () => m3.sel, (v) => m3Pick(m3.sel === v ? null : v));
+  const sug = !!(fit && fit.x === editing);
+  if (!sug && m3.show !== "now") m3.show = "now";
+  $("m3-show").hidden = !sug;
+  m3Chips("m3-show", [["now", "Yours"], ["sug", "Suggested"], ["both", "Both"]], () => m3.show, (v) => { m3.show = v; m3.dirty = true; m3Controls(); m3Panel(); });
+  for (const el of [$("m3-views"), $("m3-parts"), $("m3-show")]) el.classList.toggle("b", editing === "b");
+  $("m3-card").classList.toggle("editing-b", editing === "b");
+  $("m3-sub").textContent = m3.show === "now" ? `${NAME[editing]}, as its sliders are set now.` :
+    m3.show === "sug" ? `${NAME[editing]} with the suggested fit.` : `${NAME[editing]} now, with the suggested fit faint.`;
+}
+// Called whenever the settings change or the boat being edited does.
+function m3Sync() {
+  m3.dirty = true;
+  if (m3.sug && (!fit || m3.sug.fit !== fit)) m3.sug = null;
+  m3Controls();
+  m3SyncPanel();
+}
+// Turning, zooming and moving.
+const M3_PITCH = [rad(-25), rad(88)];
+const m3Turn = (dx, dy) => { const c = m3.cam; c.yaw -= dx * 0.008; c.pitch = Math.min(M3_PITCH[1], Math.max(M3_PITCH[0], c.pitch + dy * 0.008)); m3.goal = null; m3.dirty = true; };
+const m3Zoom = (k) => { const c = m3.goal || m3.cam; c.dist = Math.min(12, Math.max(0.5, c.dist * k)); m3.dirty = true; };
+const m3Move = (dx, dy) => {
+  const fr = m3.frame; if (!fr) return;
+  const s = m3.cam.dist / fr.focal;
+  m3.cam.target = add3(m3.cam.target, add3(fr.right.map((v) => -v * dx * s), fr.up.map((v) => v * dy * s)));
+  m3.goal = null; m3.dirty = true;
+};
+(() => {
+  const svg = $("m3"), ptrs = new Map();
+  let press = null, pinch = null;
+  const mid = () => { const q = [...ptrs.values()]; return [(q[0].x + q[1].x) / 2, (q[0].y + q[1].y) / 2, Math.hypot(q[0].x - q[1].x, q[0].y - q[1].y)]; };
+  svg.addEventListener("pointerdown", (e) => {
+    svg.setPointerCapture(e.pointerId);
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    svg.classList.add("grabbing");
+    if (ptrs.size === 1) press = { x: e.clientX, y: e.clientY, moved: 0, pan: e.shiftKey || e.button === 2 };
+    else { if (press) press.moved = 1e9; pinch = mid(); }
+  });
+  svg.addEventListener("pointermove", (e) => {
+    const q = ptrs.get(e.pointerId);
+    if (!q) return;
+    const dx = e.clientX - q.x, dy = e.clientY - q.y;
+    q.x = e.clientX; q.y = e.clientY;
+    if (ptrs.size === 1 && press) {
+      press.moved += Math.abs(dx) + Math.abs(dy);
+      if (press.moved < 4) return;
+      if (press.pan) m3Move(dx, dy); else m3Turn(dx, dy);
+    } else if (ptrs.size === 2 && pinch) {
+      const m = mid();
+      if (m[2] > 0 && pinch[2] > 0) m3Zoom(pinch[2] / m[2]);
+      m3Move(m[0] - pinch[0], m[1] - pinch[1]);
+      pinch = m;
+    }
+  });
+  const end = (e) => {
+    if (!ptrs.delete(e.pointerId)) return;
+    if (ptrs.size < 2) pinch = null;
+    if (ptrs.size) return;
+    svg.classList.remove("grabbing");
+    if (press && press.moved < 6 && e.type === "pointerup") {
+      const el = document.elementFromPoint(e.clientX, e.clientY), hit = el && el.closest && el.closest("#m3 [data-part]");
+      m3Pick(hit ? hit.dataset.part : null, !!hit);
+    }
+    press = null;
+  };
+  svg.addEventListener("pointerup", end);
+  svg.addEventListener("pointercancel", end);
+  svg.addEventListener("contextmenu", (e) => e.preventDefault());
+  svg.addEventListener("dblclick", () => { m3.view = "three"; m3.goal = Object.assign({}, M3_VIEWS[0][2]); m3Pick(null); m3Controls(); });
+  // Ctrl + scroll (and a trackpad pinch) zooms; plain scrolling scrolls the page.
+  svg.addEventListener("wheel", (e) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    m3Zoom(Math.exp(e.deltaY / 200));
+  }, { passive: false });
+  svg.addEventListener("keydown", (e) => {
+    const k = { ArrowLeft: () => m3Turn(-20, 0), ArrowRight: () => m3Turn(20, 0), ArrowUp: () => m3Turn(0, -15), ArrowDown: () => m3Turn(0, 15),
+      "+": () => m3Zoom(0.85), "=": () => m3Zoom(0.85), "-": () => m3Zoom(1 / 0.85), Escape: () => m3Pick(null) }[e.key];
+    if (k) { e.preventDefault(); k(); }
+  });
+})();
+onTap($("m3-in"), () => m3Zoom(0.8));
+onTap($("m3-out"), () => m3Zoom(1.25));
+onTap($("m3-home"), () => { m3.view = "three"; m3.goal = Object.assign({}, M3_VIEWS[0][2]); m3Pick(null); m3Controls(); });
+onTap($("m3-done"), () => m3Pick(null));
+onTap($("m3-play"), () => { m3.playing = !m3.playing; $("m3-play").textContent = m3.playing ? "Pause" : "Play"; });
+$("m3-phase").addEventListener("input", (e) => { m3.ph = +e.target.value; m3.playing = false; $("m3-play").textContent = "Play"; m3.dirty = true; });
+// Each frame (from frame()), while the Fit tab shows: play the stroke, ease
+// the camera toward where it's going, and draw if anything moved.
+function m3Frame(dt) {
+  const svg = $("m3");
+  if (!shown(svg)) return;
+  const r = results[editing];
+  if (m3.drawn !== r) { m3.drawn = r; m3.dirty = true; }
+  if (m3.playing) {
+    m3.ph = (m3.ph + dt / r.cycle) % 1;
+    $("m3-phase").value = m3.ph;
+    m3.dirty = true;
+  }
+  if (m3.goal) {
+    const c = m3.cam, g = m3.goal, a = 1 - Math.exp(-dt * 9);
+    let dyaw = ((g.yaw - c.yaw) % (2 * Math.PI) + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
+    c.yaw += dyaw * a; c.pitch += (g.pitch - c.pitch) * a; c.dist += (g.dist - c.dist) * a; c.target = mix3(c.target, g.target, a);
+    if (Math.abs(dyaw) < 1e-3 && Math.abs(g.pitch - c.pitch) < 1e-3 && Math.abs(g.dist - c.dist) < 1e-3 && Math.hypot(...sub3(g.target, c.target)) < 1e-3) {
+      Object.assign(c, g, { target: g.target.slice() }); m3.goal = null;
+    }
+    m3.dirty = true;
+  }
+  if (!m3.dirty) return;
+  m3Render();
+  const df = r.params.driveFraction;
+  $("m3-phase-read").textContent = m3.ph < df ? `Drive ${fmtNum((m3.ph / df) * 100, 0)}%` : `Recovery ${fmtNum(((m3.ph - df) / (1 - df)) * 100, 0)}%`;
+  m3Read();
+}
+m3Controls();
+
 renderFitWater();
 showFitIntro();
 

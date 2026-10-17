@@ -1363,6 +1363,27 @@ console.log("\nPaddle fit");
       cells: document.querySelectorAll("#fit-map .cell").length, table: document.getElementById("fit-table").textContent }));
     check(`${tag}: fit: a suggestion with reasons and a map`, fitShown.rows >= 10 && fitShown.why >= 3 && fitShown.cells === 45 && /\+\d+\.\d%/.test(fitShown.table),
           `${fitShown.rows} rows, ${fitShown.why} reasons, ${fitShown.cells} squares`);
+    // The 3D model: the boat, paddle and paddler drawn; a part picked brings up its sliders, which set the boat.
+    const parts3d = () => page.$$eval("#m3 [data-part]", (es) => [...new Set(es.map((e) => e.dataset.part))].sort().join(" "));
+    const drawn3d = (await parts3d()).split(" ");
+    check(`${tag}: 3D model: hull, seat, paddle and paddler drawn, every part tappable`, (await page.$$('#m3 [data-part="hull"]')).length > 100 &&
+          ["arms", "blade", "head", "hull", "legs", "lowHand", "path", "seat", "shaft", "topHand", "torso"].every((q) => drawn3d.includes(q)), drawn3d.join(" "));
+    await page.click('#m3-parts button[data-value="shaft"]'); await settle();
+    check(`${tag}: 3D model: picking the paddle shows its sliders and its length`, (await visible("#m3-panel")) &&
+          (await page.$$('#m3-ctl input[data-key="paddleLenM"]')).length === 1 && /\d+\.\d in/.test(await page.textContent("#m3 text")));
+    const len0 = await page.evaluate(() => window.sim.boats.a.paddleLenM);
+    await slide('#m3-ctl input[data-key="paddleLenM"]', 1.35); await settle();
+    check(`${tag}: 3D model: its slider sets the boat, as the one beside does`, Math.abs((await page.evaluate(() => window.sim.boats.a.paddleLenM)) - 1.35) < 1e-9 &&
+          Math.abs(+(await page.$eval("#c-paddleLenM", (e) => e.value)) - 1.35) < 1e-9);
+    await slide('#m3-ctl input[data-key="paddleLenM"]', len0); await settle();
+    await page.click('#m3-show button[data-value="both"]'); await settle();
+    check(`${tag}: 3D model: the suggested fit, faint over yours`, (await page.$$("#m3 .ghost")).length > 10);
+    await page.click('#m3-show button[data-value="now"]');
+    const tapAt = await page.evaluate(() => { for (const g of document.querySelectorAll('#m3 [data-part="hull"]')) { const r = g.getBoundingClientRect(), x = r.x + r.width / 2, y = r.y + r.height / 2,
+      e = document.elementFromPoint(x, y); if (r.width > 4 && e && e.closest("[data-part]") === g) return [x, y]; } return null; });
+    if (tapAt) { await page.mouse.click(tapAt[0], tapAt[1]); await settle(); }
+    check(`${tag}: 3D model: tapping a part picks it`, !!tapAt && (await pressed("#m3-parts")).join() === "hull" && /Metacentric height \d+ cm/.test(await page.textContent("#m3-part-read")));
+    await page.click("#m3-done");
     const aPaddle = await page.evaluate(() => window.sim.boats.a.paddleLenM);
     await page.click("#fit-try"); await settle();
     const tried = await page.evaluate(() => ({ tab: window.sim.tab, b: window.sim.boats.b, a: window.sim.boats.a.paddleLenM }));
