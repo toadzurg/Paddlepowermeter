@@ -272,6 +272,10 @@
   // hands within REACH of their shoulders: top hand on the grip, lower hand
   // lowerHandM down the shaft.
   const LEAN0 = rad(15), REACH = 0.97;
+  // The head's centre HEAD_UP above the shoulders (for a 1.78 m paddler),
+  // the neck turning it NECK_UP of the way back to upright; the face FACE
+  // ahead of it, kept behind the top hand at a cost of FACE_W per m².
+  const HEAD_UP = 0.23, NECK_UP = 0.6, FACE = 0.12, FACE_W = 3e3;
   const POSE_SIGMA = [rad(25), rad(15), rad(25)];
   const POSE_LIMITS = [[rad(-20), rad(60)], [rad(-10), rad(35)], [rad(-50), rad(50)]];
   const dist = (a, b) => norm(sub(a, b));
@@ -284,7 +288,10 @@
     const centre = add(hip, mul(t, p.torsoM));
     const across = [-Math.sin(tw), Math.cos(tw) * Math.cos(rl), Math.cos(tw) * Math.sin(rl)];   // toward the off side
     const h = p.shoulderM / 2;
-    return { hip, centre, up: t, off: add(centre, mul(across, h)), pad: sub(centre, mul(across, h)) };
+    // The head: the neck holds it up to look ahead, tilting it less than
+    // half as far as the trunk.
+    const neck = unit(add(mul(t, 1 - NECK_UP), [0, 0, NECK_UP])), head = add(centre, mul(neck, HEAD_UP * (p.heightM || 1.78) / 1.78));
+    return { hip, centre, up: t, head, off: add(centre, mul(across, h)), pad: sub(centre, mul(across, h)) };
   }
   // How far past its reach an arm is (m), rounded over REACH_ROUND: a sharp
   // corner where the arm meets its reach stalls the Newton search below,
@@ -294,7 +301,10 @@
   // The posture nearest `neutral` that reaches grip and low. Returns the
   // body and how stretched each arm is (shoulder to hand / arm length).
   // quick: a coarse search, good enough to choose the seat.
-  function fitBody(p, seatX, grip, low, neutral, dz = 0, start = neutral, quick = false) {
+  // face: keep the face behind the top hand too (for drawing the body; the
+  // physics' posture, for strength and gearing, doesn't, as it was
+  // calibrated without it).
+  function fitBody(p, seatX, grip, low, neutral, dz = 0, start = neutral, quick = false, face = false) {
     const arm = armOf(p), max = REACH * arm;
     const cost = (v) => {
       const b = torso(p, seatX, v, dz);
@@ -304,7 +314,11 @@
       const o1 = beyond(d1 - max), o2 = beyond(d2 - max);
       // A mild liking for comfortably bent arms, as a paddler sits to have.
       const comfy = ((d1 / arm - ARM_BEST) / 0.3) ** 2 + ((d2 / arm - ARM_BEST) / 0.3) ** 2;
-      return e + 0.3 * comfy + 1e5 * (o1 * o1 + o2 * o2);
+      // The face stays behind the top hand: to reach far forward, turn the
+      // shoulders and drop the paddle-side one rather than putting the head
+      // past the hand.
+      const past = face ? beyond(b.head[0] + FACE * (p.heightM || 1.78) / 1.78 - grip[0]) : 0;
+      return e + 0.3 * comfy + 1e5 * (o1 * o1 + o2 * o2) + FACE_W * past * past;
     };
     // Damped Newton on a smooth cost (finite-difference gradient and
     // Hessian), kept inside the posture limits: converges exactly, so the
@@ -1303,7 +1317,7 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 44;
+  const API_LEVEL = 45;
   const PADDLE = paddleOf(DEFAULTS);
   const api = { API_LEVEL, shaftDir, paddled, paddleOf, gearFactor, bestRate, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;

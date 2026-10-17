@@ -101,6 +101,8 @@
   .fit-bar i { display: block; height: 100%; width: 0; background: var(--series-1); }
   .editing-b .fit-bar i { background: var(--series-2); }
   table.cmp.fit td.s { font-weight: 650; }
+  table.cmp.fit td.v { white-space: nowrap; }
+  .m3-panel b.m3-sug { color: var(--series-1); } .m3-panel.editing-b b.m3-sug, .editing-b .m3-panel b.m3-sug { color: var(--series-2); }
   ul.fit-why { margin: 10px 0 0; padding-left: 18px; font-size: 14px; color: var(--text-secondary); display: grid; gap: 4px; }
   svg#fit-map { width: 100%; max-width: 560px; height: auto; display: block; margin-top: 6px; }
   svg#fit-map .cell { stroke: var(--surface-1); stroke-width: 2; cursor: pointer; }
@@ -859,8 +861,8 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of each engine file (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. The fit builds on the stroke engine. -->
-<script src="stroke-sim.js?v=29443d4ed0"></script>
-<script src="fit-sim.js?v=c4843125f4"></script>
+<script src="stroke-sim.js?v=50c3054f43"></script>
+<script src="fit-sim.js?v=6033546e48"></script>
 <script>
 (() => {
 "use strict";
@@ -903,7 +905,7 @@ function shown(el) {
 }
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 44;
+const NEEDS_API = 45;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -1129,6 +1131,8 @@ function showBodyEffects() {
   for (const k of ["swingM", "dropM", "heelDeg", "hipRock", "rotation", "legDrive", "hinge"]) $(`e-${k}`).hidden = !p[k];
 }
 const fmtValue = (c, v) => (c.fmt ? c.fmt(v) : `${+v.toFixed(c.step < 1 ? 2 : 0)}${c.unit}`);
+// A length in cm, to the mm where it has one: 10 cm, 22.5 cm.
+const cmTrim = (v) => `${fmtNum(+(v * 100).toFixed(1), Number.isInteger(+(v * 100).toFixed(1)) ? 0 : 1)} cm`;
 const showValue = (c) => { $(`o-${c.key}`).textContent = fmtValue(c, boats[editing][c.key]); };
 const LIFT_MODES = [["1", "With lift"], ["0", "Drag only"]];
 function renderLift() {
@@ -3782,12 +3786,12 @@ function figJoints(r, c, ph, lift = null, m = 1) {
   let b = fits.get(key);
   if (!b) {
     if (fits.size > 64) fits.clear();
-    b = S.fitBody(r.geom, r.body.seatX, grip, low, [lean, 0, rad(25 * (p.rotation || 0) * s)], 1.6 * bz);
+    const neutral = [lean, 0, rad(25 * (p.rotation || 0) * s)];
+    b = S.fitBody(r.geom, r.body.seatX, grip, low, neutral, 1.6 * bz, neutral, false, true);   // the face behind the top hand
     fits.set(key, b);
   }
   const HIP = b.hip, sh = b.centre, off = b.off, pad = b.pad, k = (p.heightM || 1.78) / 1.78;
-  // The neck holds the head up to look ahead: it tilts less than half as far as the trunk.
-  const head0 = add3(sh, unit3(mix3(b.up, [0, 0, 1], 0.6)).map((v) => v * 0.23 * k));
+  const head0 = b.head;   // the engine's, kept behind the top hand
   const legDz = 0.04 * (p.legDrive || 0) * (ph < df ? Math.sin(Math.PI * ph / df) : 0);
   const along = (a, d, len) => { const n = Math.hypot(...d); return a.map((v, j) => v + (d[j] / n) * len); };
   const knee0 = along(HIP, [0.42, 0, 0.16], p.thighM); knee0[2] -= legDz;
@@ -4055,20 +4059,24 @@ onTap($("fit-go"), async () => {
     const found = await stepThrough(F.search(p, needs), run, (f) => bar(0.7 * f));
     if (!found) return;
     $("fit-status").textContent = "Mapping seat height and paddle length…";
-    const grid = await stepThrough(F.map(found.best.setup, p, needs), run, (f) => bar(0.7 + 0.3 * f));
+    const grid = await stepThrough(F.map(found.best.setup, p, needs, [found.current.setup, found.best.setup]), run, (f) => bar(0.7 + 0.3 * f));
     if (!grid) return;
     fit = { x, key: JSON.stringify(boats[x]), needs, found, grid };
+    m3.show = "both";   // the 3D model: yours, with the suggestion faint over it
     showFit();
     $("fit-status").textContent = "";
   } finally { if (run === fitRun) { $("fit-go").disabled = false; bar(0); } }
 });
 const FIT_ROWS = ["seatZM", "paddleLenM", "lowerHandM", "handOutM", "catchDeg", "exitDeg"];
+// Short enough for two columns on a phone, and the same as the 3D model reads them.
+const FIT_LABEL = { lowerHandM: "Lower hand below the grip", handOutM: "Top hand from the centreline" };
+const fitValue = (k, v) => k === "paddleLenM" ? `${fmtNum(v / 0.0254, 1)} in` : k === "catchDeg" || k === "exitDeg" ? `${fmtNum(v, 0)}°` : cmTrim(v);
 const ctlOf = (k) => CONTROLS.find((c) => c.key === k);
 function showFit() {
   const { x, needs, found } = fit, now = found.current, best = found.best, s = best.setup, p = now.setup;
   const pct = (a, b) => `${a >= b ? "+" : "−"}${fmtNum(Math.abs(a / b - 1) * 100, 1)}%`;
   const row = (label, a, b) => `<tr><td>${label}</td><td class="v">${a}</td><td class="v s">${b}</td></tr>`;
-  $("fit-table").querySelector("tbody").innerHTML = FIT_ROWS.map((k) => row(ctlOf(k).label, fmtValue(ctlOf(k), p[k]), fmtValue(ctlOf(k), s[k]))).join("") +
+  $("fit-table").querySelector("tbody").innerHTML = FIT_ROWS.map((k) => row(FIT_LABEL[k] || ctlOf(k).label, fitValue(k, p[k]), fitValue(k, s[k]))).join("") +
     row("Speed at what you can hold", `${fmtNum(now.speed, 3)} m/s`, `${fmtNum(best.speed, 3)} m/s <small>${pct(best.speed, now.speed)}</small>`) +
     row("10 km", clock(10000 / now.speed), clock(10000 / best.speed)) +
     row("Metacentric height", `${fmtNum(now.GM * 100, 0)} cm`, `${fmtNum(best.GM * 100, 0)} cm`) +
@@ -4119,9 +4127,12 @@ function drawFitMap() {
     svg += `<rect class="cell" data-n="${n}" x="${cx(i)}" y="${cy(j)}" width="${cw}" height="${ch}" rx="3" fill="${fill}"/>`;
     if (!c.ok) svg += `<text class="glyph" x="${cx(i) + cw / 2}" y="${cy(j) + ch / 2}">${c.past.stable ? "~" : c.past.reach > 0.01 ? "R" : c.top[0] < F.TOP_LOW ? "↓" : "↑"}</text>`;
   });
-  grid.lengths.forEach((L, i) => { if (i % 2 === 0) svg += `<text x="${cx(i) + cw / 2}" y="${m.H - m.b + 14}" text-anchor="middle">${fmtNum(L / 0.0254, 0)} in</text>`; });
+  // Whole odd inches along the bottom; a length between them (yours, or the
+  // suggestion) reads when its square is tapped.
+  grid.lengths.forEach((L, i) => { const inch = L / 0.0254; if (Math.abs(inch - Math.round(inch)) < 0.05 && Math.round(inch) % 2 === 1)
+    svg += `<text x="${cx(i) + cw / 2}" y="${m.H - m.b + 14}" text-anchor="middle">${fmtNum(inch, 0)} in</text>`; });
   svg += `<text x="${(m.l + m.W - m.r) / 2}" y="${m.H - 4}" text-anchor="middle">Paddle length</text>`;
-  grid.seats.forEach((z, j) => { svg += `<text x="${m.l - 6}" y="${cy(j) + ch / 2 + 4}" text-anchor="end">${fmtNum(z * 100, 0)} cm</text>`; });
+  grid.seats.forEach((z, j) => { svg += `<text x="${m.l - 6}" y="${cy(j) + ch / 2 + 4}" text-anchor="end">${cmTrim(z)}</text>`; });
   svg += `<text transform="translate(12 ${m.t + (m.H - m.t - m.b) / 2}) rotate(-90)" text-anchor="middle">Seat height</text>`;
   const ring = (s, cls) => `<rect class="${cls}" x="${cx(near(grid.lengths, s.paddleLenM)) + 2}" y="${cy(near(grid.seats, s.seatZM)) + 2}" width="${cw - 4}" height="${ch - 4}" rx="3"/>`;
   svg += ring(found.current.setup, "now") + ring(found.best.setup, "sug");
@@ -4130,7 +4141,7 @@ function drawFitMap() {
     const c = grid.cells[+el.dataset.n];
     for (const o of $("fit-map").querySelectorAll(".cell.on")) o.classList.remove("on");
     el.classList.add("on");
-    $("fit-map-read").innerHTML = `${fmtNum(c.paddleLenM / 0.0254, 0)} in paddle, ${fmtNum(c.seatZM * 100, 0)} cm seat: ` + (c.ok
+    $("fit-map-read").innerHTML = `${fmtNum(c.paddleLenM / 0.0254, 1)} in paddle, ${cmTrim(c.seatZM)} seat: ` + (c.ok
       ? `<b>${fmtNum(c.speed, 3)} m/s</b> at ${fmtNum(c.watts, 0)} W, reach ${fmtNum(c.setup.catchDeg, 0)}°, arms ${fmtNum(c.armSpeed, 2)} m/s`
       : `<b>${c.past.stable ? "too tippy for your water" : c.past.reach > 0.01 ? "out of reach" : c.top[0] < F.TOP_LOW ? "top hand below the chin" : "top hand above the forehead"}</b>`) +
       `, metacentric height ${fmtNum(c.GM * 100, 0)} cm.`;
@@ -4319,16 +4330,16 @@ function m3Dims(sc) {
   const { J, r } = sc, p = r.params, st = J.st, B = st.B, grip = st.P.at(0), cm = (v) => `${fmtNum(v * 100, 0)} cm`;
   const offset = (a, b, d) => [add3(a, d), add3(b, d)];
   switch (m3.sel) {
-    case "seat": { const x = r.body.seatX + 0.12, y = -0.16; return [{ a: [x, y, 0], b: [x, y, p.seatZM], text: `hips ${cm(p.seatZM)} above the water` }]; }
+    case "seat": { const x = r.body.seatX + 0.12, y = -0.16; return [{ a: [x, y, 0], b: [x, y, p.seatZM], text: `hips ${cmTrim(p.seatZM)} above the water` }]; }
     case "shaft": { const d = unit3(cross3(st.P.d, [0, 0, 1])).map((q) => q * 0.09), [a, b] = offset(grip, B.tip, d); return [{ a, b, text: `${fmtNum(p.paddleLenM / 0.0254, 1)} in` }]; }
     case "blade": { const d = unit3(cross3(st.P.d, [0, 0, 1])).map((q) => q * 0.16), [a, b] = offset(B.throat, B.tip, d); return [{ a, b, text: `${fmtNum(p.bladeLenM / 0.0254, 1)} × ${fmtNum(p.bladeWidthM / 0.0254, 1)} in` }]; }
-    case "lowHand": { const d = unit3(cross3(st.P.d, [0, 0, 1])).map((q) => q * -0.09), [a, b] = offset(grip, J.rightHand, d); return [{ a, b, text: cm(S.lowerHand(r.geom)) }]; }
+    case "lowHand": { const d = unit3(cross3(st.P.d, [0, 0, 1])).map((q) => q * -0.09), [a, b] = offset(grip, J.rightHand, d); return [{ a, b, text: cmTrim(S.lowerHand(r.geom)) }]; }
     case "topHand": return [{ a: [grip[0], 0, grip[2]], b: grip, text: `${cm(Math.abs(grip[1]))} out` },
       { a: [grip[0], grip[1], J.fit.centre[2]], b: grip, text: `${cm(grip[2] - J.fit.centre[2])} above shoulders` }];
     case "arms": return [{ at: J.leftHand, text: `${fmtNum(J.fit.top * 100, 0)}%` }, { at: J.rightHand, text: `${fmtNum(J.fit.low * 100, 0)}%` }];
     case "torso": return [{ at: add3(J.sh, [0, 0, 0.12]), text: `lean ${fmtNum(J.fit.pose[0] * 180 / Math.PI, 0)}°, twist ${fmtNum(J.fit.pose[2] * 180 / Math.PI, 0)}°` }];
     case "head": return [{ at: add3(J.head, [0, 0, 0.18 * J.k]), text: `${fmtNum(p.heightM * 100, 0)} cm, ${fmtNum(p.massKg - S.BOAT_KG, 0)} kg` }];
-    case "legs": return [{ at: J.knee, text: `thigh ${cm(p.thighM)}, shin ${cm(p.shinM)}` }];
+    case "legs": return [{ at: J.knee, text: `thigh ${cmTrim(p.thighM)}, shin ${cmTrim(p.shinM)}` }];
     case "path": { const s0 = r.samples[0], s1 = r.samples[r.samples.length - 1];
       return [{ at: s0.P.at(0), text: `catch ${fmtNum(p.catchDeg, 0)}°` }, { at: s1.P.at(0), text: `exit ${fmtNum(p.exitDeg, 0)}°` }]; }
     case "hull": return [{ a: [-C1.half, -C1.beam - 0.25, 0], b: [C1.half, -C1.beam - 0.25, 0], text: "18′6″ (5.64 m)" },
@@ -4357,6 +4368,7 @@ function m3Render() {
   if (m3.show !== "sug" || !sug) scenes.push(m3Scene(now, editing, m3.ph, false));
   if (sug) scenes.push(m3Scene(sug, editing, m3.ph, m3.show === "both"));
   m3.scene = scenes.find((s) => !s.prims[0].ghost) || scenes[0];
+  m3.scenes = scenes;
   // Everything, split at the water: under it, then the water, then above.
   const under = [], over = [];
   const put = (o, z) => (z < 0 ? under : over).push(o);
@@ -4505,26 +4517,33 @@ function m3SyncPanel() {
 // Live readings for the part picked, at this moment of the stroke.
 function m3Read() {
   if (!m3.sel || !m3.scene) return;
-  const { J, r } = m3.scene, p = r.params, st = J.st, cm = (v) => `${fmtNum(v * 100, 0)} cm`, deg = (v) => `${fmtNum(v * 180 / Math.PI, 0)}°`;
-  const it = (label, v) => `<span>${label} <b>${v}</b></span>`, c = cycleOf(r);
-  const shaftDeg = Math.atan2(st.P.d[0], -st.P.d[2]);
-  const read = {
-    hull: [it("Metacentric height", cm(c.GM)), it("Speed", `${fmtNum(r.speedAt(effortW), 2)} m/s at ${effortW} W`)],
-    seat: [it("Seat", cm(p.seatZM)), it("Hips", `${cm(Math.abs(r.body.seatX))} ${r.body.seatX < 0 ? "behind" : "ahead of"} the pivot`), it("Metacentric height", cm(c.GM)), it("Rolls every", `${fmtNum(c.rollPeriod, 2)} s`)],
-    shaft: [it("Length", `${fmtNum(p.paddleLenM / 0.0254, 1)} in`), it("Shaft now", `${deg(Math.abs(shaftDeg))} ${shaftDeg < 0 ? "behind" : "ahead of"} vertical`)],
-    blade: [it("Area", `${fmtNum(p.bladeLenM * p.bladeWidthM * 1e4, 0)} cm²`), it("Push now", `${fmtNum(st.F, 0)} N`), it("In the water", st.inDrive ? `${fmtNum(st.B.wet * 100, 0)}%` : "no, recovering")],
-    topHand: [it("Above shoulders", cm(st.P.at(0)[2] - J.fit.centre[2])), it("Out", cm(Math.abs(st.P.at(0)[1]))), it("Arm stretch", `${fmtNum(J.fit.top * 100, 0)}%`)],
-    lowHand: [it("Below the grip", cm(S.lowerHand(r.geom))), it("Arm stretch", `${fmtNum(J.fit.low * 100, 0)}%`), it("Arm speed", `${fmtNum(r.body.armSpeed, 2)} m/s`)],
-    arms: [it("Top arm", `${fmtNum(J.fit.top * 100, 0)}%`), it("Lower arm", `${fmtNum(J.fit.low * 100, 0)}%`), it("Arm speed", `${fmtNum(r.body.armSpeed, 2)} m/s`)],
-    torso: [it("Lean", deg(J.fit.pose[0])), it("Roll", deg(J.fit.pose[1])), it("Twist", deg(J.fit.pose[2]))],
-    head: [it("Height", cm(p.heightM)), it("Can hold", `${fmtNum(S.capacity(p), 0)} W for an hour`)],
-    legs: [it("Thigh", cm(p.thighM)), it("Shin", cm(p.shinM))],
-    path: [it("Catch", `${fmtNum(p.catchDeg, 0)}°`), it("Exit", `${fmtNum(p.exitDeg, 0)}°`), it("Speed", `${fmtNum(r.speedAt(effortW), 2)} m/s at ${effortW} W`), it("Strokes a side", fmtNum(r.strokesPerSide, 1))],
-  }[m3.sel] || [];
-  $("m3-part-read").innerHTML = read.join("");
-  const short = r.body.short;
+  // With both shown, each reading as yours → suggested, as the fit's table has them.
+  const ghost = (m3.scenes || []).find((q) => q.prims[0] && q.prims[0].ghost);
+  const mine = m3Reads(m3.scene), sug = ghost ? m3Reads(ghost) : null;
+  $("m3-part-read").innerHTML = mine.map(([label, v], i) =>
+    `<span>${label} <b>${v}</b>${sug && sug[i] && sug[i][1] !== v ? ` → <b class="m3-sug">${sug[i][1]}</b>` : ""}</span>`).join("");
+  const short = m3.scene.r.body.short;
   $("m3-part-warn").hidden = !(short > 0.005) || !["arms", "topHand", "lowHand", "torso", "shaft", "path"].includes(m3.sel);
-  if (short > 0.005) $("m3-part-warn").textContent = `Out of reach by ${cm(short)} somewhere in the stroke: the arm is drawn at full stretch.`;
+  if (short > 0.005) $("m3-part-warn").textContent = `Out of reach by ${fmtNum(short * 100, 0)} cm somewhere in the stroke: the arm is drawn at full stretch.`;
+}
+// The readings for the part picked, for one setup: [label, value]. Settings
+// read as in the fit's table (cmTrim); what's measured, to the cm or degree.
+function m3Reads({ J, r }) {
+  const p = r.params, st = J.st, cm = (v) => `${fmtNum(v * 100, 0)} cm`, deg = (v) => `${fmtNum(v * 180 / Math.PI, 0)}°`, c = cycleOf(r);
+  const shaftDeg = Math.atan2(st.P.d[0], -st.P.d[2]), speed = ["Speed", `${fmtNum(r.speedAt(effortW), 2)} m/s at ${effortW} W`];
+  return {
+    hull: [["Metacentric height", cm(c.GM)], speed],
+    seat: [["Seat", cmTrim(p.seatZM)], ["Hips", `${cm(Math.abs(r.body.seatX))} ${r.body.seatX < 0 ? "behind" : "ahead of"} the pivot`], ["Metacentric height", cm(c.GM)], ["Rolls every", `${fmtNum(c.rollPeriod, 2)} s`]],
+    shaft: [["Length", `${fmtNum(p.paddleLenM / 0.0254, 1)} in`], ["Shaft now", `${deg(Math.abs(shaftDeg))} ${shaftDeg < 0 ? "behind" : "ahead of"} vertical`]],
+    blade: [["Area", `${fmtNum(p.bladeLenM * p.bladeWidthM * 1e4, 0)} cm²`], ["Push now", `${fmtNum(st.F, 0)} N`], ["In the water", st.inDrive ? `${fmtNum(st.B.wet * 100, 0)}%` : "no, recovering"]],
+    topHand: [["From the centreline", cmTrim(p.handOutM)], ["Above shoulders now", cm(st.P.at(0)[2] - J.fit.centre[2])], ["Arm stretch", `${fmtNum(J.fit.top * 100, 0)}%`]],
+    lowHand: [["Below the grip", cmTrim(S.lowerHand(r.geom))], ["Arm stretch", `${fmtNum(J.fit.low * 100, 0)}%`], ["Arm speed", `${fmtNum(r.body.armSpeed, 2)} m/s`]],
+    arms: [["Top arm", `${fmtNum(J.fit.top * 100, 0)}%`], ["Lower arm", `${fmtNum(J.fit.low * 100, 0)}%`], ["Arm speed", `${fmtNum(r.body.armSpeed, 2)} m/s`]],
+    torso: [["Lean", deg(J.fit.pose[0])], ["Roll", deg(J.fit.pose[1])], ["Twist", deg(J.fit.pose[2])]],
+    head: [["Height", cm(p.heightM)], ["Can hold", `${fmtNum(S.capacity(p), 0)} W for an hour`]],
+    legs: [["Thigh", cmTrim(p.thighM)], ["Shin", cmTrim(p.shinM)]],
+    path: [["Catch", `${fmtNum(p.catchDeg, 0)}°`], ["Exit", `${fmtNum(p.exitDeg, 0)}°`], speed, ["Strokes a side", fmtNum(r.strokesPerSide, 1)]],
+  }[m3.sel] || [];
 }
 // Pick a part: zoom to it (keeping the angle) and bring up its settings.
 function m3Pick(id, zoom = true) {
@@ -4568,8 +4587,9 @@ function m3Controls() {
   m3Chips("m3-show", [["now", "Yours"], ["sug", "Suggested"], ["both", "Both"]], () => m3.show, (v) => { m3.show = v; m3.dirty = true; m3Controls(); m3Panel(); });
   for (const el of [$("m3-views"), $("m3-parts"), $("m3-show")]) el.classList.toggle("b", editing === "b");
   $("m3-card").classList.toggle("editing-b", editing === "b");
-  $("m3-sub").textContent = m3.show === "now" ? `${NAME[editing]}, as its sliders are set now.` :
-    m3.show === "sug" ? `${NAME[editing]} with the suggested fit.` : `${NAME[editing]} now, with the suggested fit faint.`;
+  const stale = sug && JSON.stringify(boats[fit.x]) !== fit.key ? ` ${NAME[editing]} has changed since the search: search again to update the suggestion.` : "";
+  $("m3-sub").textContent = (m3.show === "now" ? `${NAME[editing]}, as its sliders are set now.` :
+    m3.show === "sug" ? `${NAME[editing]} with the suggested fit.` : `${NAME[editing]} now, with the suggested fit faint.`) + (m3.show === "now" ? "" : stale);
 }
 // Called whenever the settings change or the boat being edited does.
 function m3Sync() {
@@ -4651,10 +4671,11 @@ $("m3-phase").addEventListener("input", (e) => { m3.ph = +e.target.value; m3.pla
 // Each frame (from frame()), while the Fit tab shows: play the stroke, ease
 // the camera toward where it's going, and draw if anything moved.
 function m3Frame(dt) {
-  const svg = $("m3");
-  if (!shown(svg)) return;
-  const r = results[editing];
+  const svg = $("m3"), r = results[editing];
   if (m3.drawn !== r) { m3.drawn = r; m3.dirty = true; }
+  // Off screen it doesn't play, but a change still reaches the part's readings,
+  // which can be on screen below it.
+  if (!shown(svg)) { if (m3.dirty && m3.sel && !$("m3-panel").hidden) { m3Render(); m3Read(); } return; }
   if (m3.playing) {
     m3.ph = (m3.ph + dt / r.cycle) % 1;
     $("m3-phase").value = m3.ph;

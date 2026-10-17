@@ -1299,6 +1299,16 @@ console.log("\nPaddle fit");
     check(`${tag}: recovery: the blade feathers flat for the carry, its face turning smoothly`, carry.every((q) => q.flat > 0.6 && q.face < 12),
           carry.map((q) => `${q.face.toFixed(0)}°`).join(" "));
     check(`${tag}: elbows: the lower one never points forward with the hand behind`, carry.every((q) => q.elbow < 0.01));
+    // At the catch the paddler reaches by turning and dropping the paddle-side
+    // shoulder, the face kept behind the top hand, not the head past it.
+    const faces = await page.evaluate(() => Object.entries(window.sim.PRESETS).map(([name, pre]) => {
+      const S = window.StrokeSim, r = S.simulate(Object.assign({}, S.DEFAULTS, pre)), c = r.cycleAt(150);
+      let worst = -9;
+      for (const ph of [0, 0.02, 0.05, 0.95, 0.98]) { const J = window.sim.figJoints(r, c, ph); worst = Math.max(worst, J.head[0] - J.st.P.at(0)[0]); }
+      return [name, worst];
+    }));
+    check(`${tag}: catch: the head stays behind the top hand`, faces.every(([, d]) => d < -0.08),
+          faces.map(([n, d]) => `${n} ${(-d * 100).toFixed(0)} cm`).join(", "));
     await goTab("stroke");
     await page.$eval("#switch-mode button:nth-child(2)", (b) => b.click()); await settle();
     // A's readout: in its own pane, or in a shared one after "A ". Views
@@ -1391,6 +1401,21 @@ console.log("\nPaddle fit");
       cells: document.querySelectorAll("#fit-map .cell").length, table: document.getElementById("fit-table").textContent }));
     check(`${tag}: fit: a suggestion with reasons and a map`, fitShown.rows >= 10 && fitShown.why >= 3 && fitShown.cells === 45 && /\+\d+\.\d%/.test(fitShown.table),
           `${fitShown.rows} rows, ${fitShown.why} reasons, ${fitShown.cells} squares`);
+    // The search's seat and paddle are marked where they are on the map, not
+    // on the nearest square; the 3D model shows yours with the suggestion,
+    // reading both as the table does.
+    const marks = await page.evaluate(() => {
+      const box = (sel) => { const e = document.querySelector(`#fit-map ${sel}`).getBBox(); return [e.x + e.width / 2, e.y + e.height / 2]; };
+      const sug = box(".sug"), seatRows = [...document.querySelectorAll("#fit-map text")].map((t) => t.textContent).filter((t) => / cm$/.test(t));
+      const cell = [...document.querySelectorAll("#fit-map .cell")].find((c) => { const b = c.getBBox(); return sug[0] > b.x && sug[0] < b.x + b.width && sug[1] > b.y && sug[1] < b.y + b.height; });
+      return { seatRows, under: cell && cell.dataset.n };
+    });
+    const sugSeat = (await page.$eval("#fit-table tbody tr:first-child td:nth-child(3)", (e) => e.textContent)).trim();
+    check(`${tag}: fit: the suggested seat has its own row on the map`, marks.seatRows.includes(sugSeat) && marks.under !== undefined, `${sugSeat} in ${marks.seatRows.join(", ")}`);
+    await page.click('#m3-parts button[data-value="seat"]'); await settle();
+    check(`${tag}: fit: the 3D model shows yours and the suggestion, reading the seat as the table does`,
+          (await pressed("#m3-show")).join() === "both" && (await page.textContent("#m3-part-read")).includes(`→ ${sugSeat}`), await page.textContent("#m3-part-read"));
+    await page.click("#m3-done");
     // The 3D model: the boat, paddle and paddler drawn; a part picked brings up its sliders, which set the boat.
     const parts3d = () => page.$$eval("#m3 [data-part]", (es) => [...new Set(es.map((e) => e.dataset.part))].sort().join(" "));
     const drawn3d = (await parts3d()).split(" ");
