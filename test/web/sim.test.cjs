@@ -1271,6 +1271,34 @@ console.log("\nPaddle fit");
     });
     check(`${tag}: recovery carries the blade clear, top hand within reach, no jump at the exit`,
           rec.clear > 0.03 && rec.grip < 1.0 && rec.step < 0.02, `blade ${(rec.clear * 100).toFixed(0)} cm up, top hand ${rec.grip.toFixed(2)} m, step ${(rec.step * 1000).toFixed(0)} mm`);
+    // The recovery as a paddler does it, for every preset: the blade swings
+    // out no wider than a paddle allows with the top hand at chin height,
+    // the top hand comes up in front of the face, the blade turns flat for
+    // the carry, its face carries on from the drive (a sweep turns it), and
+    // the elbows bend the way elbows do: never forward with the hand behind.
+    const carry = await page.evaluate(() => {
+      const S = window.StrokeSim, sim = window.sim, dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+      return Object.entries(sim.PRESETS).map(([name, pre]) => {
+        const r = S.simulate(Object.assign({}, S.DEFAULTS, pre)), c = r.cycleAt(150), df = r.params.driveFraction;
+        let wide = 0, ahead = 9, flat = 0, face = 0, elbow = 0, prev = null;
+        for (let i = 0; i < 200; i++) {
+          const ph = i / 200, u = (ph - df) / (1 - df), J = sim.figJoints(r, c, ph), st = J.st, g = st.P.at(0);
+          if (ph >= df) wide = Math.max(wide, -st.B.cop[1]);
+          if (u > 0.4 && u < 0.6) { ahead = Math.min(ahead, g[0] - J.head[0]); flat = Math.max(flat, Math.abs(st.B.n[2])); }
+          if (prev) face = Math.max(face, Math.acos(Math.min(1, dot(st.B.n, prev))) * 180 / Math.PI);
+          prev = st.B.n;
+          if (J.rightElbow && J.rightHand[0] < J.right[0]) elbow = Math.max(elbow, J.rightElbow[0] - (J.right[0] + J.rightHand[0]) / 2);
+        }
+        return { name, wide, ahead, flat, face, elbow };
+      });
+    });
+    const worst = (k, f) => carry.reduce((a, q) => (f(q[k], a[k]) ? q : a));
+    check(`${tag}: recovery: the blade swings out no wider than it must, the top hand up in front of the face`,
+          carry.every((q) => q.wide < 1.3 && q.ahead > 0.1), `widest ${worst("wide", (a, b) => a > b).name} ${(worst("wide", (a, b) => a > b).wide * 100).toFixed(0)} cm, ` +
+          `top hand ahead of the face by ${(worst("ahead", (a, b) => a < b).ahead * 100).toFixed(0)} cm or more`);
+    check(`${tag}: recovery: the blade feathers flat for the carry, its face turning smoothly`, carry.every((q) => q.flat > 0.6 && q.face < 12),
+          carry.map((q) => `${q.face.toFixed(0)}°`).join(" "));
+    check(`${tag}: elbows: the lower one never points forward with the hand behind`, carry.every((q) => q.elbow < 0.01));
     await goTab("stroke");
     await page.$eval("#switch-mode button:nth-child(2)", (b) => b.click()); await settle();
     // A's readout: in its own pane, or in a shared one after "A ". Views
