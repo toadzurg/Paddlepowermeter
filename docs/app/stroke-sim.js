@@ -149,6 +149,7 @@
     switchHeadingDeg: 3,       // switch sides when this far off course
     switchLossS: 1.0,          // time lost per switch, s (an estimate, not measured)
     switchStrokes: 0,          // fixed strokes per side; 0 = switch by heading
+    noSwitching: 0,            // 1: an ideal boat that runs straight without switching (no switch time, no zigzag)
     // Body motion, relative to the boat.
     swingM: 0,                 // torso fore-aft, ± m (half the travel)
     swingTiming: 1,            // 1: moving back (aft) through the drive; -1: forward
@@ -626,8 +627,12 @@
   // wanders as far as it must: ±N·Tc·M / (2c). Either way the boat zigzags
   // about the course, and its progress along it is V·cos ψ, on average
   // V·(1 − ψ²/6) for a heading that swings evenly through ±ψ.
+  //
+  // With noSwitching the boat is held straight for free: no switches, no
+  // zigzag (perSide stays at the cap so counts and drawings stay finite).
   function switching(p, V, yaw, Tc) {
     const turnPerStroke = Math.abs(yaw) * Tc / yawDamping(V);  // rad per stroke
+    if (p.noSwitching) return { perSide: MAX_STROKES_PER_SIDE, duty: 1, wander: 0, course: 1, turnPerStroke };
     let perSide;
     if (p.switchStrokes > 0) perSide = Math.min(MAX_STROKES_PER_SIDE, Math.max(1, Math.round(p.switchStrokes)));
     else perSide = turnPerStroke > 1e-12
@@ -689,7 +694,7 @@
   }
 
   // A switch's lost time, in strokes at this rate.
-  const switchLossStrokes = (p) => (p.switchLossS * p.rateSpm) / 60;
+  const switchLossStrokes = (p) => (p.noSwitching ? 0 : (p.switchLossS * p.rateSpm) / 60);
   // The stroke as paddled: heel brings the hands in, rotation and a hinge
   // reach further and travel further.
   const paddled = (p) => Object.assign({}, p, {
@@ -1009,7 +1014,9 @@
       const side = 0.5 * RHO_AIR * CDA_SIDE * u * uy;
       const W = side * WIND_ARM;
       let duty, windward, lee, wander, course, steer = 0;
-      if (W < M) ({ windward, lee, duty, wander, course } = switchIn(V, W));
+      // Held straight for free, the wind's turning costs nothing either.
+      if (r.params.noSwitching) { windward = lee = MAX_STROKES_PER_SIDE; duty = 1; wander = 0; course = 1; }
+      else if (W < M) ({ windward, lee, duty, wander, course } = switchIn(V, W));
       else {           // can't hold course by switching alone
         windward = Infinity; lee = 0; duty = 1; wander = 0; course = 1;
         steer = (W - M) / (HULL_L / 2);
