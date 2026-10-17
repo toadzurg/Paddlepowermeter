@@ -1010,21 +1010,10 @@
   // meter's force and shaft speed at a few rates give the paddler's arms'
   // line; the trunk's needs its motion as well.
   //
-  // The best speeds rise with how hard you work: a cyclist's least-tiring
-  // cadence rises with power (Coast & Welch 1985, Foss & Hallén 2004: ~66
-  // rpm at the first lactate threshold to ~84 at maximal aerobic power), as
-  // a higher cadence asks less force each stroke (Takaishi 1996: least
-  // neuromuscular fatigue at 80–90 rpm, though oxygen cost is lowest at
-  // 60–70; Lucía 2004: pros at 366 W 7% more efficient at 100 rpm than at
-  // 60). So a paddler fitter than is typical for their size (whose every
-  // stroke is heavier at the same rate) is best moving faster, as
-  // (fitness / typical)^SPEED_WITH_FITNESS: ×1.18 at 1.5 times typical (the
-  // cycling studies give 0.3–0.45 for power within one rider).
   // And the trunk's best is for the muscles it uses: rotation (the obliques)
   // and a hinge (the hips and back) are each best at their own speed, so its
   // best is trunkBestMs (full rotation's) scaled to the motion this mix of
   // the two makes in the default stroke at 60 spm.
-  const SPEED_WITH_FITNESS = 0.4;
   // A typical racer's one-hour power for age, sex and weight. The 200 W
   // default is a 79 kg man of 35. It scales with muscle as body mass^⅔;
   // a woman holds about 80% of a man's at the same weight (assumed: the gap is
@@ -1041,8 +1030,7 @@
     const q = Object.assign({}, DEFAULTS, p), kg = Math.max(30, q.massKg - BOAT_KG);
     return Math.round((200 * Math.pow(kg / 79, 2 / 3) * (q.female ? 0.8 : 1) * ageShare(q.ageY)) / 5) * 5;
   }
-  const fitnessSpeedUp = (q) => Math.pow(q.fitnessW / typicalFitness(q), SPEED_WITH_FITNESS);
-  const armBest = (p) => { const q = Object.assign({}, DEFAULTS, p); return q.armBestMs * fitnessSpeedUp(q); };
+  const armBest = (p) => Object.assign({}, DEFAULTS, p).armBestMs;
   const trunkMixCache = new Map();
   function trunkBest(p) {
     const q = Object.assign({}, DEFAULTS, p), rot = q.rotation || 0, hinge = q.hinge || 0;
@@ -1052,7 +1040,7 @@
       if (trunkMixCache.size > 60) trunkMixCache.clear();
       trunkMixCache.set(key, rot + hinge > 0 ? at({ rotation: rot, hinge }) / at({ rotation: 1, hinge: 0 }) : 1);
     }
-    return q.trunkBestMs * trunkMixCache.get(key) * fitnessSpeedUp(q);
+    return q.trunkBestMs * trunkMixCache.get(key);
   }
   // Power against speed is Hill's: force (1 − v)/(1 + v/k) of the
   // isometric at shortening speed v (of the fastest), so power v·force,
@@ -1108,24 +1096,60 @@
   }
   // The power rotation and a hinge add, as a share of fitness.
   const trunkShareOf = (q) => 0.12 * (q.rotation || 0) + 0.08 * (q.hinge || 0);
-  // The stroke rate that holds the most: arm and trunk speeds both go with
-  // the rate, so it's where the two curves, weighted by the power each sets,
-  // peak together. With no rotation or hinge, the rate that puts the arms
-  // at their best.
-  const bestRate = (p) => {
-    const q = Object.assign({}, DEFAULTS, p), b = bodyThroughDrive(paddled(q)), aB = armBest(q), tB = trunkBest(q), wT = trunkShareOf(q);
-    // Arm and trunk speeds go as 1 / drive time.
-    const Td = (r) => driveShareAt(Object.assign({}, q, { rateSpm: r })) / r, k = (r) => Td(q.rateSpm) / Td(r);
-    const held = (r) => 0.7 * parabola(b.armSpeed * k(r), aB, q.gearDrop) + wT * parabola(b.trunkSpeed * k(r), tB, q.trunkDrop);
-    let lo = RATE_MIN, hi = RATE_MAX;   // within what you can paddle
-    for (let i = 0; i < 80; i++) { const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3; if (held(m1) < held(m2)) lo = m1; else hi = m2; }
-    return (lo + hi) / 2;
-  };
-  function capacity(p, hours = 1) {
-    const q = Object.assign({}, DEFAULTS, p);
+  function muscleCapacity(q, hours) {
     return q.fitnessW * (0.7 * gearFactor(q) + trunkShareOf(q) * trunkGearFactor(q) + 0.1 * q.legDrive) * strengthFactor(q) *
       Math.pow(Math.max(1, hours), -0.07);
   }
+  // The blade's path through the drive against the boat (m).
+  const pathCache = new Map();
+  function bladePath(pg) {
+    const key = JSON.stringify(pg);
+    if (pathCache.has(key)) return pathCache.get(key);
+    let d = 0, last = null;
+    for (let i = 0; i <= 40; i++) { const u = i / 40, c = blade(pg, pose(pg, u), driveFace(pg, u)).cop; if (last) d += norm(sub(c, last)); last = c; }
+    if (pathCache.size > 200) pathCache.clear();
+    pathCache.set(key, d);
+    return d;
+  }
+  // With gearing on, what you hold also depends on the stroke rate, against
+  // your stroke at 60 spm (where fitness is set):
+  //  - The recovery: swinging the arms and paddle back costs the muscles
+  //    too (recoveryWatts, its internal work), more the quicker the rate.
+  //  - The force each stroke asks: a slower rate at the same power is a
+  //    heavier pull every stroke, and heavy contractions tire you far
+  //    sooner (blood flow through a muscle is restricted from ~20–30% of
+  //    its strength and cut off by 50–60%, McNeil 2015; more fast, tiring
+  //    fibres are recruited). It's why cyclists ride at 80–90 rpm though
+  //    60–70 costs the least oxygen (Takaishi 1996; Lucía 2004: pros at
+  //    366 W 7% more efficient at 100 rpm than at 60), and why the best
+  //    cadence rises with power (Coast & Welch 1985, Foss & Hallén 2004).
+  //    What you hold goes as 1 / (1 + FORCE_K·f^FORCE_N), f the stroke's
+  //    force against what a typical paddler of your size pulls in the
+  //    reference stroke (strength set by size, sex and age, not fitness:
+  //    endurance training adds little of it), steep once strokes are heavy.
+  // FORCE_K, FORCE_N and the recovery's ELASTIC return are fitted, not
+  // measured: a typical paddler using the whole body is fastest at about
+  // 60 spm (club racers: 55–60), one at 1.5 times typical fitness at about
+  // 75 (elites: 65–90, ~75 over long races).
+  const FORCE_K = 0.15, FORCE_N = 4;
+  function capacity(p, hours = 1) {
+    const q = Object.assign({}, DEFAULTS, p), C = muscleCapacity(q, hours);
+    if (!q.gearOn) return C;
+    const ref = Object.assign({}, q, { rateSpm: 60 });
+    const pg = paddled(q), pr = paddled(ref);
+    const dR = recoveryWatts(pg) - recoveryWatts(pr);
+    const shareAll = 0.7 + trunkShareOf(q) + 0.1 * q.legDrive;
+    // Stroke force (N, mean through the drive) per watt held, and the reference's.
+    const a = (60 / q.rateSpm) / bladePath(pg), Fr = typicalFitness(q) * shareAll / bladePath(pr);
+    const f0 = C / bladePath(pr) / Fr;   // your stroke's at 60 spm
+    const ff = (f) => 1 / (1 + FORCE_K * Math.pow(f, FORCE_N)), rel = (f) => ff(f) / ff(f0);
+    // What you hold, h: your muscles' capacity at this stroke's force, less the recovery.
+    let lo = 0, hi = C * 3;
+    for (let i = 0; i < 50; i++) { const h = (lo + hi) / 2; if (C * rel(a * h / Fr) - dR > h) lo = h; else hi = h; }
+    return Math.max(1, (lo + hi) / 2);
+  }
+
+
 
   // ------------------------------------------------------------ the recovery
   // No force on the water, so the best recovery is the one that costs least
@@ -1153,7 +1177,7 @@
   // drops and swings over it. The plan with the least cost, inside reach,
   // with the top hand below the forehead and in front of the face, is the
   // one paddled (recoveryPivot -1), or one pivot can be set to compare.
-  const NEG_WORK = 0.25, AIR = 1.2, BLADE_CD = 1.17, SKIN_CD = 0.02, NOMINAL_V = 2.6;
+  const ELASTIC = 0.65, NEG_WORK = 0.25, AIR = 1.2, BLADE_CD = 1.17, SKIN_CD = 0.02, NOMINAL_V = 2.6;
   const SEG = { m: [[0.0271, 0.0162, 0.0061], [0.0255, 0.0138, 0.0056]], com: [0.577, 0.457], gyr: [0.285, 0.276] };
   const REC_CLEAR = 0.05, REC_RAMP = 0.25, SLICE_OUT = 0.3, FEATHER = rad(80);
   const smooth = (x) => { const t = Math.min(1, Math.max(0, x)); return t * t * (3 - 2 * t); };
@@ -1319,8 +1343,19 @@
       const v = add(mul(sub(b.B.cop, a.B.cop), 1 / dt), [NOMINAL_V, 0, 0]), vm = norm(v);
       if (vm > 1e-9) air += 0.5 * AIR * paddleOf(p).bladeLen * p.bladeWidthM * vm * vm * (BLADE_CD * Math.abs(dot(a.B.n, v)) / vm + SKIN_CD) * vm * dt;
     }
-    let pos = 0, neg = 0;
-    for (let i = 1; i < energy.length; i++) { const d = energy[i] - energy[i - 1]; if (d > 0) pos += d; else neg -= d; }
+    // Braking stretches muscle and tendon, which give ELASTIC of it back to
+    // the next speeding up (round the cycle: twice round). Fitted (with the
+    // stroke force's cost, see capacity): a tendon-rich running stride
+    // returns about half or more; 0.65 puts club and elite rates where they
+    // race.
+    let pos = 0, neg = 0, stored = 0;
+    for (let lap = 0; lap < 2; lap++) {
+      pos = 0; neg = 0;
+      for (let i = 1; i < energy.length; i++) {
+        const d = energy[i] - energy[i - 1];
+        if (d < 0) { neg -= d; stored -= ELASTIC * d; } else { const back = Math.min(stored, d); stored -= back; pos += d - back; }
+      }
+    }
     return { pos, neg, air, joules: pos + NEG_WORK * neg + air, past, wide };
   }
   // The plan for a stroke: the pivot set (recoveryPivot ≥ 0) or the
@@ -1349,6 +1384,22 @@
     if (recoveryCache.size > 80) recoveryCache.clear();
     recoveryCache.set(key, out);
     return out;
+  }
+
+  // The recovery's power (W) at this stroke's rate, for what you can hold:
+  // the motion planned at 60 spm (its best changes little with rate), costed
+  // at this rate's timing. Quicker, the planner's own result.
+  const recWattsCache = new Map();
+  function recoveryWatts(pg) {
+    const key = JSON.stringify(REC_KEYS.map((k) => pg[k]));
+    if (recWattsCache.has(key)) return recWattsCache.get(key);
+    const at60 = Object.assign({}, pg, { rateSpm: 60, driveFraction: pg.driveFraction / Math.pow(pg.rateSpm / 60, 1 - DRIVE_TIME_EXP) });
+    const plan = recoveryPlan(at60), seatX = seatFor(pg), sLow = lowerHand(pg);
+    const ends = [1, 0].map((u) => { const P = pose(pg, u); return fitBody(pg, seatX, P.at(0), P.at(sLow), neutralAt(pg, u)); });
+    const w = recoveryCost(pg, plan, ends).joules * pg.rateSpm / 60;
+    if (recWattsCache.size > 200) recWattsCache.clear();
+    recWattsCache.set(key, w);
+    return w;
   }
 
   // Shallow water (The Science of Paddling, Part 4): the boat's own wave, wavelength
@@ -1708,9 +1759,9 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 54;
+  const API_LEVEL = 55;
   const PADDLE = paddleOf(DEFAULTS);
-  const api = { API_LEVEL, driveShareAt, fastestRate, shaftDir, typicalFitness, armBest, trunkBest, paddled, paddleOf, gearFactor, trunkGearFactor, bestRate, recoveryPlan, recoveryPose, recoveryCost, recoveryClear, elbowAt, handForces, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
+  const api = { API_LEVEL, driveShareAt, fastestRate, shaftDir, typicalFitness, armBest, trunkBest, paddled, paddleOf, gearFactor, trunkGearFactor, recoveryPlan, recoveryPose, recoveryCost, recoveryClear, elbowAt, handForces, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.StrokeSim = api;
 })(typeof window !== "undefined" ? window : globalThis);
