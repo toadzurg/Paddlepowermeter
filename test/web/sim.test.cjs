@@ -1226,9 +1226,11 @@ console.log("\nPaddle fit");
     check(`${tag}: hull: arrowheads defined once, where they always draw`, arrowheads.every(Boolean), JSON.stringify(arrowheads));
     check(`${tag}: hull: roll and its balance`, /^A Lifts the paddle side up to \d+ N·m; balance with hips \d+ mm toward the paddle side\. Held still: ±[\d.]+°/.test(await text("#hull-roll-read")), await text("#hull-roll-read"));
     await page.$eval("#hull-card", (e) => e.scrollIntoView());   // it only redraws while on screen
-    const surgeSvg = () => page.$eval("#hp-surge", (e) => e.innerHTML);
-    const surge1 = await surgeSvg(); await page.waitForTimeout(300);
-    check(`${tag}: hull: the drawings move with the stroke`, (await surgeSvg()) !== surge1);
+    // The stroke holds still through a switch of sides (switchLossS, 1 s by
+    // default): wait out a switch rather than catching one.
+    const surge1 = await page.$eval("#hp-surge", (e) => e.innerHTML);
+    const moved = await page.waitForFunction((was) => document.getElementById("hp-surge").innerHTML !== was, surge1, { timeout: 2500 }).then(() => true, () => false);
+    check(`${tag}: hull: the drawings move with the stroke`, moved);
     await page.click("#hull-mode >> text=Split");
     check(`${tag}: hull: split, a picture per boat`, (await page.$$("#hp-chart svg")).length === 2 && (await page.$$("#hp-surge svg")).length === 2 &&
           (await page.$$("#hp-chart path.ln")).length === 6 && (await page.$$('#hp-surge svg[data-boats="b"] path.hull.boat-b')).length === 1);
@@ -1351,6 +1353,26 @@ console.log("\nPaddle fit");
     check(`${tag}: recovery: the blade feathers flat for the carry, its face turning smoothly`, carry.every((q) => q.flat > 0.6 && q.face < 12),
           carry.map((q) => `${q.face.toFixed(0)}°`).join(" "));
     check(`${tag}: elbows: the lower one never points forward with the hand behind`, carry.every((q) => q.elbow < 0.01));
+    // The arms set to be strongest: mid-drive each elbow nearer its hand's
+    // force line than relaxed (a joint's torque is the force times its
+    // distance from the line), the top arm near straight from shoulder to
+    // grip with its elbow up at the catch, the lower elbow down.
+    const arms3 = await page.evaluate(() => {
+      const S = window.StrokeSim, sim = window.sim, r = sim.results.a, c = r.cycleAt(150), p = r.params, sLow = S.lowerHand(r.geom);
+      const off = (E, H, f) => { const u = f.map((v) => v / Math.hypot(...f)), d = E.map((v, i) => v - H[i]), t = d.reduce((a, v, i) => a + v * u[i], 0); return Math.hypot(...d.map((v, i) => v - u[i] * t)); };
+      const midZ = (a, b) => (a[2] + b[2]) / 2;
+      let peak = 0; for (let i = 1; i < r.samples.length; i++) if (r.samples[i].F > r.samples[peak].F) peak = i;
+      const J = sim.figJoints(r, c, (peak / (r.samples.length - 1)) * p.driveFraction), st = J.st, hf = S.handForces(st.P, st.B, st.thrust, sLow);
+      const relaxedTop = S.elbowAt(J.left, J.leftHand, p.upperArmM, p.forearmM, 1), relaxedLow = S.elbowAt(J.right, J.rightHand, p.upperArmM, p.forearmM, -1);
+      const J0 = sim.figJoints(r, c, 0.001);
+      return { topOff: off(J.leftElbow || J.leftHand, J.leftHand, hf.top), topRelaxed: off(relaxedTop, J.leftHand, hf.top),
+        lowOff: off(J.rightElbow || J.rightHand, J.rightHand, hf.low), lowRelaxed: off(relaxedLow, J.rightHand, hf.low),
+        topStretch: J.fit.top, catchUp: J0.leftElbow ? J0.leftElbow[2] - midZ(J0.left, J0.leftHand) : 0, lowDown: J.rightElbow ? J.rightElbow[2] - midZ(J.right, J.rightHand) : 0 };
+    });
+    check(`${tag}: arms: strongest set: elbows toward the hands' force lines, the top arm straight with its elbow up, the lower elbow down`,
+          arms3.topOff <= arms3.topRelaxed && arms3.lowOff < arms3.lowRelaxed && arms3.topStretch > 0.88 && arms3.catchUp > 0.02 && arms3.lowDown < 0,
+          `top ${(arms3.topOff * 100).toFixed(0)} cm off its force line (relaxed ${(arms3.topRelaxed * 100).toFixed(0)}), lower ${(arms3.lowOff * 100).toFixed(0)} (${(arms3.lowRelaxed * 100).toFixed(0)}); ` +
+          `top arm ${(arms3.topStretch * 100).toFixed(0)}% straight, its elbow ${(arms3.catchUp * 100).toFixed(0)} cm up at the catch`);
     // At the catch the paddler reaches by turning and dropping the paddle-side
     // shoulder, the face kept behind the top hand, not the head past it.
     const faces = await page.evaluate(() => Object.entries(window.sim.PRESETS).map(([name, pre]) => {

@@ -262,6 +262,20 @@ measures a C1 paddler's trunk on its own):
   and the power-best rate exceeds the efficiency-best one by 1.7–2.4×
   depending on fibre type in cycling (Kohler & Boutellier).
 
+**The arms.** Each elbow goes where that arm is strongest. A joint's torque
+is the force times its distance from the force's line
+([moment arms](https://isophit.substack.com/p/why-force-directionnot-positiondetermines)),
+so as the blade loads, each elbow moves toward the line its hand pushes or
+pulls along (the paddle as a lever gives each hand's force). The top hand
+is the fulcrum, pushing forward at about head height: its elbow comes up
+and the arm lines up from shoulder to grip, near straight, since pushing is
+strongest toward full extension (an ascending strength curve, as in a
+[press](https://powerliftingtechnique.com/bench-press-lockout/)). The lower
+hand pulls aft, low: its elbow drops, bent near 90°, where the elbow
+flexors' torque peaks ([torque–angle data](https://personal.fbw.vu.nl/~jsmeets/2010/Torque_angle-JEK10.pdf)).
+With no force (catch, exit, recovery) the top elbow stays up and out, the
+lower one hangs.
+
 **The recovery.** No force goes into the water, so the best recovery is the
 one that costs least while it carries the blade clear and arrives set for
 the catch. The model describes a recovery by a point on the shaft that
