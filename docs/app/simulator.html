@@ -812,7 +812,7 @@
         <div id="strength-ctl"><div id="ctl-strength"></div>
           <svg class="hv" id="strength-curve" role="img" aria-label="Strength at each paddle angle, with this stroke's range"></svg>
           <div class="help" id="strength-read"></div></div>
-        <h4 class="sub-h">Gearing<button type="button" class="info" data-tip="Off: you hold the same power at any stroke rate. On: your arms, and your trunk, each hold the most power moving at one speed, like a cyclist's best cadence. Away from it they hold less, along Hill's force–velocity curve: more lost going slower than faster. Arm speed is your lower hand against its shoulder through the drive: a higher rate, a longer stroke or wider hands move it faster. Trunk rotation and a hinge don't: your trunk carries their extra travel. Only the pull counts: your shoulder rising or dropping across it is your trunk's work. Your trunk has its own best speed (its paddle-side shoulder's): what rotation and a hinge add holds less away from it. Its muscles are mostly slow fibres, as rowing and skiing studies find the trunk working early in the drive and the arms late, so its best needn't be your arms'. It changes what you can hold. The best speeds rise with fitness: a cyclist's least-tiring cadence rises with power, as each stroke asks less force (Takaishi 1996, Foss &amp; Hallén 2004, Lucía 2004), so a fitter paddler is best at a higher rate. Assumed until measured: your paddle can find your best speed from strokes at a few rates." aria-label="What is this?">?</button></h4>
+        <h4 class="sub-h">Gearing<button type="button" class="info" data-tip="Off: you hold the same power at any stroke rate. On: your arms, and your trunk, each hold the most power moving at one speed, like a cyclist's best cadence. Away from it they hold less, along Hill's force–velocity curve: more lost going slower than faster. Arm speed is your lower hand against its shoulder through the drive: a higher rate, a longer stroke or wider hands move it faster. Trunk rotation and a hinge don't: your trunk carries their extra travel. Only the pull counts: your shoulder rising or dropping across it is your trunk's work. Your trunk has its own best speed (its paddle-side shoulder's): what rotation and a hinge add holds less away from it. Its muscles are mostly slow fibres, as rowing and skiing studies find the trunk working early in the drive and the arms late, so its best needn't be your arms'. It changes what you can hold, and so does the rate itself: a quicker rate costs more to swing the arms and paddle back, a slower one asks a heavier pull every stroke, and heavy pulls tire you far sooner (it's why cyclists ride at 80–90 rpm though 60–70 costs the least oxygen). The fitter you are for your size, the heavier each stroke at the same rate, so the quicker your best rate: fitted so a typical paddler using the whole body is fastest near 60 spm and one 1.5 times as fit near 75, as club and elite C1 racers paddle. Assumed until measured: your paddle can find your best speed from strokes at a few rates." aria-label="What is this?">?</button></h4>
         <div class="row chips" id="gear-mode" role="group" aria-label="Gearing"></div>
         <div id="gear-ctl"><div id="ctl-gear"></div><div class="help" id="gear-read"></div></div>
         <h4 class="sub-h">Body<button type="button" class="info" data-tip="Height scales every length; then set any one. Female: shoulders 3.4% and forearms 3.5% shorter for the same height (ANSUR II, radius lengths); the rest scales alike. You sit with your hips where the blade leaves the water on the Defaults stroke (further forward only if you can't reach it from there); every technique is paddled from that seat, and the body leans, turns and drops the paddle-side shoulder at each moment so both hands are within reach, the face behind the top hand. With strength from the arms, every length changes results; by paddle angle, only the arms do." aria-label="What is this?">?</button></h4>
@@ -863,7 +863,7 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of each engine file (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. The fit builds on the stroke engine. -->
-<script src="stroke-sim.js?v=26bf6cfae4"></script>
+<script src="stroke-sim.js?v=edceadd2f5"></script>
 <script src="fit-sim.js?v=c12c9edd44"></script>
 <script>
 (() => {
@@ -907,7 +907,7 @@ function shown(el) {
 }
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 53;
+const NEEDS_API = 55;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -1018,8 +1018,8 @@ const CONTROLS = [
   { group: "ctl-paddler", key: "rateSpm", label: "Stroke rate", min: 30, max: 90, step: 1, unit: " spm",
     help: "Same effort at a slower rate: bigger pulls, more surge." },
   { group: "ctl-paddler", key: "driveFraction", label: "Time in the drive", min: 0.3, max: 0.8, step: 0.05, unit: "",
-    fmt: (v) => `${Math.round(v * 100)}% of each stroke`,
-    help: "Catch to exit; the rest is the recovery. A longer drive moves more water more gently: lower peak force, less slip, but a quicker recovery." },
+    fmt: (v) => `${Math.round(v * 100)}% of each stroke at 60 spm`,
+    help: "Catch to exit; the rest is the recovery. A longer drive moves more water more gently: lower peak force, less slip, but a quicker recovery. A quicker rate mostly shortens the recovery (rowers' drive time hardly changes with rate), so the drive's share rises with it: ×1.17 at 75 spm." },
   { group: "ctl-profile", key: "fitnessW", label: "Fitness", min: 80, max: 400, step: 5, unit: " W",
     help: "The power you could hold for an hour using your whole body." },
   { group: "ctl-paddler", key: "rotation", label: "Trunk rotation", min: 0, max: 1, step: 0.05, unit: "", eff: true,
@@ -1039,11 +1039,11 @@ const CONTROLS = [
   { group: "ctl-strength", key: "strengthDrop", label: "Weaker toward the ends", min: 0, max: 0.8, step: 0.05, unit: "",
     fmt: (v) => `${Math.round(v * 100)}% weaker`, help: "By paddle angle: how much weaker 45° from your strongest angle. From the arms: how much weaker with the lower arm folded up, the top arm bent or either reaching past its reach." },
   { group: "ctl-gear", key: "armBestMs", label: "Best arm speed", min: 0.5, max: 1.5, step: 0.01, unit: "",
-    fmt: (v) => `${fmtNum(v, 2)} m/s`, help: "Your lower hand's speed against its shoulder that you hold the most power at, if your fitness is typical for your size. Fitter, each stroke is heavier at the same rate, so you're best moving faster (×1.18 at 1.5 times typical)." },
+    fmt: (v) => `${fmtNum(v, 2)} m/s`, help: "Your lower hand's speed against its shoulder that you hold the most power at,." },
   { group: "ctl-gear", key: "gearDrop", label: "Weaker away from it", min: 0, max: 0.4, step: 0.01, unit: "",
     fmt: (v) => `${Math.round(v * 100)}% weaker`, help: "How much of your arms' power you lose at half your best arm speed. Faster, less is lost (Hill's curve: about half as much at 1.5 times)." },
   { group: "ctl-gear", key: "trunkBestMs", label: "Best trunk speed", min: 0.3, max: 1.8, step: 0.01, unit: "",
-    fmt: (v) => `${fmtNum(v, 2)} m/s`, help: "Your paddle-side shoulder's speed through the drive that your trunk holds the most power at with full rotation, if your fitness is typical for your size. Rotation and a hinge use different muscles, each best at its own speed, so with a hinge too the best is faster. Counts what trunk rotation and a hinge add." },
+    fmt: (v) => `${fmtNum(v, 2)} m/s`, help: "Your paddle-side shoulder's speed through the drive that your trunk holds the most power at with full rotation. Rotation and a hinge use different muscles, each best at its own speed, so with a hinge too the best is faster. Counts what trunk rotation and a hinge add." },
   { group: "ctl-gear", key: "trunkDrop", label: "Trunk weaker away from it", min: 0, max: 0.4, step: 0.01, unit: "",
     fmt: (v) => `${Math.round(v * 100)}% weaker`, help: "How much of what rotation and a hinge add you lose at half your best trunk speed; less going faster." },
   { group: "ctl-paddler", key: "lowerHandM", label: "Lower hand on the shaft", min: 0.35, max: 0.85, step: 0.01, unit: "",
@@ -1324,7 +1324,13 @@ function showGear() {
     `your arms hold <b>×${fmtNum(S.gearFactor(p), 2)}</b>. ` +
     `Your trunk carries <b>${fmtNum(r.body.trunkShare * 100, 0)}%</b> of the pull, its shoulder moving <b>${fmtNum(r.body.trunkSpeed, 2)} m/s</b> (best ${fmtNum(S.trunkBest(p), 2)}): ` +
     (trunk ? `what rotation and a hinge add holds <b>×${fmtNum(S.trunkGearFactor(p), 2)}</b>. ` : `with no rotation or hinge it adds no power of its own, so its speed costs nothing. `) +
-    `This stroke suits ${trunk ? "your arms and trunk together" : "your arms"} best at <b>${fmtNum(S.bestRate(p), 0)} spm</b>.`;
+    `<span id="gear-fastest">Finding the fastest rate…</span>`;
+  // The fastest rate takes a search (a second or so): after the page has drawn.
+  clearTimeout(showGear.t);
+  showGear.t = setTimeout(() => {
+    if (results[editing] !== r || !$("gear-fastest")) return;
+    $("gear-fastest").innerHTML = `At what you can hold, this stroke is fastest at <b>${S.fastestRate(boats[editing])} spm</b> (you paddle ${fmtNum(p.rateSpm, 0)}).`;
+  }, 300);
 }
 // Strength at each paddle angle, and the part of it this stroke uses.
 function drawStrength() {
@@ -1609,7 +1615,7 @@ function traceLive(gEl, geom, on, ph) {
   let h = "";
   const read = [];
   for (const x of BOATS) {
-    const r = results[x], df = r.params.driveFraction, c = C[x];
+    const r = results[x], df = r.geom.driveFraction, c = C[x];
     const inDrive = ph < df, t = inDrive ? (ph / df) * c.Td : c.Td;
     const pts = c.pts.filter((p) => p.t <= t);
     if (pts.length > 1)
@@ -1635,7 +1641,7 @@ function renderCurveModes() {
 }
 function curveOf(r, watts = effortW) {
   const scale = Math.pow(watts / Math.max(1e-9, r.paddlerPower), 2 / 3);
-  const Td = (60 / r.params.rateSpm) * r.params.driveFraction, Td0 = r.samples[r.samples.length - 1].t || 1;
+  const Td = (60 / r.params.rateSpm) * r.geom.driveFraction, Td0 = r.samples[r.samples.length - 1].t || 1;
   const pts = r.samples.map((q) => ({ t: (q.t / Td0) * Td, force: q.F * scale, forward: Math.max(0, q.thrust[0]) * scale }));
   let impulse = 0;
   for (let i = 1; i < pts.length; i++) impulse += (pts[i].forward + pts[i - 1].forward) / 2 * (pts[i].t - pts[i - 1].t);
@@ -3677,7 +3683,7 @@ function timeline(x, t) {
     const ph = (u % Tc) / Tc, stroke = Math.floor(u / Tc) + 1;
     // The last recovery on a side keeps the blade up for the switch, rather
     // than setting it down at the catch only to lift it again.
-    const back = (ph - r.params.driveFraction) / (1 - r.params.driveFraction);
+    const back = (ph - r.geom.driveFraction) / (1 - r.geom.driveFraction);
     const lift = stroke === n && back > 0.5 ? { clear: recoveryClear(back, true), top: 1, over: 0 } : null;
     return { ph, m: side, lift, stroke, n };
   }
@@ -3717,7 +3723,7 @@ function planOf(r) {
 // the blade's clearance and of the carry's lift, and a lift of the whole
 // paddle (m).
 function stateAt(r, ph, lift = null) {
-  const df = r.params.driveFraction;
+  const df = r.geom.driveFraction;
   if (ph < df) {
     const n = r.samples.length;
     const i = Math.min(n - 1, Math.max(0, Math.round((ph / df) * (n - 1))));
@@ -3763,7 +3769,7 @@ function acrossTheBoat(j, m, at, sLow) {
 // world metres: shared by the views and the 3D model. m: the side.
 const smooth01 = (x) => { const t = Math.min(1, Math.max(0, x)); return t * t * (3 - 2 * t); };
 function figJoints(r, c, ph, lift = null, m = 1) {
-  const p = r.params, st = stateAt(r, ph, lift), df = p.driveFraction;
+  const p = r.params, st = stateAt(r, ph, lift), df = r.geom.driveFraction;
   const i = c ? Math.min(c.t.length - 1, Math.floor(ph * c.t.length)) : 0;
   const bx = c ? c.bodyX[i] : 0, bz = c ? c.bodyZ[i] : 0;
   // The technique's posture: a hinge or swing of x m (whole body) turns the
@@ -4530,7 +4536,7 @@ function m3Read() {
 // The trunk's speed: its paddle-side shoulder's through the drive (as
 // gearing counts it, against your best with gearing on), and now.
 function m3Trunk(J, r) {
-  const p = r.params, df = p.driveFraction, ph = m3.ph, ms = (v) => `${fmtNum(v, 2)} m/s`;
+  const p = r.params, df = r.geom.driveFraction, ph = m3.ph, ms = (v) => `${fmtNum(v, 2)} m/s`;
   let now = "recovering";
   if (ph < df) {
     const dph = Math.min(0.004, Math.max(1e-4, df - ph - 1e-4)), J2 = figJoints(r, cycleOf(r), ph + dph);
@@ -4544,7 +4550,7 @@ function m3Trunk(J, r) {
 // through the drive (as gearing counts it, against your best with gearing
 // on), and now.
 function m3Arm(J, r) {
-  const p = r.params, df = p.driveFraction, ph = m3.ph, ms = (v) => `${fmtNum(v, 2)} m/s`;
+  const p = r.params, df = r.geom.driveFraction, ph = m3.ph, ms = (v) => `${fmtNum(v, 2)} m/s`;
   let now = "recovering";
   if (ph < df) {
     const dph = Math.min(0.004, Math.max(1e-4, df - ph - 1e-4)), J2 = figJoints(r, cycleOf(r), ph + dph);
@@ -4719,7 +4725,7 @@ function m3Frame(dt) {
   }
   if (!m3.dirty) return;
   m3Render();
-  const df = r.params.driveFraction;
+  const df = r.geom.driveFraction;
   $("m3-phase-read").textContent = m3.ph < df ? `Drive ${fmtNum((m3.ph / df) * 100, 0)}%` : `Recovery ${fmtNum(((m3.ph - df) / (1 - df)) * 100, 0)}%`;
   m3Read();
 }

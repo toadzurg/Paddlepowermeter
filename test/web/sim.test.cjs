@@ -80,12 +80,19 @@ console.log("\nCanoe Race Simulator physics");
         flows[0] > 0.5 && Math.abs(flows[1] / flows[0] - 1) < 0.1 && flows[3] < -0.5 && Math.abs(flows[2] / flows[3] - 1) < 0.1,
         `exit ${flows[0].toFixed(2)} → ${flows[1].toFixed(2)} m/s, catch ${flows[2].toFixed(2)} → ${flows[3].toFixed(2)} m/s`);
 
-  // The stroke itself doesn't care about rate; switching does: a switch takes
-  // about the same time at any rate, so a higher rate loses more to it.
+  // A quicker rate mostly shortens the recovery (rowers' drive time hardly
+  // changes), so more of each stroke is in the drive and the blade moves no
+  // faster: a little more efficient, switching aside. Switching costs: a
+  // switch takes about the same time at any rate, so a higher rate loses
+  // more to it.
   const fast = S.simulate({ rateSpm: 85, switchLossS: 0 }), base0 = S.simulate({ switchLossS: 0 });
-  check("efficiency nearly independent of stroke rate (switching aside)", Math.abs(fast.efficiency - base0.efficiency) < 2e-3,
+  check("a quicker rate: more of each stroke in the drive, its time hardly shorter",
+        Math.abs(S.driveShareAt({ driveFraction: 0.5, rateSpm: 60 }) - 0.5) < 1e-12 &&
+        Math.abs(S.driveShareAt({ driveFraction: 0.5, rateSpm: 75 }) - 0.5 * Math.pow(1.25, 0.7)) < 1e-12 && S.driveShareAt({ driveFraction: 0.7, rateSpm: 90 }) === 0.8,
+        `${pct(S.driveShareAt({ driveFraction: 0.5, rateSpm: 75 }))} at 75 spm`);
+  check("a quicker rate is a little more efficient, and faster at equal effort (switching aside)",
+        fast.efficiency > base0.efficiency && fast.efficiency < base0.efficiency + 0.05 && fast.speedAt(150) > base0.speedAt(150),
         `${pct(base0.efficiency)} vs ${pct(fast.efficiency)}`);
-  check("speed at equal effort independent of rate (switching aside)", Math.abs(fast.speedAt(150) - base0.speedAt(150)) < 0.01);
   const rate50 = S.simulate({ rateSpm: 50 }), rate80 = S.simulate({ rateSpm: 80 });
   check("a switch takes the same time at any rate, so a higher rate loses more to it",
         1 - rate80.switchDuty > 1 - rate50.switchDuty &&
@@ -403,7 +410,7 @@ console.log("\nCanoe Race Simulator physics");
   const sBal = sOn.hullPower + sOn.leewayPower + sOn.slipPower - sOn.paddlerPower;
   check("strength by position: force bunches where you're strong (higher peak), energy still balances",
         pk(sOn) > pk(sOff) * 1.1 && Math.abs(sBal) < 1e-3 * sOn.paddlerPower, `${pk(sOff).toFixed(0)} → ${pk(sOn).toFixed(0)} N`);
-  check("strength by position: what you can hold scales with it", Math.abs(S.capacity(on(LR)) / S.capacity(LR) - S.strengthFactor(on(LR))) < 1e-9);
+  check("strength by position: what you can hold scales with it (gearing aside)", Math.abs(S.capacity(on(Object.assign({ gearOn: 0 }, LR))) / S.capacity(Object.assign({ gearOn: 0 }, LR)) - S.strengthFactor(on(LR))) < 1e-9);
 
   // The body is fitted to the paddle: within reach for every preset, and it says when it can't be.
   const PRE = { def: {}, long: LR, behind: { catchDeg: 12, exitDeg: 45 }, sweep: { leanDeg: 40, sweepDeg: 70, handOutM: 0.5, catchDeg: 25, exitDeg: 25 },
@@ -475,22 +482,22 @@ console.log("\nCanoe Race Simulator physics");
   const gear = (x) => Object.assign({ gearOn: 1 }, x), gF = (x) => S.gearFactor(gear(x)), armV = (x) => S.simulate(x).body.armSpeed;
   check("gearing: on by default; off, changes nothing", S.DEFAULTS.gearOn === 1 && S.gearFactor({ rateSpm: 85, gearOn: 0 }) === 1 &&
         S.capacity({ rateSpm: 85, gearOn: 0 }) === S.capacity({ gearOn: 0 }));
-  // The best speeds rise with fitness against what's typical for your size
-  // (a cyclist's least-tiring cadence rises with power).
-  const fit300 = { fitnessW: 300 }, big = { massKg: 111 };
-  check("gearing: a fitter paddler is best moving faster, at a higher rate; the typical paddler at 60 spm",
-        S.typicalFitness({}) === 200 && Math.abs(S.armBest(fit300) / S.armBest({}) - Math.pow(1.5, 0.4)) < 1e-9 &&
-        S.bestRate(fit300) > 66 && S.bestRate(fit300) < 72 && Math.abs(S.bestRate({}) - 60) < 1 &&
-        S.typicalFitness(big) > 200 && S.bestRate(big) < S.bestRate({}),
-        `best at ${S.bestRate({}).toFixed(0)} spm, fitter (300 W) ${S.bestRate(fit300).toFixed(0)}, heavier at 200 W ${S.bestRate(big).toFixed(0)}`);
+  // The rate: a quicker one costs more recovery, a slower one heavier
+  // strokes. Fitted so club racers (typical fitness, the whole body) are
+  // fastest at 55–60 spm and elites (1.5 times typical) near 75.
+  const ALL = { rotation: 1, hinge: 1, legDrive: 1 }, fr = (x) => S.fastestRate(x);
+  const club = fr(ALL), elite = fr(Object.assign({ fitnessW: 300 }, ALL)), armsOnly = fr({});
+  check("rate: a typical paddler using the whole body is fastest at 55–61 spm, one 1.5 times as fit at 70–80",
+        S.typicalFitness({}) === 200 && club >= 55 && club <= 61 && elite >= 70 && elite <= 80 && armsOnly >= 55 && armsOnly <= 66,
+        `club ${club}, elite ${elite}, arms only ${armsOnly} spm`);
+  check("rate: the default stroke at 60 spm holds your fitness's share; quicker or slower holds less",
+        Math.abs(S.capacity({}) - 140) < 0.01 && Math.abs(S.capacity(ALL) - 200) < 0.5 && S.capacity({ rateSpm: 45 }) < 139 && S.capacity({ rateSpm: 85 }) < 139,
+        `45 spm ${S.capacity({ rateSpm: 45 }).toFixed(0)} W, 60 ${S.capacity({}).toFixed(0)}, 85 ${S.capacity({ rateSpm: 85 }).toFixed(0)}`);
   check("gearing: the default stroke moves the arms at about their best speed", Math.abs(gF({}) - 1) < 0.005,
         `${armV({}).toFixed(2)} m/s, ×${gF({}).toFixed(3)}`);
-  check("gearing: arm speed goes as the stroke rate", Math.abs(armV({ rateSpm: 75 }) / armV({}) - 75 / 60) < 1e-9);
-  check("gearing: too fast or too slow a rate holds less", gF({ rateSpm: 80 }) < gF({ rateSpm: 70 }) && gF({ rateSpm: 70 }) < 0.99 && gF({ rateSpm: 45 }) < 0.99,
-        `45 spm ×${gF({ rateSpm: 45 }).toFixed(3)}, 70 ×${gF({ rateSpm: 70 }).toFixed(3)}, 80 ×${gF({ rateSpm: 80 }).toFixed(3)}`);
-  const lrBest = S.bestRate(gear(LR));
-  check("gearing: a longer stroke suits a lower rate, and its best rate puts the arms at their best",
-        lrBest < 50 && gF(Object.assign({}, LR, { rateSpm: lrBest })) > 1 - 1e-9, `${lrBest.toFixed(0)} spm`);
+  const Tdrive = (r) => S.driveShareAt({ driveFraction: S.DEFAULTS.driveFraction, rateSpm: r }) / r;
+  check("gearing: arm speed goes as 1 / drive time", Math.abs(armV({ rateSpm: 75 }) / armV({}) - Tdrive(60) / Tdrive(75)) < 1e-9);
+  check("rate: a longer stroke is fastest at a lower rate", fr(LR) < armsOnly, `${fr(LR)} spm`);
   // Hill's curve: gearDrop lost at half the best speed, less at 1.5 times.
   const gFast = gF({ armBestMs: armV({}) / 1.5 });
   check("gearing: Hill's curve: loses gearDrop at half the best arm speed, less going faster", Math.abs(gF({ armBestMs: armV({}) * 2 }) - (1 - S.DEFAULTS.gearDrop)) < 1e-6 &&
@@ -516,17 +523,15 @@ console.log("\nCanoe Race Simulator physics");
   const tF = (x) => S.trunkGearFactor(gear(x)), ROT = { rotation: 1 }, BOTH = { rotation: 1, hinge: 1 }, capOf = (x) => S.capacity(x);
   check("trunk gearing: the default stroke with full rotation moves the trunk at its best",
         Math.abs(tF(ROT) - 1) < 0.005 && S.trunkGearFactor(Object.assign({ gearOn: 0 }, ROT)) === 1, `${tb(ROT).trunkSpeed.toFixed(2)} m/s, ×${tF(ROT).toFixed(3)}`);
-  check("trunk gearing: with no rotation or hinge, changes nothing (the best rate is the arms')",
-        Math.abs(S.capacity(gear({ rateSpm: 75 })) - S.DEFAULTS.fitnessW * 0.7 * gF({ rateSpm: 75 })) < 1e-9 &&
-        Math.abs(S.bestRate(gear(LR)) - S.DEFAULTS.rateSpm * S.DEFAULTS.armBestMs / armV(LR)) < 1e-6);
+  check("trunk gearing: with no rotation or hinge, changes nothing",
+        Math.abs(S.capacity(gear({})) - S.DEFAULTS.fitnessW * 0.7 * gF({})) < 1e-6);
   check("trunk gearing: scales only what rotation and a hinge add",
         Math.abs(capOf(gear(BOTH)) - S.DEFAULTS.fitnessW * (0.7 * gF(BOTH) + 0.2 * tF(BOTH))) < 1e-9);
   // Rotation and a hinge are different muscles, each best at its own speed:
   // together they move the shoulder faster, and that's their best.
-  check("trunk gearing: rotation at a quick rate holds less; rotation and a hinge together still suit the default rate",
-        tF(Object.assign({ rateSpm: 80 }, ROT)) < 0.97 && Math.abs(tF(BOTH) - 1) < 0.005 && Math.abs(S.bestRate(gear(BOTH)) - 60) < 3 &&
-        tb(BOTH).trunkSpeed > tb(ROT).trunkSpeed * 1.3,
-        `80 spm ×${tF(Object.assign({ rateSpm: 80 }, ROT)).toFixed(3)}; rotation and a hinge: trunk ×${tF(BOTH).toFixed(2)} at 60, best at ${S.bestRate(gear(BOTH)).toFixed(0)} spm`);
+  check("trunk gearing: a long stroke's quick trunk holds less; rotation and a hinge together are at their best in the default stroke",
+        tF(Object.assign({}, LR, ROT)) < 0.97 && Math.abs(tF(BOTH) - 1) < 0.005 && tb(BOTH).trunkSpeed > tb(ROT).trunkSpeed * 1.3,
+        `long ×${tF(Object.assign({}, LR, ROT)).toFixed(3)}; rotation and a hinge: trunk ×${tF(BOTH).toFixed(2)}`);
   // The recovery: the cheapest motion that carries the blade clear, in
   // reach and with the top hand in front of the face, costed from the arms'
   // and paddle's energy and air drag on the blade.
@@ -549,9 +554,6 @@ console.log("\nCanoe Race Simulator physics");
     const last = r.samples[r.samples.length - 1], first = r.samples[0], d = (x, y) => Math.hypot(...x.map((v, i) => v - y[i]));
     return Math.max(d(a.P.at(0), last.P.at(0)), d(a.B.tip, last.B.tip), d(a.B.n, last.B.n), d(b.P.at(0), first.P.at(0)), d(b.B.tip, first.B.tip), d(b.B.n, first.B.n)); })();
   check("recovery: starts where the drive leaves the paddle and ends where it takes it, the blade's face too", ends < 1e-3, ends.toExponential(1));
-  const rot80 = { rotation: 1, rateSpm: 80 };
-  check("gearing: sets only the arms' share of what you hold, and what the trunk adds",
-        Math.abs(capOf(gear(rot80)) - capOf(Object.assign({ gearOn: 0 }, rot80)) + S.DEFAULTS.fitnessW * (0.7 * (1 - gF(rot80)) + 0.12 * (1 - tF(rot80)))) < 1e-9);
   const armCurve = S.simulate(arms(LR)).strengthCurve;
   let bumpy = 0; for (let i = 2; i < armCurve.length; i++) bumpy = Math.max(bumpy, Math.abs(armCurve[i][1] - 2 * armCurve[i - 1][1] + armCurve[i - 2][1]));
   check("strength from the arms: a smooth curve through the drive (no steps)", bumpy < 0.1, bumpy.toFixed(3));
@@ -583,7 +585,7 @@ console.log("\nPaddle fit");
   check("fit: at a high rate, a higher gear: slower arms, more held",
         fast.best.armSpeed < fast.current.armSpeed - 0.05 && fast.best.watts > fast.current.watts && fast.best.speed > fast.current.speed * 1.01,
         `arms ${fast.current.armSpeed.toFixed(2)} → ${fast.best.armSpeed.toFixed(2)} m/s, ${((fast.best.speed / fast.current.speed - 1) * 100).toFixed(1)}%`);
-  check("fit: at a low rate, a lower gear: faster arms", slow.best.armSpeed > slow.current.armSpeed + 0.05 && slow.best.speed > slow.current.speed,
+  check("fit: at a low rate, a lower gear: faster arms", slow.best.armSpeed > slow.current.armSpeed + 0.02 && slow.best.speed > slow.current.speed,
         `arms ${slow.current.armSpeed.toFixed(2)} → ${slow.best.armSpeed.toFixed(2)} m/s`);
   const inRange = (m) => Object.entries(F.RANGES).every(([k, [a, b]]) => m.setup[k] >= a - 1e-9 && m.setup[k] <= b + 1e-9);
   check("fit: suggestions stay in the ranges searched", [plain, fast, slow].every((r) => inRange(r.best)));
@@ -783,10 +785,10 @@ console.log("\nPaddle fit");
     await page.click("#boats [data-boat=b]");
     await page.click("#presets >> text=Wide sweep");
     await page.click("#boats [data-boat=a]"); await settle();
-    check(`${tag}: drive time readout`, (await text("#o-driveFraction")) === "50% of each stroke");
+    check(`${tag}: drive time readout`, (await text("#o-driveFraction")) === "50% of each stroke at 60 spm");
     await slide("#c-driveFraction", 0.8); await settle();
     check(`${tag}: drive time goes to 80%`, (await page.$eval("#c-driveFraction", (e) => e.max)) === "0.8" &&
-          (await text("#o-driveFraction")) === "80% of each stroke" && (await cellVal("eff", 2)) > 0);
+          (await text("#o-driveFraction")) === "80% of each stroke at 60 spm" && (await cellVal("eff", 2)) > 0);
     await slide("#c-driveFraction", 0.5); await settle();
     check(`${tag}: strokes per side auto by default`, (await text("#o-switchStrokes")) === "auto, by heading" &&
           !(await page.$eval("#c-switchHeadingDeg", (e) => e.disabled)));
@@ -807,7 +809,7 @@ console.log("\nPaddle fit");
             !(await page.$eval("#c-switchLossS", (e) => e.disabled)));
     }
     await slide("#c-rateSpm", 30); await settle();
-    check(`${tag}: slower rate, longer drive on the curve`, /^A: .*drive 1\.00 s/.test(await text("#curve-legend")), await text("#curve-legend"));
+    check(`${tag}: slower rate, longer drive on the curve (the recovery takes most of it)`, /^A: .*drive 0\.62 s/.test(await text("#curve-legend")), await text("#curve-legend"));
     await slide("#c-rateSpm", 60); await settle();
     await page.$eval("#c-bendDeg", (el) => { el.value = -12; el.dispatchEvent(new Event("input")); });
     check(`${tag}: bend readout shows direction`, (await text("#o-bendDeg")) === "12° toward power face");
@@ -1504,8 +1506,9 @@ console.log("\nPaddle fit");
     check(`${tag}: gearing: on by default, its settings there`, (await page.$eval("#gear-ctl", (e) => !e.hidden)) &&
           (await page.$eval('#gear-mode button[aria-pressed="true"]', (b) => b.textContent)) === "On");
     await page.click("#gear-mode >> text=On"); await slide("#c-rateSpm", 80); await settle();
-    check(`${tag}: gearing: arm speed, what the arms hold and the best rate`, (await visible("#c-armBestMs")) &&
-          /moves [\d.]+ m\/s against its shoulder.*×0\.\d\d.*best at \d+ spm/.test(await text("#gear-read")) && /Gearing: your arms hold ×0\.\d\d/.test(await text("#engine-box")),
+    await page.waitForFunction(() => /fastest at/.test(document.getElementById("gear-read").textContent), null, { timeout: 15000 }).catch(() => {});
+    check(`${tag}: gearing: arm speed, what the arms hold and the fastest rate`, (await visible("#c-armBestMs")) &&
+          /moves [\d.]+ m\/s against its shoulder.*×[01]\.\d\d.*fastest at \d+ spm \(you paddle 80\)/.test(await text("#gear-read")) && /Gearing: your arms hold ×0\.\d\d/.test(await text("#engine-box")),
           await text("#gear-read"));
     // The fit tab: a search for Boat A (gearing on, 80 spm), tried in Boat B.
     const bWas = await page.evaluate(() => JSON.stringify(window.sim.boats.b));
