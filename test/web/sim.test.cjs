@@ -466,20 +466,20 @@ console.log("\nCanoe Race Simulator physics");
         lrBest < 50 && gF(Object.assign({}, LR, { rateSpm: lrBest })) > 1 - 1e-9, `${lrBest.toFixed(0)} spm`);
   check("gearing: loses gearDrop at 1.5 times the best arm speed", Math.abs(gF({ armBestMs: armV({}) / 1.5 }) - (1 - S.DEFAULTS.gearDrop)) < 1e-9);
   // Rotation and a hinge carry the hand further; the paddle-side shoulder
-  // carries that extra travel, so the arms hardly speed up (what's left: the
-  // shoulder rising out of its drop as the hand goes aft).
-  const travel = (x) => { const r = S.simulate(x), g = r.geom; let prev = null, hand = 0, sh = 0, last = null;
-    for (let i = 0; i <= 20; i++) { const u = i / 20, P = S.pose(g, u), nn = S.neutralAt(g, u), low = P.at(S.lowerHand(g));
-      const b = S.fitBody(g, r.body.seatX, P.at(0), low, nn, 0, prev || nn); prev = b.pose;
-      if (last) { hand += Math.hypot(...low.map((v, j) => v - last[0][j])); sh += Math.hypot(...b.pad.map((v, j) => v - last[1][j])); }
-      last = [low, b.pad]; }
-    return { hand, sh }; };
-  const t0 = travel({}), carried = (x) => { const t = travel(x); return (t.sh - t0.sh) / (t.hand - t0.hand); };
+  // carries that extra travel, so the arms don't speed up. Arm speed counts
+  // the hand's motion along the pull, less what the shoulder carries that
+  // way: the shoulder rising out of a drop across the pull is the trunk's.
+  const tb = (x) => S.simulate(x).body;
   check("gearing: the trunk carries rotation's and a hinge's travel, wider hands move the arms faster",
-        carried({ rotation: 1 }) > 0.9 && carried({ hinge: 1 }) > 0.9 && armV({ rotation: 1 }) < armV({}) * 1.15 && armV({ hinge: 1 }) < armV({}) * 1.15 &&
-        armV({ lowerHandM: 0.7 }) > armV({}) * 1.05,
-        `shoulder carries ${(carried({ rotation: 1 }) * 100).toFixed(0)}% of rotation's extra travel, ${(carried({ hinge: 1 }) * 100).toFixed(0)}% of a hinge's; ` +
-        `arms ${armV({}).toFixed(2)}, rotation ${armV({ rotation: 1 }).toFixed(2)}, hinge ${armV({ hinge: 1 }).toFixed(2)}, wide ${armV({ lowerHandM: 0.7 }).toFixed(2)} m/s`);
+        Math.abs(armV({ rotation: 1 }) / armV({}) - 1) < 0.05 && Math.abs(armV({ hinge: 1 }) / armV({}) - 1) < 0.05 &&
+        armV({ lowerHandM: 0.7 }) > armV({}) * 1.05, `rotation ${armV({ rotation: 1 }).toFixed(2)}, hinge ${armV({ hinge: 1 }).toFixed(2)}, wide ${armV({ lowerHandM: 0.7 }).toFixed(2)} m/s`);
+  check("trunk: carries more of the pull with rotation or a hinge, less pulling behind with a short reach",
+        tb({ rotation: 1 }).trunkShare > tb({}).trunkShare + 0.1 && tb({ hinge: 1 }).trunkShare > tb({}).trunkShare + 0.1 &&
+        tb({ catchDeg: 12, exitDeg: 45 }).trunkShare < tb({}).trunkShare && tb({}).trunkShare > 0.1 && tb({}).trunkShare < 0.6 &&
+        tb({ rotation: 1 }).trunkSpeed > tb({}).trunkSpeed,
+        ["default", "rotation", "hinge", "short reach"].map((k, i) => `${k} ${(tb([{}, { rotation: 1 }, { hinge: 1 }, { catchDeg: 12, exitDeg: 45 }][i]).trunkShare * 100).toFixed(0)}%`).join(", "));
+  check("gearing: a long reach's dropped shoulder rising isn't arm speed", armV(LR) < armV({}) * 1.65 && gF(LR) > 0.75,
+        `${armV(LR).toFixed(2)} m/s, ×${gF(LR).toFixed(2)}`);
   const capOf = (x) => S.capacity(x), rot80 = { rotation: 1, rateSpm: 80 };
   check("gearing: sets only the arms' share of what you hold",
         Math.abs(capOf(gear(rot80)) - capOf(rot80) + 0.7 * S.DEFAULTS.fitnessW * (1 - gF(rot80))) < 1e-9);
@@ -1523,7 +1523,20 @@ console.log("\nPaddle fit");
         const chosen = await mem.evaluate(() => window.sim.boats.a.switchLossS);
         check(`${tag}: an old save takes the new switch time default; one chosen since stays`,
               old[0] === 1 && old[1] === 66 && old[2] === 0.5 && chosen === 0.3, `${old} / ${chosen}`);
-        await mem.evaluate(() => localStorage.removeItem("ppm.sim.boats"));
+        // The best arm speed's default went from 0.9 to 0.87 m/s (version 3): a
+        // saved 0.9 follows it, in boats and in profiles saved before then; a
+        // value chosen since stays.
+        await mem.evaluate(() => { localStorage.setItem("ppm.sim.boats", '{"version":2,"a":{"armBestMs":0.9},"b":{"armBestMs":0.95}}');
+          localStorage.setItem("ppm.sim.profiles", '{"Old":{"armBestMs":0.9,"heightM":1.9},"New":{"armBestMs":0.9,"heightM":1.9,"version":3}}'); });
+        await mem.reload(); await mem.waitForTimeout(500);
+        const arms0 = await mem.evaluate(() => [window.sim.boats.a.armBestMs, window.sim.boats.b.armBestMs]);
+        await mem.click("#profile summary");
+        const pick = async (n) => { await mem.selectOption("#profile-pick", n); await mem.waitForTimeout(200); return mem.evaluate(() => [window.sim.boats.a.armBestMs, window.sim.boats.a.heightM]); };
+        const oldProf = await pick("Old"), newProf = await pick("New");
+        check(`${tag}: old saves and profiles take the new best arm speed; one chosen since stays`,
+              arms0[0] === 0.87 && arms0[1] === 0.95 && oldProf[0] === 0.87 && oldProf[1] === 1.9 && newProf[0] === 0.9,
+              `boats ${arms0} | profiles ${oldProf[0]} / ${newProf[0]}`);
+        await mem.evaluate(() => { localStorage.removeItem("ppm.sim.boats"); localStorage.removeItem("ppm.sim.profiles"); });
         await mem.close();
       }
       // A phone: taps act once each, a paused race stops redrawing, and the
