@@ -863,7 +863,7 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of each engine file (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. The fit builds on the stroke engine. -->
-<script src="stroke-sim.js?v=46f8b64d37"></script>
+<script src="stroke-sim.js?v=35bd71576f"></script>
 <script src="fit-sim.js?v=c12c9edd44"></script>
 <script>
 (() => {
@@ -3794,7 +3794,16 @@ function figJoints(r, c, ph, lift = null, m = 1) {
   if (!b) {
     if (fits.size > 64) fits.clear();
     const neutral = [lean, 0, rad(25 * (p.rotation || 0) * s)];
-    b = S.fitBody(r.geom, r.body.seatX, grip, low, neutral, 1.6 * bz);
+    // Started from the drive's own posture through the stroke (each moment
+    // fitted from the last: r.body.frames), blended exit to catch in the
+    // recovery, so a moment never lands on a different way of reaching the
+    // hands than the one beside it.
+    const fr = r.body.frames, pick = (u) => {
+      const x = Math.min(1, Math.max(0, u)) * (fr.length - 1), j = Math.min(fr.length - 2, Math.floor(x)), t = x - j;
+      return ["lean", "roll", "twist"].map((k) => fr[j][k] + (fr[j + 1][k] - fr[j][k]) * t);
+    };
+    const seed = ph < df ? pick(ph / df) : (() => { const a = pick(1), c = pick(0), e = smooth01((ph - df) / (1 - df)); return a.map((v, j) => v + (c[j] - v) * e); })();
+    b = S.fitBody(r.geom, r.body.seatX, grip, low, neutral, 1.6 * bz, seed);
     fits.set(key, b);
   }
   const HIP = b.hip, sh = b.centre, off = b.off, pad = b.pad, k = (p.heightM || 1.78) / 1.78;
