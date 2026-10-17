@@ -554,17 +554,16 @@ console.log("\nCanoe Race Simulator physics");
     const last = r.samples[r.samples.length - 1], first = r.samples[0], d = (x, y) => Math.hypot(...x.map((v, i) => v - y[i]));
     return Math.max(d(a.P.at(0), last.P.at(0)), d(a.B.tip, last.B.tip), d(a.B.n, last.B.n), d(b.P.at(0), first.P.at(0)), d(b.B.tip, first.B.tip), d(b.B.n, first.B.n)); })();
   check("recovery: starts where the drive leaves the paddle and ends where it takes it, the blade's face too", ends < 1e-3, ends.toExponential(1));
-  // The elbows lean toward the hands' force lines through the drive (eased
-  // in and out, as the page draws them) and never jump, even where the
-  // force line crosses the arm or lies opposite its relaxed side.
+  // The lower elbow leans toward its hand's force line through the drive
+  // (as the page draws it), the top one kept up; they never jump, even
+  // where the force line crosses the arm or lies opposite its relaxed side.
   const elbowJump = (x) => {
     const r = S.simulate(x), g = r.geom, sm = r.samples, sl = S.lowerHand(g), Td = sm[sm.length - 1].t, ua = g.upperArmM, fa = g.forearmM;
-    const sm01 = (t) => { t = Math.min(1, Math.max(0, t)); return t * t * (3 - 2 * t); };
-    let prev = null, worst = 0;
+        let prev = null, worst = 0;
     for (let i = 0; i < sm.length; i += 2) {
       const s = sm[i], grip = s.P.at(0), low = s.P.at(sl), b = S.fitBody(g, r.body.seatX, grip, low, S.neutralAt(g, s.u));
-      const hf = S.handForces(s.P, s.B, s.B.n.map((v) => -v), sl), w = sm01(s.t / Td / 0.4) * sm01((1 - s.t / Td) / 0.3);
-      const e = [S.elbowAt(b.pad, low, ua, fa, -1, hf.low, w), S.elbowAt(b.off, grip, ua, fa, 1, hf.top, w)];
+      const hf = S.handForces(s.P, s.B, s.B.n.map((v) => -v), sl), w = 0.6;
+      const e = [S.elbowAt(b.pad, low, ua, fa, -1, hf.low, w), S.elbowAt(b.off, grip, ua, fa, 1)];
       if (prev) worst = Math.max(worst, ...e.map((q, j) => Math.hypot(...q.map((v, k) => v - prev[j][k]))));
       prev = e;
     }

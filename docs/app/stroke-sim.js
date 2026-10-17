@@ -1275,7 +1275,7 @@
   // (the catch, the exit, the recovery): the top arm (side +1, the off side)
   // keeps its elbow up and out to its own side, as a paddler holds the top
   // hand over the paddle; the lower arm's hangs down, out and back.
-  const ELBOW_NEAR = 0.1;
+  const ELBOW_NEAR = 0.2;
   function elbowAt(a, b, ua, fa, side, f = null, w = 0) {
     const d = sub(b, a), L = norm(d);
     if (L >= ua + fa - 1e-6) return add(a, mul(d, ua / (ua + fa)));
