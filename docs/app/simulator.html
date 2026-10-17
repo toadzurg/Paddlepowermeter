@@ -758,7 +758,10 @@
         <button type="button" class="small" id="profile-fit">Lengths from height</button>
       </details>
       <details class="group"><summary>Body motion</summary><div id="ctl-body"></div></details>
-      <details class="group"><summary>Switching sides</summary><div id="ctl-switch"></div></details>
+      <details class="group"><summary>Switching sides</summary>
+        <div class="row chips" id="switch-mode" role="group" aria-label="Switching sides"></div>
+        <div class="help">Run straight: an ideal boat held on course for free, with no time lost to switches and no zigzag. For comparison: no real canoe steers itself.</div>
+        <div id="ctl-switch"></div></details>
     </aside>
   </div>
   <section class="card how" id="how">
@@ -796,7 +799,7 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of each engine file (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. The fit builds on the stroke engine. -->
-<script src="stroke-sim.js?v=7bc20f0da1"></script>
+<script src="stroke-sim.js?v=29443d4ed0"></script>
 <script src="fit-sim.js?v=c4843125f4"></script>
 <script>
 (() => {
@@ -1059,7 +1062,7 @@ function showBodyEffects() {
   if (p.heelDeg && !(bodyRef[editing] && bodyRef[editing].key === JSON.stringify(Object.assign({}, p, { heelDeg: 0 }))))
     bodyRef[editing] = { key: JSON.stringify(Object.assign({}, p, { heelDeg: 0 })), r: S.simulate(Object.assign({}, p, { heelDeg: 0 })) };
   const r0 = p.heelDeg ? bodyRef[editing].r : r;
-  $("e-heelDeg").innerHTML = p.heelDeg ? `Switch every <b>${fmtNum(r.strokesPerSide, 1)}</b> strokes (from ${fmtNum(r0.strokesPerSide, 1)}), ` +
+  $("e-heelDeg").innerHTML = p.heelDeg && !p.noSwitching ? `Switch every <b>${fmtNum(r.strokesPerSide, 1)}</b> strokes (from ${fmtNum(r0.strokesPerSide, 1)}), ` +
     `<b>${fmtNum(Math.abs(r0.switchDuty - r.switchDuty) * 100, 1)}%</b> ${r.switchDuty >= r0.switchDuty ? "less" : "more"} time lost switching` : "";
   $("e-hipRock").innerHTML = p.hipRock ? `Heel <b>±${fmtNum((Math.max(...c.heel) - Math.min(...c.heel)) / 2 * 180 / Math.PI, 1)}°</b> instead of ±${fmtNum(c.heelStill * 180 / Math.PI, 1)}°, hips moving up to <b>${fmtNum(c.hipMax * 1000, 0)} mm</b>` : "";
   $("e-seatZM").innerHTML = `Metacentric height <b>${fmtNum(c.GM * 100, 0)} cm</b>, rolling once every <b>${fmtNum(c.rollPeriod, 2)} s</b>: heel <b>±${fmtNum(c.heelStill * 180 / Math.PI, 1)}°</b> each stroke`;
@@ -1096,6 +1099,7 @@ function syncControls() {
   const fixed = boats[editing].switchStrokes > 0;
   $("c-switchHeadingDeg").disabled = fixed;
   if (fixed) $("o-switchHeadingDeg").textContent = "off (fixed count)";
+  renderSwitchMode();
   $("controls").classList.toggle("editing-b", editing === "b");
   $("editing-name").textContent = NAME[editing];
   $("presets").classList.toggle("b", editing === "b");
@@ -1156,6 +1160,22 @@ function renderStrength() {
   $("c-strengthPeakDeg").closest(".ctl").hidden = boats[editing].strengthOn !== 1;
 }
 const GEAR_MODES = [["0", "Off"], ["1", "On"]];
+// Switching sides, or an ideal boat that runs straight without it.
+const SWITCH_MODES = [["0", "Switch sides"], ["1", "Run straight (ideal)"]];
+function renderSwitchMode() {
+  const el = $("switch-mode"), off = !!boats[editing].noSwitching;
+  el.innerHTML = "";
+  el.classList.toggle("b", editing === "b");
+  for (const [v, label] of SWITCH_MODES) {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = label;
+    b.setAttribute("aria-pressed", String(String(boats[editing].noSwitching || 0) === v));
+    b.addEventListener("click", () => { boats[editing].noSwitching = +v; changed(editing); });
+    el.append(b);
+  }
+  for (const k of ["switchStrokes", "switchHeadingDeg", "switchLossS"]) $(`c-${k}`).disabled = off;
+  if (off) for (const k of ["switchStrokes", "switchHeadingDeg", "switchLossS"]) $(`o-${k}`).textContent = "off (no switching)";
+}
 function renderGear() {
   const el = $("gear-mode");
   el.innerHTML = "";
@@ -1378,7 +1398,7 @@ function summary(r) {
   const at = r.at(effortW);
   return {
     eff: r.efficiency * 100, speed: at.speed, fwd: r.forceShare.forward * 100,
-    side: r.strokesPerSide, wander: r.headingWanderDeg, yaw: Math.abs(r.yawAt(effortW)),
+    side: r.strokesPerSide, straight: !!r.params.noSwitching, wander: r.headingWanderDeg, yaw: Math.abs(r.yawAt(effortW)),
     peak: r.peakForce * Math.pow(effortW / Math.max(1e-9, r.paddlerPower), 2 / 3), at,
   };
 }
@@ -1416,6 +1436,7 @@ function showEfficiency() {
   $("o-effortW").textContent = `${effortW} W`;
   const cell = (s, k, unit, d, cls) => {
     const v = s[k];
+    if (k === "side" && s.straight) return `<td class="v ${cls}">never</td>`;
     const t = k === "side" && v >= S.MAX_STROKES_PER_SIDE - 0.05 ? `${S.MAX_STROKES_PER_SIDE}+` :
       k === "wander" ? `±${fmtNum(v, d)}` : fmtNum(v, d);
     return `<td class="v ${cls}">${t}<small>${unit}</small></td>`;
@@ -1425,7 +1446,10 @@ function showEfficiency() {
     const shown = (v) => +v.toFixed(d), diff = shown(A[k]) - shown(B[k]), tiny = Math.abs(diff) < Math.pow(10, -d) / 2;
     const u = unit === "%" ? " pts" : ` ${unit}`;
     let win, better;
-    if (hi === null) {
+    if (k === "side" && (A.straight || B.straight)) {
+      win = "even";
+      better = A.straight && B.straight ? "same" : `${A.straight ? "A" : "B"} doesn't switch`;
+    } else if (hi === null) {
       win = "even";
       better = tiny ? "same" : `${diff > 0 ? "A" : "B"} pulls ${fmtNum(Math.abs(diff), d)}${u} harder`;
     } else {
@@ -1610,7 +1634,8 @@ function breakdown(id, names, a, b, digits, cls = names.map((_, i) => `s${i + 1}
 }
 function why(r, at) {
   const yaw = r.yawAt(effortW), sh = at.shares, lift = at.meanLift;
-  const turn = Math.abs(yaw) < 1 ? "Practically no turning, so no need to switch sides to steer." :
+  const turn = r.params.noSwitching ? "Held straight without switching (ideal): no time lost to switches and no zigzag." :
+    Math.abs(yaw) < 1 ? "Practically no turning, so no need to switch sides to steer." :
     `Turns the bow ${yaw > 0 ? "away from" : "toward"} the paddle side (${fmtNum(Math.abs(yaw))} N·m), so you switch about ` +
     `every ${fmtNum(r.strokesPerSide, 1)} strokes and lose ${fmtNum((1 - r.switchDuty) * 100, 1)}% of your paddling time to switches. ` +
     `The boat wanders ±${fmtNum(r.headingWanderDeg, 1)}° off course, costing ${fmtNum((1 - r.courseFactor) * 100, 2)}% of its progress.`;
@@ -2002,10 +2027,12 @@ function drawRace(dA, dB, elapsed) {
   // screen) and how often it switches. Switching by heading, every boat
   // keeps within the same angle, so one that turns harder switches sooner
   // and swings less to the side.
-  const cm = (X) => fmtNum(wv[X].amp * 100, 0), every = (x) => fmtNum(results[x].strokesPerSide, 1);
-  const byHeading = BOATS.every((x) => !results[x].params.switchStrokes);
-  $("race-weave").textContent = `Sideways swing, drawn ×${fmtNum(ex / ((right - left) / span), 0)}: ` +
-    `A ±${cm("A")} cm, switching every ${every("a")} strokes · B ±${cm("B")} cm, every ${every("b")} strokes.` +
+  const cm = (X) => fmtNum(wv[X].amp * 100, 0);
+  const every = (x) => results[x].params.noSwitching ? "not switching" : `switching every ${fmtNum(results[x].strokesPerSide, 1)} strokes`;
+  const byHeading = BOATS.every((x) => !results[x].params.switchStrokes && !results[x].params.noSwitching);
+  const drawn = Math.max(wv.A.amp, wv.B.amp) > 0 ? `, drawn ×${fmtNum(ex / ((right - left) / span), 0)}` : "";
+  $("race-weave").textContent = `Sideways swing${drawn}: ` +
+    `A ±${cm("A")} cm, ${every("a")} · B ±${cm("B")} cm, ${every("b")}.` +
     (byHeading ? ` Switching by heading, both keep within ±${fmtNum(results.a.headingWanderDeg, 1)}° of straight, so a boat that turns harder switches sooner and swings less to the side.` : "");
   // A boat behind the view shows how far back it is.
   const canoe = (X, d, y, cls) => {
@@ -2837,7 +2864,7 @@ function hullReadouts() {
       (rock ? `Hip rock ${Math.round(rock * 100)}%: <b>±${fmtNum(heel, 1)}°</b> (from ±${fmtNum(c.heelStill * 180 / Math.PI, 1)}°)` :
         `Held still: <b>±${fmtNum(heel, 1)}°</b>, rolling back every ${fmtNum(c.rollPeriod, 1)} s${inStep ? ", in step with the strokes, so each one pumps it" : ""}`);
   });
-  $("hull-heading-read").innerHTML = lines((x, c, e, r) => r.params.switchStrokes ? `Switching every <b>${r.params.switchStrokes}</b> strokes, the bow wanders <b>±${fmtNum(r.headingWanderDeg, 1)}°</b>` :
+  $("hull-heading-read").innerHTML = lines((x, c, e, r) => r.params.noSwitching ? "Held straight, no switching (ideal)" : r.params.switchStrokes ? `Switching every <b>${r.params.switchStrokes}</b> strokes, the bow wanders <b>±${fmtNum(r.headingWanderDeg, 1)}°</b>` :
     `Switch every <b>${fmtNum(r.strokesPerSide, 1)} strokes</b> to stay within ±${fmtNum(r.headingWanderDeg, 1)}°`);
 }
 // The bow's heading over strokes, switching sides.
@@ -2850,7 +2877,7 @@ function drawHeading() {
     let g = "";
     for (const d of [-lim, 0, lim]) g += `<line class="${d ? "grid" : "axis"}" x1="${m.l}" x2="${W - m.r}" y1="${Y(d)}" y2="${Y(d)}"/><text x="${m.l - 5}" y="${Y(d) + 4}" text-anchor="end">${d > 0 ? "+" : ""}${d}°</text>`;
     for (const x of bs) {
-      const pr = per(x), w = wan(x), step = (2 * w) / pr;
+      const pr = per(x), w = results[x].params.noSwitching ? 0 : wan(x), step = (2 * w) / pr;
       let k = 0, h = -w, side = 1, p = `M${X(0)},${Y(h)}`;
       while (k < strokes) { const k1 = Math.min(strokes, k + pr), h1 = h + side * step * (k1 - k); p += ` L${X(k1).toFixed(1)},${Y(h1).toFixed(1)}`; k = k1; h = h1; side = -side; }
       g += `<path d="${p}" fill="none" stroke="${COL[x]}" stroke-width="2"/>`;
@@ -2989,7 +3016,7 @@ function drawHeadingNow(st) {
   for (const d of [-lim, 0, lim]) g += `<line class="${d ? "grid" : "axis"}" x1="${m.l}" x2="${W - m.r}" y1="${Y(d)}" y2="${Y(d)}"/><text x="${m.l - 5}" y="${Y(d) + 4}" text-anchor="end">${d > 0 ? "+" : ""}${d}°</text>`;
   const read = [];
   for (const x of BOATS) {
-    const s = st[x.toUpperCase()], seg = s.g, w = wan(x), cl = x === "a" ? "--series-1" : "--series-2";
+    const s = st[x.toUpperCase()], seg = s.g, w = results[x].params.noSwitching ? 0 : wan(x), cl = x === "a" ? "--series-1" : "--series-2";
     if (!(seg.rate > 0)) { read.push(`<span><b>${x.toUpperCase()}</b> ${s.fin !== null && st.t >= s.fin ? "finished" : "carrying"}</span>`); continue; }
     // Stroke slots so far (switches included), stopped at the finish.
     const tEnd = s.fin !== null ? Math.min(st.t, s.fin) : st.t, p = (tEnd * seg.rate) / 60;
@@ -3520,7 +3547,7 @@ const switchAnim = () => $("switch-anim").getAttribute("aria-pressed") === "true
 // of switchLossS, n on the left, a switch back; n is its strokes per side.
 function timeline(x, t) {
   const r = results[x], Tc = r.cycle;
-  if (!switchAnim()) return { ph: (((t / Tc) % 1) + 1) % 1, m: 1, lift: null, stroke: 0, n: 0 };
+  if (!switchAnim() || r.params.noSwitching) return { ph: (((t / Tc) % 1) + 1) % 1, m: 1, lift: null, stroke: 0, n: 0 };
   const n = Math.max(1, Math.round(r.strokesPerSide)), Tsw = Math.max(0.05, r.params.switchLossS);
   const Ts = n * Tc + Tsw, tt = (((t % (2 * Ts)) + 2 * Ts) % (2 * Ts));
   const side = tt < Ts ? 1 : -1, u = side > 0 ? tt : tt - Ts;

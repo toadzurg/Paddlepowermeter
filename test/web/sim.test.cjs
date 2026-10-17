@@ -127,6 +127,19 @@ console.log("\nCanoe Race Simulator physics");
   check("slower switches cost speed", slowSwitch.speedAt(150) < base.speedAt(150));
   const tight = S.simulate({ switchHeadingDeg: 1 });
   check("tighter heading tolerance means more switches", tight.strokesPerSide < base.strokesPerSide);
+  // An ideal boat held straight: no switch time and no zigzag, so it beats
+  // switching, and beats switching that only loses no time (the zigzag stays).
+  const straight = S.simulate({ noSwitching: 1 }), freeSwitch = S.simulate({ switchLossS: 0 });
+  check("no switching: full duty, no wander", straight.switchDuty === 1 && straight.headingWanderDeg === 0 && straight.courseFactor === 1);
+  check("no switching beats switching", straight.efficiency > freeSwitch.efficiency && freeSwitch.efficiency > base.efficiency,
+        `${pct(straight.efficiency)} vs ${pct(freeSwitch.efficiency)} vs ${pct(base.efficiency)}`);
+  check("no switching ignores the switch settings",
+        Math.abs(S.simulate({ noSwitching: 1, switchLossS: 1.5, switchStrokes: 3 }).efficiency - straight.efficiency) < 1e-12);
+  {
+    const rc = S.race(straight, base, 5000, 150, 150, { windSpeed: 5, windAngle: 90 }), l = rc.legsA[0];
+    check("no switching in a crosswind: no switch time, no wander", l.duty === 1 && l.wanderDeg === 0 && !l.steer && rc.tA < rc.tB,
+          `${rc.tA.toFixed(0)} s vs ${rc.tB.toFixed(0)} s`);
+  }
 
   const short = S.simulate({ catchDeg: 12, exitDeg: 45 });
   const reach = S.simulate({ catchDeg: 50, exitDeg: 10 });
@@ -691,6 +704,16 @@ console.log("\nPaddle fit");
           (await text("#o-switchHeadingDeg")) === "off (fixed count)");
     check(`${tag}: wander shown`, /^±[\d.]+°$/.test(await page.$eval('#cmp tr[data-row="wander"] td:nth-child(2)', (e) => e.textContent)));
     await slide("#c-switchStrokes", 0); await settle();
+    {
+      const eff0 = await cellVal("eff", 2);
+      await page.$eval("#switch-mode button:nth-child(2)", (b) => b.click()); await settle();
+      check(`${tag}: run straight raises efficiency`, (await cellVal("eff", 2)) > eff0 &&
+            (await page.$eval('#cmp tr[data-row="side"] td:nth-child(2)', (e) => e.textContent)) === "never" &&
+            (await page.$eval("#c-switchLossS", (e) => e.disabled)) && (await text("#o-switchLossS")) === "off (no switching)");
+      await page.$eval("#switch-mode button:nth-child(1)", (b) => b.click()); await settle();
+      check(`${tag}: switching back restores it`, Math.abs((await cellVal("eff", 2)) - eff0) < 1e-9 &&
+            !(await page.$eval("#c-switchLossS", (e) => e.disabled)));
+    }
     await slide("#c-rateSpm", 30); await settle();
     check(`${tag}: slower rate, longer drive on the curve`, /^A: .*drive 1\.00 s/.test(await text("#curve-legend")), await text("#curve-legend"));
     await slide("#c-rateSpm", 60); await settle();
