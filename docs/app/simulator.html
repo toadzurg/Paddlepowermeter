@@ -1095,11 +1095,11 @@ function syncControls() {
   showFitIntro();
   $("profile-copy").textContent = `Copy profile to ${NAME[other(editing)]}`;
   showBodyEffects();
+  renderSwitchMode();
   // A fixed stroke count replaces switching by heading.
   const fixed = boats[editing].switchStrokes > 0;
-  $("c-switchHeadingDeg").disabled = fixed;
-  if (fixed) $("o-switchHeadingDeg").textContent = "off (fixed count)";
-  renderSwitchMode();
+  $("c-switchHeadingDeg").disabled = fixed || !!boats[editing].noSwitching;
+  if (fixed && !boats[editing].noSwitching) $("o-switchHeadingDeg").textContent = "off (fixed count)";
   $("controls").classList.toggle("editing-b", editing === "b");
   $("editing-name").textContent = NAME[editing];
   $("presets").classList.toggle("b", editing === "b");
@@ -2028,11 +2028,11 @@ function drawRace(dA, dB, elapsed) {
   // keeps within the same angle, so one that turns harder switches sooner
   // and swings less to the side.
   const cm = (X) => fmtNum(wv[X].amp * 100, 0);
-  const every = (x) => results[x].params.noSwitching ? "not switching" : `switching every ${fmtNum(results[x].strokesPerSide, 1)} strokes`;
+  const every = (x, lead) => results[x].params.noSwitching ? "not switching" : `${lead ? "switching " : ""}every ${fmtNum(results[x].strokesPerSide, 1)} strokes`;
   const byHeading = BOATS.every((x) => !results[x].params.switchStrokes && !results[x].params.noSwitching);
   const drawn = Math.max(wv.A.amp, wv.B.amp) > 0 ? `, drawn ×${fmtNum(ex / ((right - left) / span), 0)}` : "";
   $("race-weave").textContent = `Sideways swing${drawn}: ` +
-    `A ±${cm("A")} cm, ${every("a")} · B ±${cm("B")} cm, ${every("b")}.` +
+    `A ±${cm("A")} cm, ${every("a", true)} · B ±${cm("B")} cm, ${every("b", results.a.params.noSwitching)}.` +
     (byHeading ? ` Switching by heading, both keep within ±${fmtNum(results.a.headingWanderDeg, 1)}° of straight, so a boat that turns harder switches sooner and swings less to the side.` : "");
   // A boat behind the view shows how far back it is.
   const canoe = (X, d, y, cls) => {
