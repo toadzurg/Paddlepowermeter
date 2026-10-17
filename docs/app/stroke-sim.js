@@ -225,16 +225,18 @@
   // depth at the catch and starts lifting it from there at the exit. It is
   // still going in for the drive's first ENTRY and already coming out for
   // its last EXIT_SHARE (the four-phase kayak stroke: entry, pull, exit,
-  // aerial), BLADE_OUT of its depth each way, moving: down as the drive
+  // aerial), BLADE_OUT of its depth at the catch and EXIT_OUT at the exit
+  // (the lower hand lifts the rest out in the recovery, the top hand not
+  // riding up with it), moving: down as the drive
   // starts, up as it ends; the recovery carries on from there. It goes in
   // and out SPEAR of the way along its own length, edge first, the rest
   // straight down: not slapping its face down on the water, and the hands
   // not pushed forward at the catch. The force follows how much is in.
-  const ENTRY = 0.25, EXIT_SHARE = 0.25, BLADE_OUT = 0.25, SPEAR = 0.5;
+  const ENTRY = 0.25, EXIT_SHARE = 0.25, BLADE_OUT = 0.25, EXIT_OUT = 0.1, SPEAR = 0.5;
   function inOut(p, u, d) {
     const depth = BLADE_OUT * paddleOf(p).bladeLen * Math.max(0, -d[2]);
     if (u < ENTRY) return depth * (1 - u / ENTRY) ** 2;
-    if (u > 1 - EXIT_SHARE) return depth * ((u - 1 + EXIT_SHARE) / EXIT_SHARE) ** 2;
+    if (u > 1 - EXIT_SHARE) return (EXIT_OUT / BLADE_OUT) * depth * ((u - 1 + EXIT_SHARE) / EXIT_SHARE) ** 2;
     return 0;
   }
   // Paddle pose at drive progress u ∈ [0, 1].
@@ -266,12 +268,14 @@
     const psi = rad(p.directionDeg + p.sweepDeg * (0.5 - e));
     const d = shaftDir(th, rad(p.leanDeg), psi);
     // The pivot stays put in the boat (plus hand travel aft), at the height
-    // that puts the throat at the waterline.
-    // But for the blade still going in at the catch and already coming out
-    // at the exit (inOut, m).
-    const io = dry ? 0 : inOut(p, u, d), along = SPEAR * io / Math.max(0.2, -d[2]);   // its rise io (m), partly up the shaft
-    const pivot = [-p.handTravelM * e - d[0] * along, -p.handOutM - d[1] * along, -d[2] * (paddleOf(p).throat - p.pivotFromGrip) + io];
-    const at = (s) => add(pivot, mul(d, s - p.pivotFromGrip));  // point s m from the grip
+    // that puts the throat at the waterline. But for the blade still going
+    // in at the catch and already coming out at the exit (inOut, m).
+    const io = dry ? 0 : inOut(p, u, d), L = paddleOf(p).throat, pfg = p.pivotFromGrip;
+    const base = [-p.handTravelM * e, -p.handOutM, -d[2] * (L - pfg)];
+    // In and out: SPEAR of the way along the shaft, the rest straight down.
+    const along = SPEAR * io / Math.max(0.2, -d[2]);
+    const pivot = [base[0] - d[0] * along, base[1] - d[1] * along, base[2] + io];
+    const at = (s) => add(pivot, mul(d, s - pfg));  // point s m from the grip
     return { d, pivot, at, th, psi };
   }
 
@@ -582,7 +586,8 @@
       // At the very ends the swing is momentarily still; use its direction
       // there so the face orientation stays defined.
       let face = sub(pose(p, timing.at(tb), true).at(sC), pose(p, timing.at(ta), true).at(sC));
-      if (norm(face) < 1e-9) face = sub(pose(p, Math.min(1, u + 0.02), true).at(sC), pose(p, Math.max(0, u - 0.02), true).at(sC));
+      // At the very ends, the face the recovery takes it from and leaves it with.
+      if (norm(face) < 1e-9 || i === 0 || i === steps) face = driveFace(p, u);
       const B = blade(p, P, face);
       const Ba = blade(p, Pa, face), Bb = blade(p, Pb, face);
       const vBlade = mul(sub(Bb.cop, Ba.cop), 1 / span);       // relative to the boat
@@ -1198,7 +1203,7 @@
   // drops and swings over it. The plan with the least cost, inside reach,
   // with the top hand below the forehead and in front of the face, is the
   // one paddled (recoveryPivot -1), or one pivot can be set to compare.
-  const ELASTIC = 0.65, NEG_WORK = 0.25, AIR = 1.2, BLADE_CD = 1.17, SKIN_CD = 0.02, NOMINAL_V = 2.6;
+  const TOP_HAND_MAX = 0.22, ELASTIC = 0.65, NEG_WORK = 0.25, AIR = 1.2, BLADE_CD = 1.17, SKIN_CD = 0.02, NOMINAL_V = 2.6;
   const SEG = { m: [[0.0271, 0.0162, 0.0061], [0.0255, 0.0138, 0.0056]], com: [0.577, 0.457], gyr: [0.285, 0.276] };
   const REC_CLEAR = 0.05, REC_RAMP = 0.25, SLICE_OUT = 0.3, FEATHER = rad(80);
   const smooth = (x) => { const t = Math.min(1, Math.max(0, x)); return t * t * (3 - 2 * t); };
@@ -1310,7 +1315,9 @@
     const d = sub(b, a), L = norm(d);
     if (L >= ua + fa - 1e-6) return add(a, mul(d, ua / (ua + fa)));
     const u = mul(d, 1 / L), perp = (v) => sub(v, mul(u, dot(v, u)));
-    const rest = unit(perp(side > 0 ? [-0.2, 1, 0.25] : [-0.8, -0.6, -1]));
+    // Relaxed: the top elbow bends out and a little down (not lifted), the
+    // lower one back, out and down.
+    const rest = unit(perp(side > 0 ? [-0.2, 1, -0.4] : [-0.8, -0.6, -1]));
     let n = rest;
     if (f && w > 0 && norm(f) > 1e-9) {
       const fu = unit(f), m = mul(add(a, b), 0.5), x = add(b, mul(fu, dot(sub(m, b), fu)));   // the force line's nearest point to the arm
@@ -1360,9 +1367,10 @@
       for (let j = 0; j < 5; j++) pts.push([P.at((j + 0.5) / 5 * paddleOf(p).throat), mShaft]);
       const along = sub(B.tip, B.throat);
       for (const f of [1 / 6, 0.5, 5 / 6]) pts.push([add(B.throat, mul(along, f)), mBlade]);
-      // The top hand: below the forehead, in front of the face.
+      // The top hand: no higher than the eyes (between the ends, which the
+      // drive sets), in front of the face.
       if (i >= 0 && i <= N) {
-        past += Math.max(0, grip[2] - centre[2] - 0.3 * k) + Math.max(0, head[0] + 0.12 * k - grip[0]);
+        past += (i > 0 && i < N ? Math.max(0, grip[2] - centre[2] - TOP_HAND_MAX * k) : 0) + Math.max(0, head[0] + 0.12 * k - grip[0]);
         wide = Math.max(wide, Math.abs(B.cop[1]));
       }
       frames.push({ pts, B });
