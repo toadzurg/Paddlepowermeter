@@ -427,9 +427,13 @@ console.log("\nCanoe Race Simulator physics");
         seats.map((x) => x.toFixed(2)).join(" "));
   // Strength from the arms.
   const arms = (x) => Object.assign({ strengthOn: 2 }, x), fA = (x) => S.strengthFactor(arms(x));
-  check("strength from the arms: arms at full stretch tire you (wide sweep, out of reach), comfortable ones don't",
-        Math.abs(fA({}) - 1) < 1e-9 && fA(PRE.sweep) < 0.9 && fA({ catchDeg: 60, handOutM: 0.85, leanDeg: 40 }) < 0.6 && fA(PRE.clean) > 0.98,
-        `sweep ×${fA(PRE.sweep).toFixed(2)}, clean ×${fA(PRE.clean).toFixed(2)}`);
+  // The lower arm pulling straight is a link the shoulder and trunk pull
+  // through (a sweep's long arm costs little); reaching past reach tires
+  // you, and so does an arm folded up.
+  check("strength from the arms: a straight pulling arm is no weaker; past reach is, and so is a folded one",
+        Math.abs(fA({}) - 1) < 1e-9 && fA(PRE.sweep) > 0.9 && fA({ catchDeg: 60, handOutM: 0.85, leanDeg: 40 }) < 0.6 && fA(PRE.clean) > 0.98 &&
+        fA({ lowerHandM: 0.4, catchDeg: 15, exitDeg: 15 }) < fA({}),
+        `sweep ×${fA(PRE.sweep).toFixed(2)}, out of reach ×${fA({ catchDeg: 60, handOutM: 0.85, leanDeg: 40 }).toFixed(2)}, folded ×${fA({ lowerHandM: 0.4, catchDeg: 15, exitDeg: 15 }).toFixed(2)}, clean ×${fA(PRE.clean).toFixed(2)}`);
   // From one seat the body leans to reach the catch, and leaning far forward
   // is weaker: a long reach costs strength again, more with short arms.
   const withArms = (a) => Object.assign({ upperArmM: a, forearmM: a }, LR);

@@ -271,8 +271,13 @@ is the fulcrum, pushing forward at about head height: its elbow comes up
 and the arm lines up from shoulder to grip, near straight, since pushing is
 strongest toward full extension (an ascending strength curve, as in a
 [press](https://powerliftingtechnique.com/bench-press-lockout/)). The lower
-hand pulls aft, low: its elbow drops, bent near 90°, where the elbow
-flexors' torque peaks ([torque–angle data](https://personal.fbw.vu.nl/~jsmeets/2010/Torque_angle-JEK10.pdf)).
+hand pulls aft, low: its elbow drops, bent near 90° by the exit, where the
+elbow flexors' torque peaks ([torque–angle data](https://personal.fbw.vu.nl/~jsmeets/2010/Torque_angle-JEK10.pdf)).
+Straighter than that it's no weaker: a straight pulling arm is a link the
+shoulder's extensors (the lats; extension is the shoulder's strongest
+movement, [Int J Sports Med 1994](https://www.thieme-connect.de/products/ejournals/pdf/10.1055/s-2007-1021105.pdf))
+and the trunk pull through, as in a sweep or rowing's straight-arm drive.
+Only folded past a right angle, or reaching past reach, does it weaken.
 With no force (catch, exit, recovery) the top elbow stays up and out, the
 lower one hangs.
 

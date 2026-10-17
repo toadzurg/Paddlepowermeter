@@ -459,6 +459,13 @@
   // Weaker folded up or stretched out; the lower (pulling) arm counts most.
   const ARM_BEST = 0.72, TOP_ARM_BEST = 0.9, ARM_SPAN = 0.25;
   const armStrength = (p, e, best = ARM_BEST) => Math.max(STRENGTH_MIN, 1 - p.strengthDrop * ((Math.min(1.05, e) - best) / ARM_SPAN) ** 2);
+  // The lower arm pulling: folded past a right angle, the elbow's flexors
+  // bend the pull and weaken as above. From there to straight it's the
+  // shoulder's extensors (the lats; extension is the shoulder's strongest
+  // movement) and the trunk that pull, the arm a link: no weaker. Past
+  // reach it overreaches.
+  const pullStrength = (p, e) => e < ARM_BEST ? armStrength(p, e) : e <= REACH ? 1 :
+    Math.max(STRENGTH_MIN, 1 - p.strengthDrop * ((Math.min(1.05, e) - REACH) / (1.05 - REACH)) ** 2);
   // Reaching far with the trunk is weaker too: wound up, it can't brace
   // the pull. Each way it goes past the technique's own posture costs
   // strength as the square of the excess: leaning past LEAN0 (losing
@@ -491,7 +498,7 @@
       const P = pose(p, u), nn = neutralAt(p, u);
       const b = fitBody(p, seatX, P.at(0), P.at(lowerHand(p)), nn, 0, prev || nn);
       prev = b.pose;
-      return (0.75 * armStrength(p, b.low) + 0.25 * armStrength(p, b.top, TOP_ARM_BEST)) * trunkStrength(p, b.pose, nn);
+      return (0.75 * pullStrength(p, b.low) + 0.25 * armStrength(p, b.top, TOP_ARM_BEST)) * trunkStrength(p, b.pose, nn);
     };
     for (let i = 1; i <= n; i++) {
       const u = (i - 0.5) / n, s = sAt(u);
@@ -1557,7 +1564,7 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 50;
+  const API_LEVEL = 51;
   const PADDLE = paddleOf(DEFAULTS);
   const api = { API_LEVEL, shaftDir, paddled, paddleOf, gearFactor, trunkGearFactor, bestRate, recoveryPlan, recoveryPose, recoveryCost, recoveryClear, elbowAt, handForces, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
