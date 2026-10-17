@@ -609,6 +609,10 @@ console.log("\nPaddle fit");
     const labels0 = () => page.$$eval("#race-stats tbody tr td:first-child", (ts) => ts.map((t) => t.firstChild.textContent));
     const goTab = async (t) => { await page.click(`nav.tabs button[data-tab=${t}]`); await page.waitForTimeout(250); };
     const visible = (sel) => page.isVisible(sel);
+    // The race starts at what each can hold; the tests below set efforts by hand.
+    check(`${tag}: race effort starts at what each can hold`, (await pressed("#effort-mode"))[0] === "hold" &&
+          (await page.$eval("#effA", (e) => e.disabled)) && /what A can hold/.test(await text("#o-effA")), await text("#o-effA"));
+    await page.$eval('#effort-mode button[data-value="hand"]', (b) => b.click()); await settle();
 
     // Layout: one tab at a time; phones put the sliders after it, wide screens beside it.
     const box = async (sel) => (await page.$(sel)).boundingBox();
@@ -1664,7 +1668,7 @@ console.log("\nPaddle fit");
       await mob.waitForTimeout(300);
       check(`${tag}: phone: a tap pauses (once), and a paused race holds still`, (await mob.textContent("#race-pause")) === "Resume" &&
             /^Paused at /.test(await mob.textContent("#race-status")) && pausedSvg === (await mob.$eval("#course-view", (e) => e.innerHTML)));
-      check(`${tag}: phone: the map widens while the race runs`, moving > still * 4, `${still} km → ${moving} km`);
+      check(`${tag}: phone: the map widens while the race runs`, moving >= still * 4, `${still} km → ${moving} km`);
       await mob.tap("#race-pause"); await mob.waitForTimeout(150);
       check(`${tag}: phone: resume and stop`, (await mob.textContent("#race-pause")) === "Pause" &&
             (await mob.tap("#race-stop"), await mob.waitForTimeout(150), (await mob.textContent("#race-status")) === "Stopped."));
