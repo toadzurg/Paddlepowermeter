@@ -116,14 +116,19 @@
     return { current, best };
   }
   // Seat height × paddle length with the hands of `p`, each length keeping
-  // its blade path. Yields progress; returns { seats, lengths, cells }.
-  function* map(p, ref, needs) {
-    const lengths = steps(RANGES.paddleLenM), cells = [];
-    for (const seatZM of MAP_SEATS) for (const paddleLenM of lengths) {
+  // its blade path. `also`: setups whose seat and length get a row and a
+  // column of their own (the paddler's and the suggestion), so they're
+  // marked where they are, not on the nearest square. Yields progress;
+  // returns { seats, lengths, cells }.
+  function* map(p, ref, needs, also = []) {
+    const merged = (base, vs) => [...base, ...vs.filter((v) => base.every((b) => Math.abs(b - v) > 1e-3))].sort((a, b) => a - b)
+      .filter((v, i, a) => i === 0 || v - a[i - 1] > 1e-3);
+    const seats = merged(MAP_SEATS, also.map((q) => q.seatZM)), lengths = merged(steps(RANGES.paddleLenM), also.map((q) => q.paddleLenM)), cells = [];
+    for (const seatZM of seats) for (const paddleLenM of lengths) {
       cells.push(Object.assign({ seatZM, paddleLenM }, measure(withBladePath(Object.assign({}, p, { seatZM, paddleLenM }), ref), needs)));
-      yield cells.length / (MAP_SEATS.length * lengths.length);
+      yield cells.length / (seats.length * lengths.length);
     }
-    return { seats: MAP_SEATS, lengths, cells };
+    return { seats, lengths, cells };
   }
 
   const api = { CONDITIONS, RANGES, TOP_LOW, TOP_HIGH, REF_HEIGHT, bladeX, withBladePath, measure, search, map };
