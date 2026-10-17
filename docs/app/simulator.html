@@ -863,7 +863,7 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of each engine file (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. The fit builds on the stroke engine. -->
-<script src="stroke-sim.js?v=edceadd2f5"></script>
+<script src="stroke-sim.js?v=7fa24fef17"></script>
 <script src="fit-sim.js?v=c12c9edd44"></script>
 <script>
 (() => {
@@ -3796,12 +3796,15 @@ function figJoints(r, c, ph, lift = null, m = 1) {
   const foot0 = along(knee0, [0.36, 0, -0.30], p.shinM);
   const J = acrossTheBoat({ hip: HIP, knee: knee0, foot: foot0, sh, head: head0, off, pad }, m, st.P.at, sLow);
   J.k = k; J.fit = b; J.st = st;
-  // Elbows (stroke-sim.js elbowAt): toward each hand's force line as the
-  // blade loads, so the arm is strongest (the top elbow up, its arm in line
-  // from shoulder to grip; the lower elbow down); relaxed with no force.
+  // Elbows (stroke-sim.js elbowAt): toward each hand's force line through
+  // the drive, so the arm is strongest (the top elbow up, its arm in line
+  // from shoulder to grip; the lower elbow down); relaxed in the recovery.
+  // The force's line is the blade face's whatever its size, so the elbows
+  // ease into it through the entry and out through the exit: never a jump.
   // Paddling left (m < 0) the forces mirror with the body.
-  const ua = p.upperArmM, fa = p.forearmM, mir = (v) => [v[0], m * v[1], v[2]];
-  const hf = st.inDrive && st.F > 0 ? S.handForces(st.P, st.B, st.thrust, sLow) : null, w = hf ? smooth01(st.F / (0.2 * r.peakForce)) : 0;
+  const ua = p.upperArmM, fa = p.forearmM, mir = (v) => [v[0], m * v[1], v[2]], dp = ph / df;
+  const hf = st.inDrive ? S.handForces(st.P, st.B, st.B.n.map((v) => -v), sLow) : null;
+  const w = hf ? smooth01(dp / 0.4) * smooth01((1 - dp) / 0.3) : 0;
   const elbow = (a, b, side, f) => (Math.hypot(...sub3(b, a)) >= ua + fa ? null : S.elbowAt(a, b, ua, fa, side, f && mir(f), w));
   J.rightElbow = elbow(J.right, J.rightHand, -1, hf && hf.low); J.leftElbow = elbow(J.left, J.leftHand, 1, hf && hf.top);
   return J;
