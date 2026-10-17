@@ -863,7 +863,7 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of each engine file (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. The fit builds on the stroke engine. -->
-<script src="stroke-sim.js?v=53e3748522"></script>
+<script src="stroke-sim.js?v=3d21a654aa"></script>
 <script src="fit-sim.js?v=c12c9edd44"></script>
 <script>
 (() => {
@@ -907,7 +907,7 @@ function shown(el) {
 }
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 55;
+const NEEDS_API = 56;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -944,11 +944,13 @@ const BOATS_KEY = "ppm.sim.boats";
 // Saves carry SAVE_VERSION. A default changed since a save was made: the
 // saved value that was the old default follows the new one (it was never
 // chosen); any other value is kept. Saves before versions were added are 1.
-const SAVE_VERSION = 4;
+const SAVE_VERSION = 5;
 const RETIRED_DEFAULTS = [
   { key: "switchLossS", was: 0.3, until: 2 },   // the default was 0.3 s before version 2
   { key: "armBestMs", was: 0.9, until: 3 },     // 0.9 m/s before arm speed counted only the pull (version 3)
   { key: "gearOn", was: 0, until: 4 },          // gearing was off before the best speeds rose with fitness (version 4)
+  { key: "armBestMs", was: 0.87, until: 5 },    // 0.87 m/s before the blade locked at the catch (version 5)
+  { key: "trunkBestMs", was: 0.91, until: 5 },  // 0.91 m/s then too
 ];
 // Whether saved value v of setting k, from a save of `version`, was the default then.
 const retiredIn = (version, k, v) => RETIRED_DEFAULTS.some((d) => d.key === k && version < d.until && Math.abs(v - d.was) < 1e-9);
