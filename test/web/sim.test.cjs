@@ -1602,6 +1602,18 @@ console.log("\nPaddle fit");
     check(`${tag}: 3D model: the torso reads the trunk's speed, against its best, and now`,
           torsoRead.includes(`(best ${(await page.evaluate(() => window.StrokeSim.trunkBest(window.sim.results.a.params))).toFixed(2)})`) && /Trunk now [\d.]+ m\/s/.test(torsoRead) &&
           (await page.$$('#m3-ctl input[data-key="trunkBestMs"]')).length === 1, torsoRead);
+    // Leg drive: the paddle-side leg presses (its knee down, the pelvis
+    // turning), the other knee rising, the feet planted, the legs their length.
+    const legsAt = (ld) => page.evaluate((ld) => {
+      const r = window.StrokeSim.simulate(Object.assign({}, window.sim.results.a.params, { legDrive: ld })), len = (a, b) => Math.hypot(...a.map((v, i) => v - b[i]));
+      const at = (ph) => window.sim.figJoints(r, null, ph).legs, a = at(0), b = at(0.3 * r.geom.driveFraction / 0.5);
+      return { drop: a[0].knee[2] - b[0].knee[2], rise: b[1].knee[2] - a[1].knee[2], feet: Math.max(len(a[0].foot, b[0].foot), len(a[1].foot, b[1].foot)),
+        lens: Math.max(...b.map((l) => Math.abs(len(l.hip, l.knee) - r.params.thighM) + Math.abs(len(l.knee, l.foot) - r.params.shinM))) };
+    }, ld);
+    const legOn = await legsAt(1), legOff = await legsAt(0);
+    check(`${tag}: 3D model: leg drive presses the paddle-side leg, the other knee rising, feet planted`,
+          legOn.drop > 0.04 && legOn.rise > 0.01 && legOn.feet < 1e-9 && legOn.lens < 1e-6 && Math.abs(legOff.drop) < 1e-9,
+          `knee ${(legOn.drop * 100).toFixed(1)} cm down, other ${(legOn.rise * 100).toFixed(1)} cm up; feet move ${legOn.feet.toExponential(1)} m, lengths off ${legOn.lens.toExponential(1)}, off drop ${legOff.drop.toExponential(1)}`);
     // The arms read their speed live too; the stroke shows the recovery and
     // its styles, set from there as from the side panel.
     await page.click('#m3-parts button[data-value="arms"]'); await page.waitForTimeout(300);
