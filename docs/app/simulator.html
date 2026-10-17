@@ -812,7 +812,7 @@
         <div id="strength-ctl"><div id="ctl-strength"></div>
           <svg class="hv" id="strength-curve" role="img" aria-label="Strength at each paddle angle, with this stroke's range"></svg>
           <div class="help" id="strength-read"></div></div>
-        <h4 class="sub-h">Gearing<button type="button" class="info" data-tip="Off: you hold the same power at any stroke rate. On: your arms, and your trunk, each hold the most power moving at one speed, like a cyclist's best cadence. Arm speed is your lower hand against its shoulder through the drive: a higher rate, a longer stroke or wider hands move it faster. Trunk rotation and a hinge don't: your trunk carries their extra travel. Only the pull counts: your shoulder rising or dropping across it is your trunk's work. Your trunk has its own best speed (its paddle-side shoulder's): what rotation and a hinge add holds less away from it. Its muscles are mostly slow fibres, as rowing and skiing studies find the trunk working early in the drive and the arms late, so its best needn't be your arms'. It changes what you can hold. Assumed until measured: your paddle can find your best speed from strokes at a few rates." aria-label="What is this?">?</button></h4>
+        <h4 class="sub-h">Gearing<button type="button" class="info" data-tip="Off: you hold the same power at any stroke rate. On: your arms, and your trunk, each hold the most power moving at one speed, like a cyclist's best cadence. Away from it they hold less, along Hill's force–velocity curve: more lost going slower than faster. Arm speed is your lower hand against its shoulder through the drive: a higher rate, a longer stroke or wider hands move it faster. Trunk rotation and a hinge don't: your trunk carries their extra travel. Only the pull counts: your shoulder rising or dropping across it is your trunk's work. Your trunk has its own best speed (its paddle-side shoulder's): what rotation and a hinge add holds less away from it. Its muscles are mostly slow fibres, as rowing and skiing studies find the trunk working early in the drive and the arms late, so its best needn't be your arms'. It changes what you can hold. The best speeds rise with fitness: a cyclist's least-tiring cadence rises with power, as each stroke asks less force (Takaishi 1996, Foss &amp; Hallén 2004, Lucía 2004), so a fitter paddler is best at a higher rate. Assumed until measured: your paddle can find your best speed from strokes at a few rates." aria-label="What is this?">?</button></h4>
         <div class="row chips" id="gear-mode" role="group" aria-label="Gearing"></div>
         <div id="gear-ctl"><div id="ctl-gear"></div><div class="help" id="gear-read"></div></div>
         <h4 class="sub-h">Body<button type="button" class="info" data-tip="Height scales every length; then set any one. Female: shoulders 3.4% and forearms 3.5% shorter for the same height (ANSUR II, radius lengths); the rest scales alike. You sit with your hips where the blade leaves the water on the Defaults stroke (further forward only if you can't reach it from there); every technique is paddled from that seat, and the body leans, turns and drops the paddle-side shoulder at each moment so both hands are within reach, the face behind the top hand. With strength from the arms, every length changes results; by paddle angle, only the arms do." aria-label="What is this?">?</button></h4>
@@ -863,7 +863,7 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of each engine file (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. The fit builds on the stroke engine. -->
-<script src="stroke-sim.js?v=06d3cef223"></script>
+<script src="stroke-sim.js?v=26bf6cfae4"></script>
 <script src="fit-sim.js?v=c12c9edd44"></script>
 <script>
 (() => {
@@ -907,7 +907,7 @@ function shown(el) {
 }
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 52;
+const NEEDS_API = 53;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -944,10 +944,11 @@ const BOATS_KEY = "ppm.sim.boats";
 // Saves carry SAVE_VERSION. A default changed since a save was made: the
 // saved value that was the old default follows the new one (it was never
 // chosen); any other value is kept. Saves before versions were added are 1.
-const SAVE_VERSION = 3;
+const SAVE_VERSION = 4;
 const RETIRED_DEFAULTS = [
   { key: "switchLossS", was: 0.3, until: 2 },   // the default was 0.3 s before version 2
   { key: "armBestMs", was: 0.9, until: 3 },     // 0.9 m/s before arm speed counted only the pull (version 3)
+  { key: "gearOn", was: 0, until: 4 },          // gearing was off before the best speeds rose with fitness (version 4)
 ];
 // Whether saved value v of setting k, from a save of `version`, was the default then.
 const retiredIn = (version, k, v) => RETIRED_DEFAULTS.some((d) => d.key === k && version < d.until && Math.abs(v - d.was) < 1e-9);
@@ -1038,13 +1039,13 @@ const CONTROLS = [
   { group: "ctl-strength", key: "strengthDrop", label: "Weaker toward the ends", min: 0, max: 0.8, step: 0.05, unit: "",
     fmt: (v) => `${Math.round(v * 100)}% weaker`, help: "By paddle angle: how much weaker 45° from your strongest angle. From the arms: how much weaker with the lower arm folded up, the top arm bent or either reaching past its reach." },
   { group: "ctl-gear", key: "armBestMs", label: "Best arm speed", min: 0.5, max: 1.5, step: 0.01, unit: "",
-    fmt: (v) => `${fmtNum(v, 2)} m/s`, help: "Your lower hand's speed against its shoulder that you hold the most power at." },
+    fmt: (v) => `${fmtNum(v, 2)} m/s`, help: "Your lower hand's speed against its shoulder that you hold the most power at, if your fitness is typical for your size. Fitter, each stroke is heavier at the same rate, so you're best moving faster (×1.18 at 1.5 times typical)." },
   { group: "ctl-gear", key: "gearDrop", label: "Weaker away from it", min: 0, max: 0.4, step: 0.01, unit: "",
-    fmt: (v) => `${Math.round(v * 100)}% weaker`, help: "How much of your arms' power you lose at half or 1.5 times your best arm speed." },
+    fmt: (v) => `${Math.round(v * 100)}% weaker`, help: "How much of your arms' power you lose at half your best arm speed. Faster, less is lost (Hill's curve: about half as much at 1.5 times)." },
   { group: "ctl-gear", key: "trunkBestMs", label: "Best trunk speed", min: 0.3, max: 1.8, step: 0.01, unit: "",
-    fmt: (v) => `${fmtNum(v, 2)} m/s`, help: "Your paddle-side shoulder's speed through the drive that your trunk holds the most power at. Counts what trunk rotation and a hinge add." },
+    fmt: (v) => `${fmtNum(v, 2)} m/s`, help: "Your paddle-side shoulder's speed through the drive that your trunk holds the most power at with full rotation, if your fitness is typical for your size. Rotation and a hinge use different muscles, each best at its own speed, so with a hinge too the best is faster. Counts what trunk rotation and a hinge add." },
   { group: "ctl-gear", key: "trunkDrop", label: "Trunk weaker away from it", min: 0, max: 0.4, step: 0.01, unit: "",
-    fmt: (v) => `${Math.round(v * 100)}% weaker`, help: "How much of what rotation and a hinge add you lose at half or 1.5 times your best trunk speed." },
+    fmt: (v) => `${Math.round(v * 100)}% weaker`, help: "How much of what rotation and a hinge add you lose at half your best trunk speed; less going faster." },
   { group: "ctl-paddler", key: "lowerHandM", label: "Lower hand on the shaft", min: 0.35, max: 0.85, step: 0.01, unit: "",
     fmt: (v) => `${fmtNum(v * 100, 0)} cm below the grip`, help: "Hands further apart: more leverage on the blade, and a longer reach for the lower arm." },
   { group: "ctl-body-size", key: "ageY", label: "Age", min: 16, max: 85, step: 1, unit: "", fmt: (v) => `${v}`,
@@ -1319,9 +1320,9 @@ function showGear() {
   if (!r || !boats[editing].gearOn) return;
   const p = r.params;
   const trunk = p.rotation || p.hinge;
-  $("gear-read").innerHTML = `Your lower hand moves <b>${fmtNum(r.body.armSpeed, 2)} m/s</b> against its shoulder (best ${fmtNum(p.armBestMs, 2)}): ` +
+  $("gear-read").innerHTML = `Your lower hand moves <b>${fmtNum(r.body.armSpeed, 2)} m/s</b> against its shoulder (best ${fmtNum(S.armBest(p), 2)}): ` +
     `your arms hold <b>×${fmtNum(S.gearFactor(p), 2)}</b>. ` +
-    `Your trunk carries <b>${fmtNum(r.body.trunkShare * 100, 0)}%</b> of the pull, its shoulder moving <b>${fmtNum(r.body.trunkSpeed, 2)} m/s</b> (best ${fmtNum(p.trunkBestMs, 2)}): ` +
+    `Your trunk carries <b>${fmtNum(r.body.trunkShare * 100, 0)}%</b> of the pull, its shoulder moving <b>${fmtNum(r.body.trunkSpeed, 2)} m/s</b> (best ${fmtNum(S.trunkBest(p), 2)}): ` +
     (trunk ? `what rotation and a hinge add holds <b>×${fmtNum(S.trunkGearFactor(p), 2)}</b>. ` : `with no rotation or hinge it adds no power of its own, so its speed costs nothing. `) +
     `This stroke suits ${trunk ? "your arms and trunk together" : "your arms"} best at <b>${fmtNum(S.bestRate(p), 0)} spm</b>.`;
 }
@@ -1439,22 +1440,8 @@ function renderSex() {
     el.append(btn);
   }
 }
-// A typical racer's one-hour power for age, sex and weight. The 200 W
-// default is a 79 kg man of 35. It scales with muscle as body mass^⅔;
-// a woman holds about 80% of a man's at the same weight (assumed: the gap is
-// widest in the upper body, and women's kayak race speeds run 12–14% behind
-// men's); and from 35 it falls 0.6% a year to 60, 1.2% to 70 and 2% after
-// (masters records: 0.5–1% a year from 35, steeper after 60–70).
-function ageShare(a) {
-  if (a <= 35) return 1;
-  if (a <= 60) return 1 - 0.006 * (a - 35);
-  if (a <= 70) return 0.85 - 0.012 * (a - 60);
-  return Math.max(0.3, 0.73 - 0.02 * (a - 70));
-}
-function typicalFitness(b) {
-  const kg = Math.max(30, b.massKg - S.BOAT_KG);
-  return Math.round((200 * Math.pow(kg / 79, 2 / 3) * (b.female ? 0.8 : 1) * ageShare(b.ageY)) / 5) * 5;
-}
+// A typical racer's one-hour power for age, sex and weight (the engine's).
+const typicalFitness = (b) => S.typicalFitness(b);
 {
   const row = document.createElement("div");
   row.className = "row"; row.style.marginTop = "4px";
@@ -4092,9 +4079,9 @@ function showFit() {
   if (Math.abs(s.paddleLenM - p.paddleLenM) > 1e-6)
     why.push(`A ${fmtValue(ctlOf("paddleLenM"), s.paddleLenM)} paddle on the same blade path reaches ${fmtNum(s.catchDeg, 0)}° and exits at ${fmtNum(s.exitDeg, 0)}° (from ${fmtNum(p.catchDeg, 0)}° and ${fmtNum(p.exitDeg, 0)}°).`);
   if (p.gearOn && Math.abs(best.armSpeed - now.armSpeed) > 0.01)
-    why.push(`Your arms move ${fmtNum(best.armSpeed, 2)} m/s instead of ${fmtNum(now.armSpeed, 2)} (best ${fmtNum(p.armBestMs, 2)}): you hold ${fmtNum(best.watts, 0)} W instead of ${fmtNum(now.watts, 0)}.`);
+    why.push(`Your arms move ${fmtNum(best.armSpeed, 2)} m/s instead of ${fmtNum(now.armSpeed, 2)} (best ${fmtNum(S.armBest(p), 2)}): you hold ${fmtNum(best.watts, 0)} W instead of ${fmtNum(now.watts, 0)}.`);
   if (p.gearOn && (p.rotation || p.hinge) && Math.abs(best.trunkSpeed - now.trunkSpeed) > 0.02)
-    why.push(`Your trunk moves ${fmtNum(best.trunkSpeed, 2)} m/s instead of ${fmtNum(now.trunkSpeed, 2)} (best ${fmtNum(p.trunkBestMs, 2)}): what rotation and a hinge add holds ×${fmtNum(S.trunkGearFactor(s), 2)} instead of ×${fmtNum(S.trunkGearFactor(p), 2)}.`);
+    why.push(`Your trunk moves ${fmtNum(best.trunkSpeed, 2)} m/s instead of ${fmtNum(now.trunkSpeed, 2)} (best ${fmtNum(S.trunkBest(p), 2)}): what rotation and a hinge add holds ×${fmtNum(S.trunkGearFactor(s), 2)} instead of ×${fmtNum(S.trunkGearFactor(p), 2)}.`);
   if (s.handOutM < p.handOutM - 1e-6)
     why.push(`The top hand nearer the boat brings the blade in, so each stroke turns the boat less: ${fmtNum(best.strokesPerSide, 1)} strokes a side instead of ${fmtNum(now.strokesPerSide, 1)}.`);
   why.push(`Your top hand stays ${fmtNum(best.top[0] * 100, 0)}–${fmtNum(best.top[1] * 100, 0)} cm above your shoulders, between chin and forehead, with both hands in reach.`);
@@ -4550,7 +4537,7 @@ function m3Trunk(J, r) {
     now = ms(Math.hypot(...sub3(J2.right, J.right)) / (dph * r.cycle));
   }
   const trunk = p.rotation || p.hinge;
-  const vs = p.gearOn ? ` (best ${fmtNum(p.trunkBestMs, 2)}${trunk ? `, trunk ×${fmtNum(S.trunkGearFactor(p), 2)}` : ""})` : "";
+  const vs = p.gearOn ? ` (best ${fmtNum(S.trunkBest(p), 2)}${trunk ? `, trunk ×${fmtNum(S.trunkGearFactor(p), 2)}` : ""})` : "";
   return [["Trunk speed", `${ms(r.body.trunkSpeed)}${vs}`], ["Trunk now", now]];
 }
 // The arms' speed: the lower hand's along the pull against its shoulder
@@ -4564,7 +4551,7 @@ function m3Arm(J, r) {
     const dh = sub3(J2.rightHand, J.rightHand), ds = sub3(J2.right, J.right), n = Math.hypot(...dh) || 1;
     now = ms(Math.abs(n - dot3(ds, dh) / n) / (dph * r.cycle));
   }
-  return [["Arm speed", `${ms(r.body.armSpeed)}${p.gearOn ? ` (best ${fmtNum(p.armBestMs, 2)}, arms ×${fmtNum(S.gearFactor(p), 2)})` : ""}`], ["Arm now", now]];
+  return [["Arm speed", `${ms(r.body.armSpeed)}${p.gearOn ? ` (best ${fmtNum(S.armBest(p), 2)}, arms ×${fmtNum(S.gearFactor(p), 2)})` : ""}`], ["Arm now", now]];
 }
 function m3Reads({ J, r }) {
   const p = r.params, st = J.st, cm = (v) => `${fmtNum(v * 100, 0)} cm`, deg = (v) => `${fmtNum(v * 180 / Math.PI, 0)}°`, c = cycleOf(r);
