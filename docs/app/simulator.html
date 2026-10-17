@@ -863,7 +863,7 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of each engine file (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. The fit builds on the stroke engine. -->
-<script src="stroke-sim.js?v=7fa24fef17"></script>
+<script src="stroke-sim.js?v=53e3748522"></script>
 <script src="fit-sim.js?v=c12c9edd44"></script>
 <script>
 (() => {
@@ -3768,6 +3768,8 @@ function acrossTheBoat(j, m, at, sLow) {
 // The paddler's joints for result r (c: its cycle, r.cycleAt) at phase ph,
 // world metres: shared by the views and the 3D model. m: the side.
 const smooth01 = (x) => { const t = Math.min(1, Math.max(0, x)); return t * t * (3 - 2 * t); };
+// How far the lower elbow leans toward its force line (of the whole way).
+const ELBOW_LEAN = 0.6;
 function figJoints(r, c, ph, lift = null, m = 1) {
   const p = r.params, st = stateAt(r, ph, lift), df = r.geom.driveFraction;
   const i = c ? Math.min(c.t.length - 1, Math.floor(ph * c.t.length)) : 0;
@@ -3796,17 +3798,21 @@ function figJoints(r, c, ph, lift = null, m = 1) {
   const foot0 = along(knee0, [0.36, 0, -0.30], p.shinM);
   const J = acrossTheBoat({ hip: HIP, knee: knee0, foot: foot0, sh, head: head0, off, pad }, m, st.P.at, sLow);
   J.k = k; J.fit = b; J.st = st;
-  // Elbows (stroke-sim.js elbowAt): toward each hand's force line through
-  // the drive, so the arm is strongest (the top elbow up, its arm in line
-  // from shoulder to grip; the lower elbow down); relaxed in the recovery.
-  // The force's line is the blade face's whatever its size, so the elbows
-  // ease into it through the entry and out through the exit: never a jump.
+  // Elbows (stroke-sim.js elbowAt): the lower one toward its hand's force
+  // line through the drive, so the arm is strongest (the elbow down); the
+  // force's line is the blade face's whatever its size. Out of the water
+  // they relax slowly, over the first 40% of the recovery (from the exit's
+  // line), and set again over its last 40% (to the catch's): never a jump.
   // Paddling left (m < 0) the forces mirror with the body.
-  const ua = p.upperArmM, fa = p.forearmM, mir = (v) => [v[0], m * v[1], v[2]], dp = ph / df;
-  const hf = st.inDrive ? S.handForces(st.P, st.B, st.B.n.map((v) => -v), sLow) : null;
-  const w = hf ? smooth01(dp / 0.4) * smooth01((1 - dp) / 0.3) : 0;
+  const ua = p.upperArmM, fa = p.forearmM, mir = (v) => [v[0], m * v[1], v[2]];
+  const rp = st.inDrive ? 0 : (ph - df) / (1 - df), sm = r.samples, at = st.inDrive ? st : rp < 0.5 ? sm[sm.length - 1] : sm[0];
+  const hf = S.handForces(at.P, at.B, at.B.n.map((v) => -v), sLow);
+  const w = ELBOW_LEAN * (st.inDrive ? 1 : Math.max(1 - smooth01(rp / 0.4), smooth01((rp - 0.6) / 0.4)));
   const elbow = (a, b, side, f) => (Math.hypot(...sub3(b, a)) >= ua + fa ? null : S.elbowAt(a, b, ua, fa, side, f && mir(f), w));
-  J.rightElbow = elbow(J.right, J.rightHand, -1, hf && hf.low); J.leftElbow = elbow(J.left, J.leftHand, 1, hf && hf.top);
+  // The top arm pushes nearly along itself, nearly straight: its force line
+  // runs close beside it, so leaning toward it would spin the elbow round
+  // the arm. It keeps the strong set instead: elbow up, in line to the grip.
+  J.rightElbow = elbow(J.right, J.rightHand, -1, hf.low); J.leftElbow = elbow(J.left, J.leftHand, 1, null);
   return J;
 }
 // P: the view's projection; m: the side (1 right, −1 left, between mid-switch).
