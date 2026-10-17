@@ -436,9 +436,16 @@ console.log("\nCanoe Race Simulator physics");
   check("strength from the arms: leaning to a long reach costs strength, more with shorter arms",
         fA(LR) < 0.98 && fA(withArms(0.26)) < fA(LR) - 0.02 && fA(withArms(0.34)) > fA(LR),
         [0.26, 0.30, 0.34].map((a) => `×${fA(withArms(a)).toFixed(3)}`).join(" / "));
-  const leans = S.simulate(arms(LR)).body.frames.map((f) => f.lean), ownLean = S.simulate(arms({})).body.frames[0].lean;
-  check("body: a long reach leans further forward at the catch", leans[0] > ownLean + 0.1 && leans[leans.length - 1] < leans[0],
-        `${(leans[0] * 180 / Math.PI).toFixed(0)}° vs ${(ownLean * 180 / Math.PI).toFixed(0)}°`);
+  // With the face kept behind the top hand, a long reach turns the shoulders
+  // into the catch (and drops the paddle-side one) more than it leans, and
+  // unwinds through the drive.
+  const lf = S.simulate(arms(LR)).body.frames, of = S.simulate(arms({})).body.frames, dg = (v) => (v * 180 / Math.PI).toFixed(0);
+  check("body: a long reach turns further into the catch, and unwinds through the drive",
+        lf[0].twist > of[0].twist + 0.3 && lf[0].roll > of[0].roll && lf[0].lean - of[0].lean < lf[0].twist - of[0].twist && lf[lf.length - 1].twist < lf[0].twist - 0.5,
+        `twist ${dg(lf[0].twist)}° vs ${dg(of[0].twist)}°, roll ${dg(lf[0].roll)}° vs ${dg(of[0].roll)}°, lean ${dg(lf[0].lean)}° vs ${dg(of[0].lean)}°`);
+  const faceBehind = Object.entries(PRE).map(([k, x]) => { const r = S.simulate(x), g = r.geom;
+    return [k, Math.min(...[0, 0.1, 0.25].map((u) => { const P = S.pose(g, u), b = S.fitBody(g, r.body.seatX, P.at(0), P.at(S.lowerHand(g)), S.neutralAt(g, u)); return P.at(0)[0] - b.head[0]; }))]; });
+  check("body: the face stays behind the top hand", faceBehind.every(([, d]) => d > 0.08), faceBehind.map(([k, d]) => `${k} ${(d * 100).toFixed(0)} cm`).join(", "));
   // Longer arms also reach further: a stroke out of reach for short arms
   // comes within reach.
   const farFor = (a) => S.simulate({ catchDeg: 60, handOutM: 0.85, leanDeg: 40, upperArmM: a, forearmM: a }).body.short;
@@ -458,9 +465,21 @@ console.log("\nCanoe Race Simulator physics");
   check("gearing: a longer stroke suits a lower rate, and its best rate puts the arms at their best",
         lrBest < 50 && gF(Object.assign({}, LR, { rateSpm: lrBest })) > 1 - 1e-9, `${lrBest.toFixed(0)} spm`);
   check("gearing: loses gearDrop at 1.5 times the best arm speed", Math.abs(gF({ armBestMs: armV({}) / 1.5 }) - (1 - S.DEFAULTS.gearDrop)) < 1e-9);
+  // Rotation and a hinge carry the hand further; the paddle-side shoulder
+  // carries that extra travel, so the arms hardly speed up (what's left: the
+  // shoulder rising out of its drop as the hand goes aft).
+  const travel = (x) => { const r = S.simulate(x), g = r.geom; let prev = null, hand = 0, sh = 0, last = null;
+    for (let i = 0; i <= 20; i++) { const u = i / 20, P = S.pose(g, u), nn = S.neutralAt(g, u), low = P.at(S.lowerHand(g));
+      const b = S.fitBody(g, r.body.seatX, P.at(0), low, nn, 0, prev || nn); prev = b.pose;
+      if (last) { hand += Math.hypot(...low.map((v, j) => v - last[0][j])); sh += Math.hypot(...b.pad.map((v, j) => v - last[1][j])); }
+      last = [low, b.pad]; }
+    return { hand, sh }; };
+  const t0 = travel({}), carried = (x) => { const t = travel(x); return (t.sh - t0.sh) / (t.hand - t0.hand); };
   check("gearing: the trunk carries rotation's and a hinge's travel, wider hands move the arms faster",
-        Math.abs(armV({ rotation: 1 }) / armV({}) - 1) < 0.05 && Math.abs(armV({ hinge: 1 }) / armV({}) - 1) < 0.05 &&
-        armV({ lowerHandM: 0.7 }) > armV({}) * 1.05, `rotation ${armV({ rotation: 1 }).toFixed(2)}, hinge ${armV({ hinge: 1 }).toFixed(2)}, wide ${armV({ lowerHandM: 0.7 }).toFixed(2)} m/s`);
+        carried({ rotation: 1 }) > 0.9 && carried({ hinge: 1 }) > 0.9 && armV({ rotation: 1 }) < armV({}) * 1.15 && armV({ hinge: 1 }) < armV({}) * 1.15 &&
+        armV({ lowerHandM: 0.7 }) > armV({}) * 1.05,
+        `shoulder carries ${(carried({ rotation: 1 }) * 100).toFixed(0)}% of rotation's extra travel, ${(carried({ hinge: 1 }) * 100).toFixed(0)}% of a hinge's; ` +
+        `arms ${armV({}).toFixed(2)}, rotation ${armV({ rotation: 1 }).toFixed(2)}, hinge ${armV({ hinge: 1 }).toFixed(2)}, wide ${armV({ lowerHandM: 0.7 }).toFixed(2)} m/s`);
   const capOf = (x) => S.capacity(x), rot80 = { rotation: 1, rateSpm: 80 };
   check("gearing: sets only the arms' share of what you hold",
         Math.abs(capOf(gear(rot80)) - capOf(rot80) + 0.7 * S.DEFAULTS.fitnessW * (1 - gF(rot80))) < 1e-9);

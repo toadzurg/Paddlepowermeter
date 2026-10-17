@@ -807,15 +807,15 @@
         </div>
         <div id="ctl-profile"></div>
         <div class="engine-box" id="engine-box"></div>
-        <h4 class="sub-h">Strength by position<button type="button" class="info" data-tip="Off: you can pull equally hard all through the stroke. By paddle angle: strongest at one angle, weaker toward the catch and exit. From the arms: your body follows the paddle, and you're strongest with the arms about 70% stretched, weaker folded up or at full stretch, and weaker leaning far forward to reach the catch. Where you're weak the paddle moves slower, so the force bunches where you're strong, and what you can hold drops. Assumed curves, not measured." aria-label="What is this?">?</button></h4>
+        <h4 class="sub-h">Strength by position<button type="button" class="info" data-tip="Off: you can pull equally hard all through the stroke. By paddle angle: strongest at one angle, weaker toward the catch and exit. From the arms: your body follows the paddle, and you're strongest with the arms about 70% stretched, weaker folded up or at full stretch, and weaker leaning, turning or dropping a shoulder far to reach the catch. Where you're weak the paddle moves slower, so the force bunches where you're strong, and what you can hold drops. Assumed curves, not measured." aria-label="What is this?">?</button></h4>
         <div class="row chips" id="strength-mode" role="group" aria-label="Strength by position"></div>
         <div id="strength-ctl"><div id="ctl-strength"></div>
           <svg class="hv" id="strength-curve" role="img" aria-label="Strength at each paddle angle, with this stroke's range"></svg>
           <div class="help" id="strength-read"></div></div>
-        <h4 class="sub-h">Gearing<button type="button" class="info" data-tip="Off: you hold the same power at any stroke rate. On: your arms hold the most power moving at one speed, like a cyclist's best cadence. Arm speed is your lower hand against its shoulder through the drive: a higher rate, a longer stroke or wider hands move it faster. Trunk rotation and a hinge don't, as your trunk carries that travel. It changes what you can hold. Assumed until measured: your paddle can find your best speed from strokes at a few rates." aria-label="What is this?">?</button></h4>
+        <h4 class="sub-h">Gearing<button type="button" class="info" data-tip="Off: you hold the same power at any stroke rate. On: your arms hold the most power moving at one speed, like a cyclist's best cadence. Arm speed is your lower hand against its shoulder through the drive: a higher rate, a longer stroke or wider hands move it faster. Trunk rotation and a hinge hardly do: your trunk carries their extra travel. It changes what you can hold. Assumed until measured: your paddle can find your best speed from strokes at a few rates." aria-label="What is this?">?</button></h4>
         <div class="row chips" id="gear-mode" role="group" aria-label="Gearing"></div>
         <div id="gear-ctl"><div id="ctl-gear"></div><div class="help" id="gear-read"></div></div>
-        <h4 class="sub-h">Body<button type="button" class="info" data-tip="Height scales every length; then set any one. Female: shoulders 3.4% and forearms 3.5% shorter for the same height (ANSUR II, radius lengths); the rest scales alike. You sit with your hips where the blade leaves the water on the Defaults stroke (further forward only if you can't reach it from there); every technique is paddled from that seat, and the body leans and twists at each moment so both hands are within reach. With strength from the arms, every length changes results; by paddle angle, only the arms do." aria-label="What is this?">?</button></h4>
+        <h4 class="sub-h">Body<button type="button" class="info" data-tip="Height scales every length; then set any one. Female: shoulders 3.4% and forearms 3.5% shorter for the same height (ANSUR II, radius lengths); the rest scales alike. You sit with your hips where the blade leaves the water on the Defaults stroke (further forward only if you can't reach it from there); every technique is paddled from that seat, and the body leans, turns and drops the paddle-side shoulder at each moment so both hands are within reach, the face behind the top hand. With strength from the arms, every length changes results; by paddle angle, only the arms do." aria-label="What is this?">?</button></h4>
         <div id="ctl-body-size"></div>
         <button type="button" class="small" id="profile-fit">Lengths from height</button>
       </details>
@@ -861,7 +861,7 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of each engine file (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. The fit builds on the stroke engine. -->
-<script src="stroke-sim.js?v=50c3054f43"></script>
+<script src="stroke-sim.js?v=1953777622"></script>
 <script src="fit-sim.js?v=6033546e48"></script>
 <script>
 (() => {
@@ -905,7 +905,7 @@ function shown(el) {
 }
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 45;
+const NEEDS_API = 46;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -3787,7 +3787,7 @@ function figJoints(r, c, ph, lift = null, m = 1) {
   if (!b) {
     if (fits.size > 64) fits.clear();
     const neutral = [lean, 0, rad(25 * (p.rotation || 0) * s)];
-    b = S.fitBody(r.geom, r.body.seatX, grip, low, neutral, 1.6 * bz, neutral, false, true);   // the face behind the top hand
+    b = S.fitBody(r.geom, r.body.seatX, grip, low, neutral, 1.6 * bz);
     fits.set(key, b);
   }
   const HIP = b.hip, sh = b.centre, off = b.off, pad = b.pad, k = (p.heightM || 1.78) / 1.78;
@@ -4224,7 +4224,7 @@ const M3_PARTS = [
   { id: "arms", label: "Arms", keys: ["upperArmM", "forearmM"],
     about: "How stretched each arm is: shoulder to hand against the arm's length. Past 97% the hand is out of reach." },
   { id: "torso", label: "Torso", keys: ["torsoM", "shoulderM", "rotation", "hinge", "swingM", "dropM"],
-    about: "Leans and twists each moment so both hands stay in reach, as near your technique's own posture as it can." },
+    about: "Leans, turns and drops the paddle-side shoulder each moment so both hands stay in reach and the face stays behind the top hand, as near your technique's own posture as it can." },
   { id: "head", label: "Paddler", keys: ["heightM", "massKg", "fitnessW"],
     about: "Height scales every length; then set any one under its own part." },
   { id: "legs", label: "Legs", keys: ["thighM", "shinM", "legDrive"],
