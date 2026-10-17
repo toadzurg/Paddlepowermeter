@@ -4513,7 +4513,8 @@ function m3Panel() {
   $("m3-part-name").textContent = `${part.label}${m3.show === "sug" && m3Suggested() ? " (suggested)" : ""}`;
   $("m3-part-about").textContent = part.about;
   const ro = m3.show === "sug" && m3Suggested();
-  $("m3-ctl").innerHTML = part.keys.map((key) => {
+  m3.panelKeys = m3KeysOf(part);
+  $("m3-ctl").innerHTML = m3.panelKeys.map((key) => {
     const c = ctlOf(key);
     return `<div class="ctl"><label class="top"><span>${c.label}</span><output id="m3-o-${key}"></output></label>` +
       `<input type="range" data-key="${key}" min="${c.min}" max="${c.max}" step="${c.step}" aria-label="${c.label}"${ro ? " disabled" : ""}><div class="help">${c.help}</div></div>`;
@@ -4526,8 +4527,12 @@ function m3Panel() {
   });
   m3SyncPanel();
 }
+// A part's sliders: the torso's add the trunk's gearing while it's on.
+const m3KeysOf = (part) => part.id === "torso" && boats[editing].gearOn ? [...part.keys, "trunkBestMs", "trunkDrop"] : part.keys;
 function m3SyncPanel() {
   if ($("m3-panel").hidden) return;
+  const part = M3_PARTS.find((q) => q.id === m3.sel);
+  if (part && m3KeysOf(part).join() !== (m3.panelKeys || []).join()) return m3Panel();   // gearing turned on or off
   const r = m3.show === "sug" && m3Suggested() ? m3Suggested() : results[editing], p = r ? r.params : boats[editing];
   for (const el of $("m3-ctl").querySelectorAll("input")) {
     const k = el.dataset.key;
@@ -4549,6 +4554,19 @@ function m3Read() {
 }
 // The readings for the part picked, for one setup: [label, value]. Settings
 // read as in the fit's table (cmTrim); what's measured, to the cm or degree.
+// The trunk's speed: its paddle-side shoulder's through the drive (as
+// gearing counts it, against your best with gearing on), and now.
+function m3Trunk(J, r) {
+  const p = r.params, df = p.driveFraction, ph = m3.ph, ms = (v) => `${fmtNum(v, 2)} m/s`;
+  let now = "recovering";
+  if (ph < df) {
+    const dph = Math.min(0.004, Math.max(1e-4, df - ph - 1e-4)), J2 = figJoints(r, cycleOf(r), ph + dph);
+    now = ms(Math.hypot(...sub3(J2.right, J.right)) / (dph * r.cycle));
+  }
+  const trunk = p.rotation || p.hinge;
+  const vs = p.gearOn ? ` (best ${fmtNum(p.trunkBestMs, 2)}${trunk ? `, trunk ×${fmtNum(S.trunkGearFactor(p), 2)}` : ""})` : "";
+  return [["Trunk speed", `${ms(r.body.trunkSpeed)}${vs}`], ["Trunk now", now]];
+}
 function m3Reads({ J, r }) {
   const p = r.params, st = J.st, cm = (v) => `${fmtNum(v * 100, 0)} cm`, deg = (v) => `${fmtNum(v * 180 / Math.PI, 0)}°`, c = cycleOf(r);
   const shaftDeg = Math.atan2(st.P.d[0], -st.P.d[2]), speed = ["Speed", `${fmtNum(r.speedAt(effortW), 2)} m/s at ${effortW} W`];
@@ -4561,7 +4579,7 @@ function m3Reads({ J, r }) {
     lowHand: [["Below the grip", cmTrim(S.lowerHand(r.geom))], ["Arm stretch", `${fmtNum(J.fit.low * 100, 0)}%`], ["Arm speed", `${fmtNum(r.body.armSpeed, 2)} m/s`]],
     arms: [["Top arm", `${fmtNum(J.fit.top * 100, 0)}%`], ["Lower arm", `${fmtNum(J.fit.low * 100, 0)}%`], ["Arm speed", `${fmtNum(r.body.armSpeed, 2)} m/s`]],
     torso: [["Lean", deg(J.fit.pose[0])], ["Roll", deg(J.fit.pose[1])], ["Twist", deg(J.fit.pose[2])],
-      ["Carries", `${fmtNum(r.body.trunkShare * 100, 0)}% of the pull`], ["Shoulder", `${fmtNum(r.body.trunkSpeed, 2)} m/s`]],
+      ["Carries", `${fmtNum(r.body.trunkShare * 100, 0)}% of the pull`], ...m3Trunk(J, r)],
     head: [["Height", cm(p.heightM)], ["Can hold", `${fmtNum(S.capacity(p), 0)} W for an hour`]],
     legs: [["Thigh", cmTrim(p.thighM)], ["Shin", cmTrim(p.shinM)]],
     path: [["Catch", `${fmtNum(p.catchDeg, 0)}°`], ["Exit", `${fmtNum(p.exitDeg, 0)}°`], speed, ["Strokes a side", fmtNum(r.strokesPerSide, 1)]],
