@@ -1250,12 +1250,12 @@ console.log("\nPaddle fit");
     const sw = await page.evaluate(() => {
       const r = window.sim.results.a, Tc = r.cycle, n = Math.max(1, Math.round(r.strokesPerSide)), Ts = r.params.switchLossS;
       const tl = window.sim.timeline;
-      return { on: document.querySelector("#switch-anim").getAttribute("aria-pressed"), n,
+      return { n,
         first: tl("a", 0.5 * Tc), last: tl("a", (n - 0.5) * Tc), mid: tl("a", n * Tc + Ts / 2),
         left: tl("a", n * Tc + Ts + 0.5 * Tc), back: tl("a", 2 * n * Tc + 2 * Ts + 0.5 * Tc),
         readout: document.querySelector(".pair[data-view=top] .switch-read").textContent };
     });
-    check(`${tag}: switching sides on by default, timed by strokes per side and switch time`, sw.on === "true" &&
+    check(`${tag}: switching sides on by default, timed by strokes per side and switch time`,
           sw.first.m === 1 && sw.first.stroke === 1 && sw.last.stroke === sw.n && sw.last.m === 1 &&
           sw.mid.stroke === 0 && Math.abs(sw.mid.m) < 0.1 && sw.mid.lift.over > 0.1 &&
           sw.left.m === -1 && sw.left.stroke === 1 && sw.back.m === 1 && /^(\d+\/\d+ [RL]|switch)/.test(sw.readout),
@@ -1272,11 +1272,17 @@ console.log("\nPaddle fit");
     check(`${tag}: recovery carries the blade clear, top hand within reach, no jump at the exit`,
           rec.clear > 0.03 && rec.grip < 1.0 && rec.step < 0.02, `blade ${(rec.clear * 100).toFixed(0)} cm up, top hand ${rec.grip.toFixed(2)} m, step ${(rec.step * 1000).toFixed(0)} mm`);
     await goTab("stroke");
-    await page.click("#switch-anim"); await settle();
-    const off = await page.evaluate(() => [0.3, 5, 9.7, 31].every((t) => window.sim.timeline("a", t).m === 1) &&
-      !document.querySelector(".switch-read"));
-    check(`${tag}: switching sides off: always the right side`, off);
-    await page.click("#switch-anim"); await settle();
+    await page.$eval("#switch-mode button:nth-child(2)", (b) => b.click()); await settle();
+    // A's readout: in its own pane, or in a shared one after "A ". Views
+    // redraw only on screen.
+    const scrollY = await page.evaluate(() => window.scrollY);
+    await page.$eval(".pair[data-view=top]", (e) => e.scrollIntoView()); await page.waitForTimeout(300);
+    const off = await page.evaluate(() => ({ m: [0.3, 5, 9.7, 31].map((t) => window.sim.timeline("a", t).m),
+      read: [...document.querySelectorAll(".pair[data-view=top] svg")].filter((v) => v.dataset.boats.includes("a"))
+        .map((v) => v.querySelector(".switch-read").textContent).join(" | ") }));
+    check(`${tag}: running straight: always the right side`, off.m.every((m) => m === 1) && /(^|A )straight\b/.test(off.read), JSON.stringify(off));
+    await page.$eval("#switch-mode button:nth-child(1)", (b) => b.click()); await settle();
+    await page.evaluate((y) => window.scrollTo(0, y), scrollY); await settle();
     // Paddler profile: height scales the body, presets keep the profile, profiles save and load.
     await goTab("stroke");
     await page.click("#profile summary");
