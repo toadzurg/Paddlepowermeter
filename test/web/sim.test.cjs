@@ -480,9 +480,24 @@ console.log("\nCanoe Race Simulator physics");
         ["default", "rotation", "hinge", "short reach"].map((k, i) => `${k} ${(tb([{}, { rotation: 1 }, { hinge: 1 }, { catchDeg: 12, exitDeg: 45 }][i]).trunkShare * 100).toFixed(0)}%`).join(", "));
   check("gearing: a long reach's dropped shoulder rising isn't arm speed", armV(LR) < armV({}) * 1.65 && gF(LR) > 0.75,
         `${armV(LR).toFixed(2)} m/s, ×${gF(LR).toFixed(2)}`);
-  const capOf = (x) => S.capacity(x), rot80 = { rotation: 1, rateSpm: 80 };
-  check("gearing: sets only the arms' share of what you hold",
-        Math.abs(capOf(gear(rot80)) - capOf(rot80) + 0.7 * S.DEFAULTS.fitnessW * (1 - gF(rot80))) < 1e-9);
+  // Trunk gearing: what rotation and a hinge add scales with the trunk's own
+  // speed against its best, calibrated on the default stroke with full
+  // rotation at 60 spm; with neither, it changes nothing.
+  const tF = (x) => S.trunkGearFactor(gear(x)), ROT = { rotation: 1 }, BOTH = { rotation: 1, hinge: 1 }, capOf = (x) => S.capacity(x);
+  check("trunk gearing: the default stroke with full rotation moves the trunk at its best",
+        Math.abs(tF(ROT) - 1) < 0.005 && S.trunkGearFactor(ROT) === 1, `${tb(ROT).trunkSpeed.toFixed(2)} m/s, ×${tF(ROT).toFixed(3)}`);
+  check("trunk gearing: with no rotation or hinge, changes nothing (the best rate is the arms')",
+        Math.abs(S.capacity(gear({ rateSpm: 75 })) - S.DEFAULTS.fitnessW * 0.7 * gF({ rateSpm: 75 })) < 1e-9 &&
+        Math.abs(S.bestRate(gear(LR)) - S.DEFAULTS.rateSpm * S.DEFAULTS.armBestMs / armV(LR)) < 1e-9);
+  check("trunk gearing: scales only what rotation and a hinge add",
+        Math.abs(capOf(gear(BOTH)) - S.DEFAULTS.fitnessW * (0.7 * gF(BOTH) + 0.2 * tF(BOTH))) < 1e-9);
+  check("trunk gearing: rotation at a quick rate holds less; rotation and a hinge together suit a lower rate",
+        tF(Object.assign({ rateSpm: 80 }, ROT)) < 0.97 && S.bestRate(gear(BOTH)) < 57 &&
+        capOf(gear(Object.assign({}, BOTH, { rateSpm: S.bestRate(gear(BOTH)) }))) > capOf(gear(BOTH)),
+        `80 spm ×${tF(Object.assign({ rateSpm: 80 }, ROT)).toFixed(3)}; rotation and a hinge: trunk ×${tF(BOTH).toFixed(2)} at 60, best at ${S.bestRate(gear(BOTH)).toFixed(0)} spm`);
+  const rot80 = { rotation: 1, rateSpm: 80 };
+  check("gearing: sets only the arms' share of what you hold, and what the trunk adds",
+        Math.abs(capOf(gear(rot80)) - capOf(rot80) + S.DEFAULTS.fitnessW * (0.7 * (1 - gF(rot80)) + 0.12 * (1 - tF(rot80)))) < 1e-9);
   const armCurve = S.simulate(arms(LR)).strengthCurve;
   let bumpy = 0; for (let i = 2; i < armCurve.length; i++) bumpy = Math.max(bumpy, Math.abs(armCurve[i][1] - 2 * armCurve[i - 1][1] + armCurve[i - 2][1]));
   check("strength from the arms: a smooth curve through the drive (no steps)", bumpy < 0.1, bumpy.toFixed(3));

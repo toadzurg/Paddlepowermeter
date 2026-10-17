@@ -812,7 +812,7 @@
         <div id="strength-ctl"><div id="ctl-strength"></div>
           <svg class="hv" id="strength-curve" role="img" aria-label="Strength at each paddle angle, with this stroke's range"></svg>
           <div class="help" id="strength-read"></div></div>
-        <h4 class="sub-h">Gearing<button type="button" class="info" data-tip="Off: you hold the same power at any stroke rate. On: your arms hold the most power moving at one speed, like a cyclist's best cadence. Arm speed is your lower hand against its shoulder through the drive: a higher rate, a longer stroke or wider hands move it faster. Trunk rotation and a hinge don't: your trunk carries their extra travel. Only the pull counts: your shoulder rising or dropping across it is your trunk's work. The trunk's share shows too. It changes what you can hold. Assumed until measured: your paddle can find your best speed from strokes at a few rates." aria-label="What is this?">?</button></h4>
+        <h4 class="sub-h">Gearing<button type="button" class="info" data-tip="Off: you hold the same power at any stroke rate. On: your arms, and your trunk, each hold the most power moving at one speed, like a cyclist's best cadence. Arm speed is your lower hand against its shoulder through the drive: a higher rate, a longer stroke or wider hands move it faster. Trunk rotation and a hinge don't: your trunk carries their extra travel. Only the pull counts: your shoulder rising or dropping across it is your trunk's work. Your trunk has its own best speed (its paddle-side shoulder's): what rotation and a hinge add holds less away from it. Its muscles are mostly slow fibres, as rowing and skiing studies find the trunk working early in the drive and the arms late, so its best needn't be your arms'. It changes what you can hold. Assumed until measured: your paddle can find your best speed from strokes at a few rates." aria-label="What is this?">?</button></h4>
         <div class="row chips" id="gear-mode" role="group" aria-label="Gearing"></div>
         <div id="gear-ctl"><div id="ctl-gear"></div><div class="help" id="gear-read"></div></div>
         <h4 class="sub-h">Body<button type="button" class="info" data-tip="Height scales every length; then set any one. Female: shoulders 3.4% and forearms 3.5% shorter for the same height (ANSUR II, radius lengths); the rest scales alike. You sit with your hips where the blade leaves the water on the Defaults stroke (further forward only if you can't reach it from there); every technique is paddled from that seat, and the body leans, turns and drops the paddle-side shoulder at each moment so both hands are within reach, the face behind the top hand. With strength from the arms, every length changes results; by paddle angle, only the arms do." aria-label="What is this?">?</button></h4>
@@ -861,8 +861,8 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of each engine file (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. The fit builds on the stroke engine. -->
-<script src="stroke-sim.js?v=215eb5c888"></script>
-<script src="fit-sim.js?v=454fd0985e"></script>
+<script src="stroke-sim.js?v=6e92cc6852"></script>
+<script src="fit-sim.js?v=c12c9edd44"></script>
 <script>
 (() => {
 "use strict";
@@ -905,7 +905,7 @@ function shown(el) {
 }
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 47;
+const NEEDS_API = 48;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -930,7 +930,7 @@ const PRESETS = {
 };
 // The paddler profile: who's paddling, not how. Presets never change it.
 const BODY = ["torsoM", "shoulderM", "upperArmM", "forearmM", "thighM", "shinM"];
-const PROFILE = ["ageY", "female", "heightM", ...BODY, "massKg", "fitnessW", "strengthOn", "strengthPeakDeg", "strengthDrop", "gearOn", "armBestMs", "gearDrop"];
+const PROFILE = ["ageY", "female", "heightM", ...BODY, "massKg", "fitnessW", "strengthOn", "strengthPeakDeg", "strengthDrop", "gearOn", "armBestMs", "gearDrop", "trunkBestMs", "trunkDrop"];
 // Presets set the technique; the profile, the paddle, the seat and the blade force model stay.
 const KEEP = ["effortW", ...PROFILE, "bladeLift", "paddleLenM", "bladeLenM", "bladeWidthM", "seatZM"];
 // Each boat's settings are remembered in this browser; Reset goes back to these.
@@ -1037,6 +1037,10 @@ const CONTROLS = [
     fmt: (v) => `${fmtNum(v, 2)} m/s`, help: "Your lower hand's speed against its shoulder that you hold the most power at." },
   { group: "ctl-gear", key: "gearDrop", label: "Weaker away from it", min: 0, max: 0.4, step: 0.01, unit: "",
     fmt: (v) => `${Math.round(v * 100)}% weaker`, help: "How much of your arms' power you lose at half or 1.5 times your best arm speed." },
+  { group: "ctl-gear", key: "trunkBestMs", label: "Best trunk speed", min: 0.3, max: 1.8, step: 0.01, unit: "",
+    fmt: (v) => `${fmtNum(v, 2)} m/s`, help: "Your paddle-side shoulder's speed through the drive that your trunk holds the most power at. Counts what trunk rotation and a hinge add." },
+  { group: "ctl-gear", key: "trunkDrop", label: "Trunk weaker away from it", min: 0, max: 0.4, step: 0.01, unit: "",
+    fmt: (v) => `${Math.round(v * 100)}% weaker`, help: "How much of what rotation and a hinge add you lose at half or 1.5 times your best trunk speed." },
   { group: "ctl-paddler", key: "lowerHandM", label: "Lower hand on the shaft", min: 0.35, max: 0.85, step: 0.01, unit: "",
     fmt: (v) => `${fmtNum(v * 100, 0)} cm below the grip`, help: "Hands further apart: more leverage on the blade, and a longer reach for the lower arm." },
   { group: "ctl-body-size", key: "ageY", label: "Age", min: 16, max: 85, step: 1, unit: "", fmt: (v) => `${v}`,
@@ -1115,17 +1119,17 @@ function showBodyEffects() {
   const peak = (rr) => { const sm = rr.samples, Td = sm[sm.length - 1].t; let m = 0, t = 0; for (const q of sm) if (q.thrust[0] > m) { m = q.thrust[0]; t = q.t; } return Math.round((t / Td) * 100); };
   const flat = peak(simOf(Object.assign({}, p, { legDrive: 0, dropM: 0 })));
   $("e-dropM").innerHTML = p.dropM ? `Loads the blade early: force peaks at <b>${peak(r)}%</b> of the drive (from ${flat}%). Bob <b>±${fmtNum(e.bounceMm, 1)} mm</b> (from ±${fmtNum(e.bounceStillMm, 1)}), costing ${fmtNum(e.shares.drop * 100, 1)}%` : "";
-  $("e-rotation").innerHTML = p.rotation ? `Reach <b>+${fmtNum(15 * p.rotation, 1)}°</b>, hand travel <b>+${fmtNum(12 * p.rotation, 1)} cm</b>. Uses more muscle: <b>+${fmtNum(0.12 * p.fitnessW * p.rotation, 0)} W</b> you can hold` : "";
+  $("e-rotation").innerHTML = p.rotation ? `Reach <b>+${fmtNum(15 * p.rotation, 1)}°</b>, hand travel <b>+${fmtNum(12 * p.rotation, 1)} cm</b>. Uses more muscle: <b>+${fmtNum(0.12 * p.fitnessW * p.rotation * S.trunkGearFactor(p), 0)} W</b> you can hold${p.gearOn ? ` (trunk ×${fmtNum(S.trunkGearFactor(p), 2)})` : ""}` : "";
   $("e-legDrive").innerHTML = p.legDrive ? `Force holds later: it peaks at <b>${peak(r)}%</b> of the drive (from ${flat}%). <b>+${fmtNum(0.1 * p.fitnessW * p.legDrive, 0)} W</b> you can hold` : "";
   const hingeSwing = p.hinge ? e.shares.swing - simOf(Object.assign({}, p, { hinge: 0 })).at(effortW).shares.swing : 0;
   $("e-hinge").innerHTML = p.hinge ? `Reach <b>+${fmtNum(8 * p.hinge, 1)}°</b>, hand travel <b>+${fmtNum(15 * p.hinge, 1)} cm</b>. Your body swings <b>±${fmtNum(6 * p.hinge, 1)} cm</b>, costing ${fmtNum(hingeSwing * 100, 1)}%. ` +
-    `Hips and back: <b>+${fmtNum(0.08 * p.fitnessW * p.hinge, 0)} W</b> you can hold` : "";
+    `Hips and back: <b>+${fmtNum(0.08 * p.fitnessW * p.hinge * S.trunkGearFactor(p), 0)} W</b> you can hold${p.gearOn ? ` (trunk ×${fmtNum(S.trunkGearFactor(p), 2)})` : ""}` : "";
   const hours = raceHours[editing] || 1;
   $("engine-box").innerHTML = `<div class="help">What ${NAME[editing]} can hold</div><div class="big">${fmtNum(S.capacity(p), 0)} W <small>for an hour</small></div>` +
     `<div class="help">This race (${fmtNum(hours, hours < 10 ? 1 : 0)} h): <b>${fmtNum(S.capacity(p, hours), 0)} W</b>, as power fades over a long race (${fmtNum(Math.pow(Math.max(1, hours), -0.07) * 100, 0)}%).</div>` +
     `<div class="help">Arms only: ${fmtNum(0.7 * p.fitnessW, 0)} W. Whole body: ${fmtNum(p.fitnessW, 0)} W.` +
     `${p.strengthOn ? ` Strength by position: ×${fmtNum(S.strengthFactor(p), 2)} for this stroke.` : ""}` +
-    `${p.gearOn ? ` Gearing: your arms hold ×${fmtNum(S.gearFactor(p), 2)}.` : ""}</div>`;
+    `${p.gearOn ? ` Gearing: your arms hold ×${fmtNum(S.gearFactor(p), 2)}${p.rotation || p.hinge ? `, your trunk ×${fmtNum(S.trunkGearFactor(p), 2)}` : ""}.` : ""}</div>`;
   if (p.heelDeg && !(bodyRef[editing] && bodyRef[editing].key === JSON.stringify(Object.assign({}, p, { heelDeg: 0 }))))
     bodyRef[editing] = { key: JSON.stringify(Object.assign({}, p, { heelDeg: 0 })), r: S.simulate(Object.assign({}, p, { heelDeg: 0 })) };
   const r0 = p.heelDeg ? bodyRef[editing].r : r;
@@ -1263,9 +1267,12 @@ function showGear() {
   const r = results[editing];
   if (!r || !boats[editing].gearOn) return;
   const p = r.params;
+  const trunk = p.rotation || p.hinge;
   $("gear-read").innerHTML = `Your lower hand moves <b>${fmtNum(r.body.armSpeed, 2)} m/s</b> against its shoulder (best ${fmtNum(p.armBestMs, 2)}): ` +
-    `your arms hold <b>×${fmtNum(S.gearFactor(p), 2)}</b>. This stroke suits your arms best at <b>${fmtNum(S.bestRate(p), 0)} spm</b>. ` +
-    `Your trunk carries <b>${fmtNum(r.body.trunkShare * 100, 0)}%</b> of the pull, its shoulder moving ${fmtNum(r.body.trunkSpeed, 2)} m/s.`;
+    `your arms hold <b>×${fmtNum(S.gearFactor(p), 2)}</b>. ` +
+    `Your trunk carries <b>${fmtNum(r.body.trunkShare * 100, 0)}%</b> of the pull, its shoulder moving <b>${fmtNum(r.body.trunkSpeed, 2)} m/s</b> (best ${fmtNum(p.trunkBestMs, 2)}): ` +
+    (trunk ? `what rotation and a hinge add holds <b>×${fmtNum(S.trunkGearFactor(p), 2)}</b>. ` : `with no rotation or hinge it adds no power of its own, so its speed costs nothing. `) +
+    `This stroke suits ${trunk ? "your arms and trunk together" : "your arms"} best at <b>${fmtNum(S.bestRate(p), 0)} spm</b>.`;
 }
 // Strength at each paddle angle, and the part of it this stroke uses.
 function drawStrength() {
@@ -4102,6 +4109,8 @@ function showFit() {
     why.push(`A ${fmtValue(ctlOf("paddleLenM"), s.paddleLenM)} paddle on the same blade path reaches ${fmtNum(s.catchDeg, 0)}° and exits at ${fmtNum(s.exitDeg, 0)}° (from ${fmtNum(p.catchDeg, 0)}° and ${fmtNum(p.exitDeg, 0)}°).`);
   if (p.gearOn && Math.abs(best.armSpeed - now.armSpeed) > 0.01)
     why.push(`Your arms move ${fmtNum(best.armSpeed, 2)} m/s instead of ${fmtNum(now.armSpeed, 2)} (best ${fmtNum(p.armBestMs, 2)}): you hold ${fmtNum(best.watts, 0)} W instead of ${fmtNum(now.watts, 0)}.`);
+  if (p.gearOn && (p.rotation || p.hinge) && Math.abs(best.trunkSpeed - now.trunkSpeed) > 0.02)
+    why.push(`Your trunk moves ${fmtNum(best.trunkSpeed, 2)} m/s instead of ${fmtNum(now.trunkSpeed, 2)} (best ${fmtNum(p.trunkBestMs, 2)}): what rotation and a hinge add holds ×${fmtNum(S.trunkGearFactor(s), 2)} instead of ×${fmtNum(S.trunkGearFactor(p), 2)}.`);
   if (s.handOutM < p.handOutM - 1e-6)
     why.push(`The top hand nearer the boat brings the blade in, so each stroke turns the boat less: ${fmtNum(best.strokesPerSide, 1)} strokes a side instead of ${fmtNum(now.strokesPerSide, 1)}.`);
   why.push(`Your top hand stays ${fmtNum(best.top[0] * 100, 0)}–${fmtNum(best.top[1] * 100, 0)} cm above your shoulders, between chin and forehead, with both hands in reach.`);

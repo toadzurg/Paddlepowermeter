@@ -226,6 +226,42 @@ Hull drag comes from a coast-down test of a USCA C-1. The rest follows
 standard hydrodynamics. It's a simplified model: use it to compare
 strokes, not to predict exact times.
 
+**The body model and its evidence.** With gearing on (Paddler profile),
+your arms and your trunk each hold the most power at one speed, from Hill's
+force–velocity relation: power peaks at an optimal shortening speed, and
+where it peaks depends on fibre type. The arms' speed is the lower hand's
+along the pull, against its shoulder; the trunk's is that shoulder's own.
+The trunk's curve scales what trunk rotation and a hinge add. Both best
+speeds are assumed: calibrated so the default stroke (the trunk's with full
+rotation) is at its best at 60 spm, until the paddle measures yours. What
+the model draws on, from other paddle and pole sports (no study yet
+measures a C1 paddler's trunk on its own):
+
+- The trunk is a large power source: in rowing, legs ~43–45%, trunk
+  ~32–36%, arms ~21–24% of power ([Kleshnev, power in rowing](https://ojs.ub.uni-konstanz.de/cpa/article/view/2258);
+  [rowing styles](https://www.row2k.com/features/5531/rowing-styles-analysis-and-optimisation-by-dr-valery-kleshnev/));
+  another method puts trunk swing at ~49% ([Tachibana](https://coachsci.sdsu.edu/csa/vol111/tachiban.htm)).
+  In double poling, trunk and legs give about a third of propulsive power
+  on a moderate incline ([Danielsen et al., via Chalmers](https://research.chalmers.se/publication/553157/file/553157_Fulltext.pdf)).
+- The trunk works early in the drive, the arms late: legs and trunk move
+  mostly in the drive's first two-thirds in rowing; in double poling the
+  trunk and hip flexors fire before the shoulder and elbow extensors
+  ([Holmberg](https://openarchive.ki.se/xmlui/handle/10616/43443)).
+- Trunk rotation adds force in kayaking: a rotating seat raised ergometer
+  paddle force from 320 to 465 N (Petrone et al. 2006); power correlates
+  with trunk rotation in elite kayakers ([para- and able-bodied kayakers](https://lida.sport-iat.de/ta/Record/4053509?lng=en)),
+  though on the water the lower trunk acts as a stable base ([Brown et al. 2024](https://johk.pl/wp-content/uploads/2024/01/jhk-2024-90-01.pdf)).
+- Trunk muscles are mostly slow fibres (erector spinae ~55–58% type I;
+  abdominals 55–58%: [abdominal fibre types](https://pubmed.ncbi.nlm.nih.gov/161688/)),
+  the triceps' lateral head 32–40%; slow fibres reach peak power at a
+  lower speed ([Rome et al. 1988](https://www.nature.com/articles/335824a0)),
+  so the trunk's best speed needn't be the arms'. Isokinetic trunk rotation
+  still gains power up to 120°/s ([Kim et al.](https://pmc.ncbi.nlm.nih.gov/articles/PMC3996988/)): its peak is broad.
+- Lower rates are more economical below race pace in double poling
+  ([Lindinger & Holmberg 2011](https://www.frontiersin.org/journals/sports-and-active-living/articles/10.3389/fspor.2022.849731/pdf)),
+  and the power-best rate exceeds the efficiency-best one by 1.7–2.4×
+  depending on fibre type in cycling (Kohler & Boutellier).
+
 **Opening it:**
 - iPhone: open the link in the free **Bluefy** browser. Safari, Chrome and
   Edge on iPhone can't use Bluetooth.
