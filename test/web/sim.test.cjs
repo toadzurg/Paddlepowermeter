@@ -1470,6 +1470,15 @@ console.log("\nPaddle fit");
       e = document.elementFromPoint(x, y); if (r.width > 4 && e && e.closest("[data-part]") === g) return [x, y]; } return null; });
     if (tapAt) { await page.mouse.click(tapAt[0], tapAt[1]); await settle(); }
     check(`${tag}: 3D model: tapping a part picks it`, !!tapAt && (await pressed("#m3-parts")).join() === "hull" && /Metacentric height \d+ cm/.test(await page.textContent("#m3-part-read")));
+    // The torso reads the trunk's speed, through the drive and now; with
+    // gearing on (as here), against its best, and its sliders are there.
+    await page.click('#m3-parts button[data-value="torso"]'); await page.$eval("#m3-phase", (e) => { e.value = 0.2; e.dispatchEvent(new Event("input")); });
+    await page.waitForTimeout(300);
+    const torsoRead = await page.textContent("#m3-part-read");
+    check(`${tag}: 3D model: the torso reads the trunk's speed, against its best, and now`,
+          /Trunk speed [\d.]+ m\/s \(best 0\.91\)/.test(torsoRead) && /Trunk now [\d.]+ m\/s/.test(torsoRead) &&
+          (await page.$$('#m3-ctl input[data-key="trunkBestMs"]')).length === 1, torsoRead);
+    await page.click("#m3-play");
     await page.click("#m3-done");
     const aPaddle = await page.evaluate(() => window.sim.boats.a.paddleLenM);
     await page.click("#fit-try"); await settle();
