@@ -262,6 +262,40 @@ measures a C1 paddler's trunk on its own):
   and the power-best rate exceeds the efficiency-best one by 1.7–2.4×
   depending on fibre type in cycling (Kohler & Boutellier).
 
+**The recovery.** No force goes into the water, so the best recovery is the
+one that costs least while it carries the blade clear and arrives set for
+the catch. The model describes a recovery by a point on the shaft that
+travels smoothly from the exit to the catch (the pivot: at the top hand, the
+lower hand, or between), how far it rises and comes in mid-carry, and how
+much of the shaft's turn is the slice out. It costs each from the energy of
+the moving arms and paddle (Winter's internal work), lifting them, and air
+drag on the blade, and paddles the cheapest that stays in reach with the top
+hand in front of the face. Inputs:
+
+- Each arm is about 5% of body mass: upper arm 2.71%, forearm 1.62%, hand
+  0.61% (men; [de Leva 1996](https://ebm.ufabc.edu.br/wp-content/uploads/2013/12/Leva-1996.pdf)),
+  with its centre of mass and radius of gyration. A bent-shaft paddle is
+  about 240–330 g ([ZRE weights](https://paddling.com/gear/zre-or-light-10-oz-carbon-fiber-canoe-paddle-paddle)).
+- Muscle does negative work at 3–5 times positive work's efficiency
+  ([walking review](https://pmc.ncbi.nlm.nih.gov/articles/PMC1283673)): it
+  costs a quarter as much.
+- A flat plate across the flow has a drag coefficient of about 1.2 (Hoerner);
+  feathered, the blade goes edge first.
+- Moving limbs faster costs more: the reason cyclists' most economical
+  cadence is lower than their preferred one ([cadence review](https://researchonline.ljmu.ac.uk/id/eprint/10294/1/Accepted%20PDF.pdf)).
+
+What it finds: keep the top hand steady, a fulcrum in front of the face,
+and let the lower hand swing the blade. About a point near the top hand the
+lower hand moves about half as far as the blade; about the lower hand, the
+top hand moves a quarter further than the blade, and the arms (~4 kg each)
+outweigh the paddle about 25 times. A top hand that drops and swings over
+the lower hand costs about twice as much and can't stay in reach. The
+recovery has barely been studied in any paddle sport (rowing calls it
+[a grey area](https://www.row2k.com/features/5722/the-biomechanics-of-the-recovery-phase-by-dr-valery-kleshnev/)),
+so this is mechanics, not measurement. Its costs compare styles: the model
+starts and stops the hands at the exit and catch, so their size is an upper
+bound, and they don't change what you can hold.
+
 **Opening it:**
 - iPhone: open the link in the free **Bluefy** browser. Safari, Chrome and
   Edge on iPhone can't use Bluetooth.

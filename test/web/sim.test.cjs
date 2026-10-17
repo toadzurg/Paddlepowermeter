@@ -495,6 +495,24 @@ console.log("\nCanoe Race Simulator physics");
         tF(Object.assign({ rateSpm: 80 }, ROT)) < 0.97 && S.bestRate(gear(BOTH)) < 57 &&
         capOf(gear(Object.assign({}, BOTH, { rateSpm: S.bestRate(gear(BOTH)) }))) > capOf(gear(BOTH)),
         `80 spm ×${tF(Object.assign({ rateSpm: 80 }, ROT)).toFixed(3)}; rotation and a hinge: trunk ×${tF(BOTH).toFixed(2)} at 60, best at ${S.bestRate(gear(BOTH)).toFixed(0)} spm`);
+  // The recovery: the cheapest motion that carries the blade clear, in
+  // reach and with the top hand in front of the face, costed from the arms'
+  // and paddle's energy and air drag on the blade.
+  const plan = (x) => S.recoveryPlan(S.paddled(Object.assign({}, S.DEFAULTS, x)));
+  const presetPlans = Object.entries({ def: {}, long: LR, behind: { catchDeg: 12, exitDeg: 45 }, sweep: { leanDeg: 40, sweepDeg: 70, handOutM: 0.5, catchDeg: 25, exitDeg: 25 }, rot: { rotation: 1 } })
+    .map(([k, x]) => [k, plan(x)]);
+  check("recovery: the cheapest pivots nearer the top hand than the lower hand (at it for the default stroke), in reach",
+        presetPlans.every(([, q]) => q.q < 0.5 && q.cost.past < 0.1) && presetPlans[0][1].q <= 0.1, presetPlans.map(([k, q]) => `${k} pivot ${(q.q * 100).toFixed(0)}%`).join(", "));
+  const lowSwing = plan({ recoveryPivot: 0 }), topSwing = plan({ recoveryPivot: 1 });
+  check("recovery: the top hand dropping and swinging over the lower hand costs more, and overreaches",
+        topSwing.cost.joules > 1.4 * lowSwing.cost.joules && topSwing.cost.past > 0.3, `${topSwing.cost.joules.toFixed(0)} J vs ${lowSwing.cost.joules.toFixed(0)} J`);
+  check("recovery: costs more at a higher rate (shorter, quicker) and with a heavier paddle",
+        plan({ rateSpm: 80 }).watts > 1.6 * plan({}).watts && plan({ paddleKg: 0.6 }).cost.joules > plan({}).cost.joules,
+        `${plan({}).watts.toFixed(0)} W at 60 spm, ${plan({ rateSpm: 80 }).watts.toFixed(0)} W at 80`);
+  const ends = (() => { const g = S.paddled(S.DEFAULTS), pl = plan({}), r = S.simulate({}), a = S.recoveryPose(g, 0, pl), b = S.recoveryPose(g, 1, pl);
+    const last = r.samples[r.samples.length - 1], first = r.samples[0], d = (x, y) => Math.hypot(...x.map((v, i) => v - y[i]));
+    return Math.max(d(a.P.at(0), last.P.at(0)), d(a.B.tip, last.B.tip), d(a.B.n, last.B.n), d(b.P.at(0), first.P.at(0)), d(b.B.tip, first.B.tip), d(b.B.n, first.B.n)); })();
+  check("recovery: starts where the drive leaves the paddle and ends where it takes it, the blade's face too", ends < 1e-3, ends.toExponential(1));
   const rot80 = { rotation: 1, rateSpm: 80 };
   check("gearing: sets only the arms' share of what you hold, and what the trunk adds",
         Math.abs(capOf(gear(rot80)) - capOf(rot80) + S.DEFAULTS.fitnessW * (0.7 * (1 - gF(rot80)) + 0.12 * (1 - tF(rot80)))) < 1e-9);
@@ -1478,6 +1496,18 @@ console.log("\nPaddle fit");
     check(`${tag}: 3D model: the torso reads the trunk's speed, against its best, and now`,
           /Trunk speed [\d.]+ m\/s \(best 0\.91\)/.test(torsoRead) && /Trunk now [\d.]+ m\/s/.test(torsoRead) &&
           (await page.$$('#m3-ctl input[data-key="trunkBestMs"]')).length === 1, torsoRead);
+    // The arms read their speed live too; the stroke shows the recovery and
+    // its styles, set from there as from the side panel.
+    await page.click('#m3-parts button[data-value="arms"]'); await page.waitForTimeout(300);
+    check(`${tag}: 3D model: the arms read their speed, against their best, and now`,
+          /Arm speed [\d.]+ m\/s \(best [\d.]+, arms ×[\d.]+\)/.test(await page.textContent("#m3-part-read")) && /Arm now [\d.]+ m\/s/.test(await page.textContent("#m3-part-read")),
+          await page.textContent("#m3-part-read"));
+    await page.click('#m3-parts button[data-value="path"]'); await page.waitForTimeout(300);
+    await page.click('#m3-recovery button[data-value="1"]'); await page.waitForTimeout(400);
+    const rec1 = await page.textContent("#m3-recovery-read"), piv = await page.evaluate(() => window.sim.boats.a.recoveryPivot);
+    await page.click('#m3-recovery button[data-value="-1"]'); await page.waitForTimeout(400);
+    check(`${tag}: 3D model: the recovery's styles, set from the stroke`, piv === 1 && /^Set: pivot 100%.*top hand swings \d+ J/.test(rec1) &&
+          /^Cheapest: pivot \d+%/.test(await page.textContent("#m3-recovery-read")) && (await pressed("#recovery-mode")).join() === "-1", rec1);
     await page.click("#m3-play");
     await page.click("#m3-done");
     const aPaddle = await page.evaluate(() => window.sim.boats.a.paddleLenM);

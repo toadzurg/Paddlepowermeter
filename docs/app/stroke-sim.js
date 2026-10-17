@@ -178,6 +178,8 @@
     // hinge add that it loses at half or 1.5 times that.
     trunkBestMs: 0.91,
     trunkDrop: 0.15,
+    paddleKg: 0.3,             // the paddle's mass (a ZRE bent shaft: ~0.24–0.33 kg), most of it in the blade
+    recoveryPivot: -1,         // the recovery: -1 the cheapest; 0 the lower hand swings, 1 the top hand drops and swings, between a mix
     // The paddler's body, m, fitted to the paddle each moment (see fitBody).
     // Results change through strength by position: by angle, the arm length;
     // from the arms, every length. Otherwise it's for the drawings and the
@@ -997,6 +999,179 @@
       Math.pow(Math.max(1, hours), -0.07);
   }
 
+  // ------------------------------------------------------------ the recovery
+  // No force on the water, so the best recovery is the one that costs least
+  // while it carries the blade clear and arrives set for the catch. What it
+  // costs (Winter's "internal work": the energy of the moving segments):
+  //  - The arms' and paddle's kinetic energy, their segments turning too.
+  //    Each arm is ~5% of body mass (de Leva 1996: upper arm 2.71%, forearm
+  //    1.62%, hand 0.61% for men; 2.55/1.38/0.56% for women), the paddle
+  //    ~0.25–0.35 kg, its blade most of it.
+  //  - Lifting them against gravity.
+  //  - Air drag on the blade, a flat plate (Cd ~1.17 across it, Hoerner),
+  //    moving forward through the air faster than the boat: feathered, it
+  //    goes edge first.
+  // Muscle does negative work (lowering, slowing) at 3–5 times positive
+  // work's efficiency, so it costs NEG_WORK of it. The arms and paddle are
+  // one linked system: energy passes between them through the hands.
+  //
+  // The motions to choose from: a point on the shaft (PIVOT q of the way
+  // from the top hand to the lower hand) travels on a smooth path from the
+  // exit to the catch, raised or dropped mid-carry by LIFT and brought in
+  // toward the centreline by IN, and the paddle swings about it: round the
+  // outside of the boat, tilting toward the horizontal just enough to carry
+  // the blade clear. q = 0: the top hand stays on its path and the lower
+  // hand swings the blade; q = 1: the lower hand stays and the top hand
+  // drops and swings over it. The plan with the least cost, inside reach,
+  // with the top hand below the forehead and in front of the face, is the
+  // one paddled (recoveryPivot -1), or one pivot can be set to compare.
+  const NEG_WORK = 0.25, AIR = 1.2, BLADE_CD = 1.17, SKIN_CD = 0.02, NOMINAL_V = 2.6;
+  const SEG = { m: [[0.0271, 0.0162, 0.0061], [0.0255, 0.0138, 0.0056]], com: [0.577, 0.457], gyr: [0.285, 0.276] };
+  const REC_CLEAR = 0.05, REC_RAMP = 0.25, SLICE_OUT = 0.3, FEATHER = rad(80);
+  const smooth = (x) => { const t = Math.min(1, Math.max(0, x)); return t * t * (3 - 2 * t); };
+  // Shares through the recovery (0 to 1 of it): the blade's clearance (held
+  // up when carried into a switch), the carry (held from 0.4 to 0.6), and
+  // the feather (turning after the slice out, square before the catch).
+  const recoveryClear = (u, hold = false) => smooth(u / REC_RAMP) * (hold ? 1 : smooth((1 - u) / REC_RAMP));
+  const carryAt = (u) => smooth(u / 0.4) * smooth((1 - u) / 0.4);
+  const featherAt = (u) => smooth((u - 0.12) / 0.3) * smooth((0.9 - u) / 0.22);
+  const turnAbout = (v, k, a) => {
+    const c = Math.cos(a), s = Math.sin(a), kv = dot(k, v), x = cross(k, v);
+    return v.map((q, i) => q * c + x[i] * s + k[i] * kv * (1 - c));
+  };
+  // The face the drive leaves the blade with, and takes it at (its motion there).
+  const driveFace = (p, u) => {
+    const sC = paddleOf(p).throat + paddleOf(p).copFromThroat;
+    return unit(sub(pose(p, Math.min(1, u + 0.02)).at(sC), pose(p, Math.max(0, u - 0.02)).at(sC)));
+  };
+  // The paddle at recovery progress u for plan { q, lift, in }. L: the
+  // shares { clear, top, over } in place of the ordinary ones (a switch).
+  function recoveryPose(p, u, plan, L = null) {
+    const exit = pose(p, 1), cat = pose(p, 0), e = ease(u), mix = (a, b) => a + (b - a) * e;
+    const sp = plan.q * lowerHand(p), out = Math.sign(exit.at(0)[1]) || -1;
+    L = L || { clear: recoveryClear(u), top: carryAt(u), over: 0 };
+    const pe = exit.at(sp), pc = cat.at(sp), piv = [mix(pe[0], pc[0]), mix(pe[1], pc[1]), mix(pe[2], pc[2])];
+    piv[1] -= out * plan.in * carryAt(u);
+    piv[2] += plan.lift * L.top + L.over;
+    const tl = (d) => Math.acos(Math.max(-1, Math.min(1, -d[2]))), az = (d) => Math.atan2(d[1], d[0]);
+    const ae = az(exit.d), ac = az(cat.d);
+    let da = Math.atan2(Math.sin(ac - ae), Math.cos(ac - ae));
+    if (Math.sin(ae + da / 2) * out < 0) da -= Math.sign(da) * 2 * Math.PI;
+    const slice = plan.slice === undefined ? SLICE_OUT : plan.slice;
+    const turnShare = (v) => slice * smooth(v / 0.3) + (1 - slice) * smooth((v - 0.3 * slice / SLICE_OUT) / (1 - 0.3 * slice / SLICE_OUT - 0.05));
+    const a = ae + da * turnShare(u), t0 = mix(tl(exit.d), tl(cat.d)), th = mix(exit.th, cat.th);
+    const dir = (t, aa = a) => [Math.sin(t) * Math.cos(aa), Math.sin(t) * Math.sin(aa), -Math.cos(t)];
+    // The face: from the drive's, turned flat for the carry, face up (the
+    // same way all stroke: from the middle of the carry).
+    const fx = driveFace(p, 1), fc = driveFace(p, 0), face0 = unit(add(mul(fx, 1 - e), mul(fc, e))), fe = featherAt(u);
+    const fm = unit(add(fx, fc)), dm = dir((tl(exit.d) + tl(cat.d)) / 2, ae + da * turnShare(0.5));
+    const turnBy = turnAbout(fm, dm, FEATHER)[2] >= turnAbout(fm, dm, -FEATHER)[2] ? FEATHER : -FEATHER;
+    const paddle = (d) => {
+      const grip = sub(piv, mul(d, sp)), P = { d, th, at: (s) => add(grip, mul(d, s)) };
+      return { P, B: blade(p, P, fe > 0 ? turnAbout(face0, d, turnBy * fe) : face0) };
+    };
+    const w = p.bladeWidthM / 2;
+    const lowest = ({ B }) => {
+      const across = unit(cross(unit(sub(B.tip, B.throat)), B.n));
+      return Math.min(B.tip[2] - Math.abs(across[2]) * w, B.throat[2] - Math.abs(across[2]) * w * 0.3);
+    };
+    let st = paddle(dir(t0));
+    const target = lowest(st) + (REC_CLEAR - lowest(st)) * L.clear;
+    if (lowest(st) < target) {
+      let lo = t0, hi = Math.PI / 2;
+      for (let i = 0; i < 18; i++) { const t = (lo + hi) / 2; if (lowest(paddle(dir(t))) < target) lo = t; else hi = t; }
+      st = paddle(dir(hi));
+    }
+    return st;
+  }
+  // An elbow between shoulder a and hand b: bent down, out to its own side
+  // and back (the lower arm's further back); straight past full reach.
+  function elbowOf(a, b, ua, fa, side) {
+    const d = sub(b, a), L = norm(d);
+    if (L >= ua + fa - 1e-6) return add(a, mul(d, ua / (ua + fa)));
+    const u = mul(d, 1 / L), hint = [side > 0 ? -0.3 : -0.8, 0.6 * side, -1], n = unit(sub(hint, mul(u, dot(hint, u))));
+    const x0 = (ua * ua - fa * fa + L * L) / (2 * L), h = Math.sqrt(Math.max(0, ua * ua - x0 * x0));
+    return add(add(a, mul(u, x0)), mul(n, h));
+  }
+  // What a plan costs per stroke (J): { pos, neg, air, joules } and its
+  // limits (how far past reach, the forehead and the face, m), and the
+  // blade's widest reach out (m from the centreline).
+  const REC_STEPS = 14;
+  function recoveryCost(p, plan, ends) {
+    const T = 60 / p.rateSpm * (1 - p.driveFraction), N = REC_STEPS, dt = T / N, sLow = lowerHand(p);
+    const k = (p.heightM || 1.78) / 1.78, body = (p.massKg - BOAT_KG), sm = SEG.m[p.female ? 1 : 0].map((f) => f * body);
+    const mP = p.paddleKg, mShaft = 0.4 * mP / 5, mBlade = 0.6 * mP / 3, arm = p.upperArmM + p.forearmM;
+    const frames = [];
+    let past = 0, wide = 0;
+    for (let i = 0; i <= N; i++) {
+      const u = i / N, e = ease(u), st = recoveryPose(p, u, plan), P = st.P, B = st.B;
+      const sh = (k2) => add(mul(ends[0][k2], 1 - e), mul(ends[1][k2], e));
+      const off = sh("off"), pad = sh("pad"), head = sh("head"), centre = sh("centre");
+      const grip = P.at(0), low = P.at(sLow), pts = [];
+      for (const [S, H, side] of [[off, grip, 1], [pad, low, -1]]) {
+        const E = elbowOf(S, H, p.upperArmM, p.forearmM, side);
+        for (const [a, b, m, c, g] of [[S, E, sm[0], SEG.com[0], SEG.gyr[0]], [E, H, sm[1], SEG.com[1], SEG.gyr[1]]]) {
+          const com = add(a, mul(sub(b, a), c)), r = mul(sub(b, a), g);
+          pts.push([add(com, r), m / 2], [sub(com, r), m / 2]);   // a dumbbell with the segment's radius of gyration
+        }
+        pts.push([H, sm[2]]);
+        past += Math.max(0, dist(S, H) / arm - REACH);
+      }
+      for (let j = 0; j < 5; j++) pts.push([P.at((j + 0.5) / 5 * paddleOf(p).throat), mShaft]);
+      const along = sub(B.tip, B.throat);
+      for (const f of [1 / 6, 0.5, 5 / 6]) pts.push([add(B.throat, mul(along, f)), mBlade]);
+      // The top hand: below the forehead, in front of the face.
+      past += Math.max(0, grip[2] - centre[2] - 0.3 * k) + Math.max(0, head[0] + 0.12 * k - grip[0]);
+      wide = Math.max(wide, Math.abs(B.cop[1]));
+      frames.push({ pts, B });
+    }
+    // Energy at each step: kinetic between steps (at rest at both ends),
+    // potential at them.
+    const pe = (f) => f.pts.reduce((a, [x, m]) => a + m * G * x[2], 0);
+    const energy = [pe(frames[0])];
+    let air = 0;
+    for (let i = 0; i < N; i++) {
+      const a = frames[i], b = frames[i + 1];
+      let ke = 0;
+      a.pts.forEach(([x, m], j) => { const v = dist(b.pts[j][0], x) / dt; ke += 0.5 * m * v * v; });
+      energy.push(ke + (pe(a) + pe(b)) / 2);
+      // The blade through still air, the boat carrying it forward too.
+      const v = add(mul(sub(b.B.cop, a.B.cop), 1 / dt), [NOMINAL_V, 0, 0]), vm = norm(v);
+      if (vm > 1e-9) air += 0.5 * AIR * paddleOf(p).bladeLen * p.bladeWidthM * vm * vm * (BLADE_CD * Math.abs(dot(a.B.n, v)) / vm + SKIN_CD) * vm * dt;
+    }
+    energy.push(pe(frames[N]));
+    let pos = 0, neg = 0;
+    for (let i = 1; i < energy.length; i++) { const d = energy[i] - energy[i - 1]; if (d > 0) pos += d; else neg -= d; }
+    return { pos, neg, air, joules: pos + NEG_WORK * neg + air, past, wide };
+  }
+  // The plan for a stroke: the pivot set (recoveryPivot ≥ 0) or the
+  // cheapest, its lift and its in by a coarse search then a finer one.
+  const recoveryCache = new Map();
+  const REC_KEYS = [...PROFILE_KEYS, "female", "catchDeg", "exitDeg", "leanDeg", "directionDeg", "sweepDeg", "pivotFromGrip", "handOutM", "handTravelM",
+    "paddleLenM", "bladeLenM", "bladeWidthM", "bendDeg", "pitchDeg", "lowerHandM", "rateSpm", "driveFraction", "seatZM", "rotation", "hinge", "paddleKg", "recoveryPivot"];
+  function recoveryPlan(pg) {
+    const key = JSON.stringify(REC_KEYS.map((k) => pg[k]));
+    if (recoveryCache.has(key)) return recoveryCache.get(key);
+    const seatX = seatFor(pg), sLow = lowerHand(pg);
+    const ends = [1, 0].map((u) => { const P = pose(pg, u); return fitBody(pg, seatX, P.at(0), P.at(sLow), neutralAt(pg, u)); });
+    const score = (c) => c.joules + 200 * c.past;
+    const fixed = pg.recoveryPivot >= 0;
+    let best = null;
+    const tryPlan = (plan) => { const c = recoveryCost(pg, plan, ends); if (!best || score(c) < score(best.cost)) best = { plan, cost: c }; return c; };
+    for (const q of fixed ? [pg.recoveryPivot] : [0, 0.25, 0.5, 0.75, 1])
+      for (const lift of [-0.1, 0, 0.1, 0.2, 0.3]) for (const inn of [0, 0.15, 0.3]) for (const slice of [0, 0.2]) tryPlan({ q, lift, in: inn, slice });
+    // Finer: halve the steps about the best, twice.
+    for (const [dq, dl, di] of [[0.125, 0.05, 0.075], [0.0625, 0.025, 0.04], [0.03, 0.0125, 0.02]]) {
+      const b = best.plan;
+      for (const q of fixed ? [b.q] : [b.q - dq, b.q, b.q + dq]) for (const lift of [b.lift - dl, b.lift, b.lift + dl]) for (const inn of [b.in - di, b.in, b.in + di])
+        if (q >= 0 && q <= 1 && inn >= 0 && inn <= 0.4) tryPlan({ q, lift, in: inn, slice: b.slice });
+    }
+    const out = Object.assign({}, best.plan, { cost: best.cost, watts: best.cost.joules * pg.rateSpm / 60 });
+    if (recoveryCache.size > 80) recoveryCache.clear();
+    recoveryCache.set(key, out);
+    return out;
+  }
+
   // Shallow water (The Science of Paddling, Part 4): the boat's own wave, wavelength
   // λ = 2πV²/g, runs slower when the depth D is under about λ/2, as
   // c = √(gλ/2π · tanh(2πD/λ)). The hull then makes the wave it would make
@@ -1354,9 +1529,9 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 48;
+  const API_LEVEL = 49;
   const PADDLE = paddleOf(DEFAULTS);
-  const api = { API_LEVEL, shaftDir, paddled, paddleOf, gearFactor, trunkGearFactor, bestRate, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
+  const api = { API_LEVEL, shaftDir, paddled, paddleOf, gearFactor, trunkGearFactor, bestRate, recoveryPlan, recoveryPose, recoveryCost, recoveryClear, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.StrokeSim = api;
 })(typeof window !== "undefined" ? window : globalThis);
