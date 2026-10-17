@@ -495,7 +495,6 @@
         <div class="row" style="margin-top:10px">
           <button class="small" id="play">Pause</button>
           <button class="small" id="slow">Slow motion</button>
-          <span class="row chips"><button type="button" class="small" id="switch-anim" aria-pressed="true">Switching sides</button><button type="button" class="info" data-tip="Each boat strokes on one side, switches, then strokes on the other: its strokes per side (rounded) and its time lost per switch, at its own stroke rate." aria-label="What is this?">?</button></span>
           <span class="sub">Lines: blade path through the drive · arrow: the push on the boat</span>
         </div>
       </section>
@@ -3535,11 +3534,8 @@ let paths = {};  // cached blade path per boat and view
 let playing = true, slow = false, phase = 0, lastT = performance.now();
 let simT = 0;   // animation clock, s of simulated time
 onTap($("play"), () => { playing = !playing; $("play").textContent = playing ? "Pause" : "Play"; });
-onTap($("switch-anim"), () => {
-  const b = $("switch-anim");
-  b.setAttribute("aria-pressed", String(b.getAttribute("aria-pressed") !== "true"));
-});
-const switchAnim = () => $("switch-anim").getAttribute("aria-pressed") === "true";
+// The views switch sides unless every boat runs straight (Switching sides).
+const switchAnim = () => BOATS.some((x) => results[x] && !results[x].params.noSwitching);
 // Where boat x is at time t: its stroke phase, which side (m = 1 for the
 // right, −1 for the left, in between while switching) and, around a
 // switch, how the recovery carries the paddle (lift, for stateAt; null for
@@ -3547,7 +3543,7 @@ const switchAnim = () => $("switch-anim").getAttribute("aria-pressed") === "true
 // of switchLossS, n on the left, a switch back; n is its strokes per side.
 function timeline(x, t) {
   const r = results[x], Tc = r.cycle;
-  if (!switchAnim() || r.params.noSwitching) return { ph: (((t / Tc) % 1) + 1) % 1, m: 1, lift: null, stroke: 0, n: 0 };
+  if (r.params.noSwitching) return { ph: (((t / Tc) % 1) + 1) % 1, m: 1, lift: null, stroke: 0, n: 0 };
   const n = Math.max(1, Math.round(r.strokesPerSide)), Tsw = Math.max(0.05, r.params.switchLossS);
   const Ts = n * Tc + Tsw, tt = (((t % (2 * Ts)) + 2 * Ts) % (2 * Ts));
   const side = tt < Ts ? 1 : -1, u = side > 0 ? tt : tt - Ts;
@@ -3770,7 +3766,7 @@ function drawView(svg, name, tl) {
   if (switchAnim()) {
     const ws = same ? ["a"] : bs.slice().sort();
     g += `<text class="switch-read" x="8" y="${vp.H - 8}">${ws.map((x) => `${ws.length > 1 ? `${x.toUpperCase()} ` : ""}` +
-      (tl[x].stroke ? `${tl[x].stroke}/${tl[x].n} ${tl[x].m > 0 ? "R" : "L"}` : "switch")).join(" · ")}</text>`;
+      (results[x].params.noSwitching ? "straight" : tl[x].stroke ? `${tl[x].stroke}/${tl[x].n} ${tl[x].m > 0 ? "R" : "L"}` : "switch")).join(" · ")}</text>`;
   }
   svg.innerHTML = g;
 }
