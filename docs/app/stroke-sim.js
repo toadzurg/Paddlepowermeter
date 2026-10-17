@@ -232,7 +232,7 @@
   // and out SPEAR of the way along its own length, edge first, the rest
   // straight down: not slapping its face down on the water, and the hands
   // not pushed forward at the catch. The force follows how much is in.
-  const ENTRY = 0.25, EXIT_SHARE = 0.25, BLADE_OUT = 0.25, EXIT_OUT = 0.1, SPEAR = 0.5;
+  const ENTRY = 0.15, EXIT_SHARE = 0.15, BLADE_OUT = 0.25, EXIT_OUT = 0.1, SPEAR = 0.5;
   function inOut(p, u, d) {
     const depth = BLADE_OUT * paddleOf(p).bladeLen * Math.max(0, -d[2]);
     if (u < ENTRY) return depth * (1 - u / ENTRY) ** 2;
@@ -567,6 +567,13 @@
     return out;
   }
 
+  // The paddler loads the blade only once it's buried: going in it spears
+  // in clean, edge first, and coming out it's lifted, both unloaded (a
+  // part-buried blade pulled through the water ventilates and slips). The
+  // load comes on over LOAD_RAMP of the drive once the entry is done, and
+  // off over the same before the exit starts.
+  const LOAD_RAMP = 0.1;
+  const loadAt = (u) => (u <= ENTRY || u >= 1 - EXIT_SHARE ? 0 : smooth((u - ENTRY) / LOAD_RAMP) * smooth((1 - EXIT_SHARE - u) / LOAD_RAMP));
   // Samples one drive at a given boat speed V. Velocities in the boat frame.
   function drive(p, V, steps = 240) {
     const Tc = 60 / p.rateSpm, Td = Tc * p.driveFraction, dt = Td / steps;
@@ -594,7 +601,7 @@
       const vWater = add(vBlade, [V, 0, 0]);                   // through the water
       const vn = dot(vWater, B.n), vmag = norm(vWater);
       // Normal force on the power face: sine law (with lift) or drag only.
-      const F = vn > 0 ? k * B.wet * vn * (p.bladeLift ? vmag : vn) : 0;
+      const F = vn > 0 ? k * B.wet * loadAt(u) * vn * (p.bladeLift ? vmag : vn) : 0;
       // Of that force, the part across the flow is lift: cos α of it.
       const lift = vn > 0 && vmag > 0 ? F * Math.sqrt(Math.max(0, 1 - (vn / vmag) * (vn / vmag))) : 0;
       const thrust = mul(B.n, -F);                             // on the boat

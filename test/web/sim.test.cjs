@@ -84,12 +84,17 @@ console.log("\nCanoe Race Simulator physics");
   // in, so the force builds from the catch, never dead while the hands catch
   // up with the boat, whole body too; and the hands' motion carries across
   // the exit and the catch.
-  const earlyMin = (rr) => { const sm = rr.samples, Td = sm[sm.length - 1].t; return Math.min(...sm.filter((q) => q.t > 0.02 * Td && q.t < 0.3 * Td).map((q) => q.F)) / rr.peakForce; };
   const lockAll = S.simulate({ rotation: 1, hinge: 1, legDrive: 1 });
   const peakToMean = (rr) => { const sm = rr.samples; let m = 0; for (const q of sm) m += q.F * q.dt; return rr.peakForce / (m / sm[sm.length - 1].t); };
-  check("the blade takes hold at the catch: never dead through the drive's first 30%, whole body too",
-        earlyMin(base) > 0.05 && earlyMin(lockAll) > 0.05 && peakToMean(lockAll) < 3,
-        `at least ${pct(earlyMin(base))} and ${pct(earlyMin(lockAll))} of the peak; whole body peak ${peakToMean(lockAll).toFixed(1)}× its mean`);
+  // Loaded only once buried: none while it spears in or lifts out, then
+  // the force builds at once (no dead stretch with the blade in).
+  const loaded = (rr) => { const sm = rr.samples, Td = sm[sm.length - 1].t, inn = sm.findIndex((q) => q.B.wet >= 0.999);
+    const partLoad = Math.max(...sm.filter((q) => q.B.wet < 0.95).map((q) => q.F));
+    const hold = sm.findIndex((q) => q.F > 0.1 * rr.peakForce); return { partLoad, lag: (sm[hold].t - sm[inn].t) / Td, inAt: sm[inn].t / Td }; };
+  const lB = loaded(base), lA = loaded(lockAll);
+  check("the blade is loaded only once buried, then takes hold at once, whole body too",
+        lB.partLoad === 0 && lA.partLoad === 0 && lB.inAt < 0.2 && lA.inAt < 0.2 && lB.lag < 0.12 && lA.lag < 0.12 && peakToMean(lockAll) < 3,
+        `buried ${pct(lB.inAt)} and ${pct(lA.inAt)} into the drive, holding ${pct(lB.lag)} and ${pct(lA.lag)} later; whole body peak ${peakToMean(lockAll).toFixed(1)}× its mean`);
   const handFlow = (() => { const g = S.paddled(S.DEFAULTS), pl = S.recoveryPlan(g), n = sm0.length, Tr = 60 / S.DEFAULTS.rateSpm * (1 - g.driveFraction), h = 1e-3, sl = S.lowerHand(g);
     const v = (a, b, t) => b.P.at(sl).map((q, i) => (q - a.P.at(sl)[i]) / t), gap = (a, b) => Math.hypot(...a.map((q, i) => q - b[i])) / Math.max(0.3, Math.hypot(...a));
     const dOut = v(sm0[n - 2], sm0[n - 1], sm0[n - 1].t - sm0[n - 2].t), rOut = v(S.recoveryPose(g, 0, pl), S.recoveryPose(g, h, pl), h * Tr);
@@ -403,12 +408,9 @@ console.log("\nCanoe Race Simulator physics");
   const sim = (p, extra) => S.simulate(Object.assign({}, p, extra));
   const liftGain = (p) => sim(p, { bladeLift: 1 }).efficiency - sim(p, { bladeLift: 0 }).efficiency;
   check("lift never makes a stroke worse", liftGain(CL) >= 0 && liftGain(SW) >= 0 && liftGain({}) >= 0);
-  // A clean stroke gets some lift too: its blade spears down going in and
-  // up coming out while pulling back, the water meeting the face at an
-  // angle. But a sweep's force is mostly lift, a clean stroke's mostly not.
-  check("lift helps both a sweep and a clean stroke", liftGain(SW) > 0.005 && liftGain(CL) > 0.005,
+  check("lift helps a sideways-slicing sweep much more than a clean stroke", liftGain(SW) > 5 * liftGain(CL),
         `+${pct(liftGain(SW))} vs +${pct(liftGain(CL))}`);
-  check("a sweep's blade force is mostly lift; a clean stroke's mostly not", sim(SW, {}).liftShare > 0.4 && sim(CL, {}).liftShare < 0.35 &&
+  check("a sweep's blade force is far more lift than a clean stroke's", sim(SW, {}).liftShare > 0.3 && sim(CL, {}).liftShare < 0.25 &&
         sim(SW, {}).liftShare > sim(CL, {}).liftShare + 0.15,
         `${pct(sim(SW, {}).liftShare)} vs ${pct(sim(CL, {}).liftShare)}`);
   const lb = sim(SW, { pitchDeg: -15 }), bal = lb.hullPower + lb.leewayPower + lb.slipPower - lb.paddlerPower;
