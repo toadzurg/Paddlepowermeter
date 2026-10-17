@@ -172,6 +172,12 @@
     gearOn: 0,
     armBestMs: 0.87,           // the lower hand's speed against its shoulder (along the pull) you hold the most power at, m/s: the default stroke's at 60 spm
     gearDrop: 0.15,            // share of the arms' power lost at half or 1.5 times it
+    // The trunk's own (with gearing on): its paddle-side shoulder's speed
+    // through the drive it holds the most power at (the default stroke with
+    // full rotation, at 60 spm), and the share of the power rotation and a
+    // hinge add that it loses at half or 1.5 times that.
+    trunkBestMs: 0.91,
+    trunkDrop: 0.15,
     // The paddler's body, m, fitted to the paddle each moment (see fitBody).
     // Results change through strength by position: by angle, the arm length;
     // from the arms, every length. Otherwise it's for the drawings and the
@@ -192,7 +198,7 @@
 
   // Who's paddling, as opposed to how.
   const PROFILE_KEYS = ["heightM", "torsoM", "shoulderM", "upperArmM", "forearmM", "thighM", "shinM", "massKg", "fitnessW",
-                        "strengthOn", "strengthPeakDeg", "strengthDrop", "gearOn", "armBestMs", "gearDrop"];
+                        "strengthOn", "strengthPeakDeg", "strengthDrop", "gearOn", "armBestMs", "gearDrop", "trunkBestMs", "trunkDrop"];
   const rad = (d) => (d * Math.PI) / 180;
   const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
   const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -950,29 +956,44 @@
     const ref = Object.assign({}, DEFAULTS, Object.fromEntries(PROFILE_KEYS.map((k) => [k, q[k]])));
     return driveTiming(paddled(q)).mean / driveTiming(paddled(ref)).mean;
   }
-  // Gearing (off by default): muscles make the most power at one speed. A
-  // linear force–velocity line makes power a parabola in speed, so the arms
-  // hold less the further their speed (armSpeed, set by the stroke rate,
-  // the drive's share, the stroke's length and the hands' spacing) is from
-  // armBestMs, losing gearDrop at half or 1.5 times it. It sets the arms'
-  // share of what you hold; trunk and legs move at their own speeds.
-  // Assumed until measured: the meter's force and shaft speed at a few
-  // rates give the paddler's own line.
+  // Gearing (off by default): muscles make the most power at one speed (Hill's
+  // force–velocity relation). A linear force–velocity line makes power a
+  // parabola in speed, so the arms hold less the further their speed
+  // (armSpeed, set by the stroke rate, the drive's share, the stroke's
+  // length and the hands' spacing) is from armBestMs, losing gearDrop at
+  // half or 1.5 times it. It sets the arms' share of what you hold.
+  // The trunk has its own: what rotation and a hinge add scales the same way
+  // with the trunk's speed (trunkSpeed) against trunkBestMs, losing
+  // trunkDrop. Its muscles are mostly slow fibres (erector spinae and the
+  // abdominals about 55–58% type I, against 32–40% in the triceps), and a
+  // slow fibre's power peaks at a lower speed, so its best needn't be the
+  // arms'. The legs move at their own speed. Assumed until measured: the
+  // meter's force and shaft speed at a few rates give the paddler's arms'
+  // line; the trunk's needs its motion as well.
+  const parabola = (speed, best, drop) => { const x = speed / best - 1; return Math.max(STRENGTH_MIN, 1 - 4 * drop * x * x); };
   function gearFactor(p) {
     const q = Object.assign({}, DEFAULTS, p);
-    if (!q.gearOn) return 1;
-    const x = bodyThroughDrive(paddled(q)).armSpeed / q.armBestMs - 1;
-    return Math.max(STRENGTH_MIN, 1 - 4 * q.gearDrop * x * x);
+    return q.gearOn ? parabola(bodyThroughDrive(paddled(q)).armSpeed, q.armBestMs, q.gearDrop) : 1;
   }
-  // The stroke rate that puts the arms at their best speed: arm speed is the
-  // arm's path over the drive's time, so it goes as the rate.
-  const bestRate = (p) => {
+  function trunkGearFactor(p) {
     const q = Object.assign({}, DEFAULTS, p);
-    return q.rateSpm * q.armBestMs / bodyThroughDrive(paddled(q)).armSpeed;
+    return q.gearOn ? parabola(bodyThroughDrive(paddled(q)).trunkSpeed, q.trunkBestMs, q.trunkDrop) : 1;
+  }
+  // The power rotation and a hinge add, as a share of fitness.
+  const trunkShareOf = (q) => 0.12 * (q.rotation || 0) + 0.08 * (q.hinge || 0);
+  // The stroke rate that holds the most: arm and trunk speeds both go as the
+  // rate, so it's where the two parabolas, weighted by the power each sets
+  // and how fast it drops, peak together. With no rotation or hinge, the
+  // rate that puts the arms at their best.
+  const bestRate = (p) => {
+    const q = Object.assign({}, DEFAULTS, p), b = bodyThroughDrive(paddled(q));
+    const aA = b.armSpeed / q.rateSpm / q.armBestMs, aT = b.trunkSpeed / q.rateSpm / q.trunkBestMs;
+    const wA = 0.7 * q.gearDrop, wT = trunkShareOf(q) * q.trunkDrop;
+    return (wA * aA + wT * aT) / (wA * aA * aA + wT * aT * aT);
   };
   function capacity(p, hours = 1) {
     const q = Object.assign({}, DEFAULTS, p);
-    return q.fitnessW * (0.7 * gearFactor(q) + 0.12 * q.rotation + 0.1 * q.legDrive + 0.08 * q.hinge) * strengthFactor(q) *
+    return q.fitnessW * (0.7 * gearFactor(q) + trunkShareOf(q) * trunkGearFactor(q) + 0.1 * q.legDrive) * strengthFactor(q) *
       Math.pow(Math.max(1, hours), -0.07);
   }
 
@@ -1333,9 +1354,9 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 47;
+  const API_LEVEL = 48;
   const PADDLE = paddleOf(DEFAULTS);
-  const api = { API_LEVEL, shaftDir, paddled, paddleOf, gearFactor, bestRate, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
+  const api = { API_LEVEL, shaftDir, paddled, paddleOf, gearFactor, trunkGearFactor, bestRate, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.StrokeSim = api;
 })(typeof window !== "undefined" ? window : globalThis);

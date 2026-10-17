@@ -75,7 +75,7 @@
       topHand: Math.max(0, TOP_LOW * k - top[0]) + Math.max(0, top[1] - TOP_HIGH * k),
       stable: Math.max(0, needs.gmMin - GM),
     };
-    return { setup: p, speed: r.speedAt(watts), watts, GM, top, armSpeed: body.armSpeed, trunkShare: body.trunkShare, strokesPerSide: r.strokesPerSide, past,
+    return { setup: p, speed: r.speedAt(watts), watts, GM, top, armSpeed: body.armSpeed, trunkSpeed: body.trunkSpeed, trunkShare: body.trunkShare, strokesPerSide: r.strokesPerSide, past,
              ok: past.reach <= 0.01 && past.topHand === 0 && past.stable === 0 };
   }
   // Inside the limits beats outside them; then the faster, or the nearer the limits.
