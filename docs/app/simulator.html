@@ -28,7 +28,7 @@
     --button: #0b0b0b;
     --button-text: #fcfcfb;
     /* The 3D model (Fit tab): hull, clothes, skin, shorts, seat, and a part picked. */
-    --m3-hull: #ecebe4; --m3-cloth: #d9d7cf; --m3-skin: #d6b08f; --m3-legs: #4a4a47; --m3-seat: #8a6a48; --m3-pick: #e0a020;
+    --m3-hull: #ecebe4; --m3-cloth: #d9d7cf; --m3-skin: #d6b08f; --m3-legs: #4a4a47; --m3-seat: #d0913f; --m3-pick: #e0a020; --m3-edge: #3d3c39;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -50,7 +50,7 @@
       --water-line: #1c5cab;
       --button: #f0efec;
       --button-text: #1a1a19;
-      --m3-hull: #9a9993; --m3-cloth: #6f6e69; --m3-skin: #b8916f; --m3-legs: #55554f; --m3-seat: #7a5c3e; --m3-pick: #f0b030;
+      --m3-hull: #9a9993; --m3-cloth: #6f6e69; --m3-skin: #b8916f; --m3-legs: #55554f; --m3-seat: #d79a4c; --m3-pick: #f0b030; --m3-edge: #f0efec;
     }
   }
   * { box-sizing: border-box; }
@@ -3549,6 +3549,10 @@ function viewport(svg, v) {
 }
 const f2 = (q) => `${q[0].toFixed(1)},${q[1].toFixed(1)}`;
 const rad = (d) => (d * Math.PI) / 180, sub3 = (a, b) => a.map((v, k) => v - b[k]), add3 = (a, b) => a.map((v, k) => v + b[k]);
+const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const unit3 = (a) => { const n = Math.hypot(...a) || 1; return a.map((v) => v / n); };
+const mix3 = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
 
 // A USCA C1 marathon canoe: 18'6" long, 32" at its widest (just aft of
 // midships, a little above the waterline), pulled in to 17" at the gunwale
@@ -3624,21 +3628,49 @@ function timeline(x, t) {
 }
 onTap($("slow"), () => { slow = !slow; $("slow").textContent = slow ? "Normal speed" : "Slow motion"; });
 
-// The recovery, as a paddler does it: the top hand travels from the exit to
-// the catch, up to TOP_LIFT higher on the way, and the shaft swings about it
-// from its exit angle to its catch angle. To bring the blade out, the shaft
-// tilts toward the horizontal (the way it leans, and out by TILT_OUT) just
-// enough to carry the blade BLADE_CLEAR above the water, easing in over
-// CLEAR_RAMP of the recovery after the exit and out before the catch.
-// Lifting the whole paddle instead put the top hand out of reach, and the
-// body jerked trying to follow it. Drawing only: no forces in the recovery.
-const TOP_LIFT = 0.1, BLADE_CLEAR = 0.05, CLEAR_RAMP = 0.25, TILT_OUT = 0.3;
+// The recovery, as a C1 paddler does it (drawing only: no forces in it):
+//  - Exit: the top hand moves forward and drops (TOP_FWD, TOP_DROP), so the
+//    shaft levers the blade up, and the blade slices out sideways, edge
+//    first, as the shaft swings out from behind.
+//  - Carry: the blade turns flat (FEATHER) and travels forward low over the
+//    water, BLADE_CLEAR up. The top hand comes up in front of the face
+//    (TOP_CARRY, TOP_NEAR) as the shaft swings round: the higher and nearer
+//    the top hand, the steeper the shaft, and the less the blade swings out.
+//  - Catch: the blade squares and the shaft swings down to the catch.
+// The top hand sets where the paddle is; the shaft swings from its exit
+// direction to its catch direction around the outside, tilting toward the
+// horizontal only as far as the blade needs to clear the water. Every
+// motion eases in and out, so nothing jumps where the drive ends or starts.
+// The top hand comes up to TOP_CARRY above the shoulders (about chin
+// height, for a 1.78 m paddler) and in toward TOP_NEAR from the centreline.
+const SLICE_OUT = 0.3, TOP_CARRY = 0.24, TOP_NEAR = 0.15, TOP_DROP = 0.06, TOP_FWD = 0.1, BLADE_CLEAR = 0.05, CLEAR_RAMP = 0.25, FEATHER = rad(80);
 // How high the paddle is carried over the boat mid-switch, m.
 const SWITCH_OVER = 0.2;
 const smoothstep = (x) => { const t = Math.min(1, Math.max(0, x)); return t * t * (3 - 2 * t); };
 // How far the blade is brought clear at recovery progress u (0: where the
 // stroke leaves it, 1: BLADE_CLEAR up); held up when carried into a switch.
 const recoveryClear = (u, hold = false) => smoothstep(u / CLEAR_RAMP) * (hold ? 1 : smoothstep((1 - u) / CLEAR_RAMP));
+// A smooth bump: 0 with no speed at u = 0 and 1, 1 at u = peak.
+const bump = (u, peak) => Math.sin(Math.PI * Math.pow(Math.min(1, Math.max(0, u)), Math.log(0.5) / Math.log(peak))) ** 2;
+// The top hand up and in for the carry: held from 0.4 to 0.6 of the
+// recovery, so it's there as the shaft swings past straight out (and 1 at
+// the middle, where a switch's lift takes over from it).
+const carryAt = (u) => smoothstep(u / 0.4) * smoothstep((1 - u) / 0.4);
+// The blade turned flat through the carry: turning after the slice out, square again before the catch.
+const featherAt = (u) => smoothstep((u - 0.12) / 0.3) * smoothstep((0.9 - u) / 0.22);
+// The face direction S.blade() took to give a drive sample's blade (its
+// normal, less the bend and the pitch), to carry on from in the recovery.
+function driveFace(g, sm) {
+  const d = sm.P.d, b = rad(g.bendDeg), n = sm.B.n;
+  const ey = unit3(n.map((v, i) => v - d[i] * Math.sin(b)));
+  return g.pitchDeg ? turn3(ey, d, rad(g.pitchDeg)) : ey;
+}
+// Turn v about the unit axis k by a (Rodrigues).
+const turn3 = (v, k, a) => {
+  const c = Math.cos(a), s = Math.sin(a), kv = k[0] * v[0] + k[1] * v[1] + k[2] * v[2];
+  const x = [k[1] * v[2] - k[2] * v[1], k[2] * v[0] - k[0] * v[2], k[0] * v[1] - k[1] * v[0]];
+  return v.map((q, i) => q * c + x[i] * s + k[i] * kv * (1 - c));
+};
 // Pose and forces at cycle phase ∈ [0, 1): the drive, then the recovery.
 // lift (from timeline()): { clear, top, over } in place of the ordinary
 // recovery's, around a switch: the share of the blade's clearance and of
@@ -3652,25 +3684,51 @@ function stateAt(r, ph, lift = null) {
     return { P: sm.P, B: sm.B, thrust: sm.thrust, F: sm.F, inDrive: true };
   }
   const g = r.geom, u = (ph - df) / (1 - df), e = (1 - Math.cos(Math.PI * u)) / 2;
-  const L = lift || { clear: recoveryClear(u), top: Math.sin(Math.PI * u), over: 0 };
+  const L = lift || { clear: recoveryClear(u), top: carryAt(u), over: 0 };
   const exit = S.pose(g, 1), cat = S.pose(g, 0), mix = (a, b) => a + (b - a) * e;
-  const th = mix(exit.th, cat.th), d0 = S.shaftDir(th, rad(g.leanDeg), mix(exit.psi, cat.psi));
-  const ge = exit.at(0), gc = cat.at(0);
-  const grip = [mix(ge[0], gc[0]), mix(ge[1], gc[1]), mix(ge[2], gc[2]) + TOP_LIFT * L.top + L.over];
-  const face = [-Math.cos(th), 0, Math.sin(th)];
-  const paddle = (d) => { const P = { d, th, at: (s) => grip.map((v, j) => v + d[j] * s) }; return { P, B: S.blade(g, P, face) }; };
-  const lowest = ({ B }) => Math.min(B.tip[2], B.throat[2]);
-  // Tilt d0 by a toward the horizontal the way it leans (and out).
-  const toward = [d0[0], d0[1] - TILT_OUT, 0], k = toward.reduce((a, v, j) => a + v * d0[j], 0);
-  let h = toward.map((v, j) => v - k * d0[j]);
-  const hn = Math.hypot(...h); h = h.map((v) => v / hn);
-  const tilted = (a) => paddle(d0.map((v, j) => Math.cos(a) * v + Math.sin(a) * h[j]));
-  let st = paddle(d0);
+  // The top hand: from the exit to the catch, forward and down out of the
+  // exit, in over the gunwale and up again through the carry.
+  const ge = exit.at(0), gc = cat.at(0), out = Math.sign(ge[1]) || -1, k = (g.heightM || 1.78) / 1.78;
+  const shoulderZ = g.seatZM + g.torsoM * Math.cos(rad(20)), gz = mix(ge[2], gc[2]), gy = mix(ge[1], gc[1]);
+  const grip = [mix(ge[0], gc[0]) + TOP_FWD * bump(u, 0.35),
+    gy - out * Math.max(0, Math.abs(gy) - TOP_NEAR * k) * carryAt(u),
+    gz - TOP_DROP * bump(u, 0.15) + Math.max(0, shoulderZ + TOP_CARRY * k - gz) * L.top + L.over];
+  // The shaft's tilt from vertical (tl) and which way it points from the
+  // top hand, seen from above (az): from the exit's to the catch's, round
+  // the outside of the boat. SLICE_OUT of that turn comes in the exit, so
+  // the blade leaves the water up and out to the side, not back; the rest
+  // swings it forward through the carry.
+  const tl = (d) => Math.acos(Math.max(-1, Math.min(1, -d[2]))), az = (d) => Math.atan2(d[1], d[0]);
+  const ae = az(exit.d), ac = az(cat.d);
+  let da = Math.atan2(Math.sin(ac - ae), Math.cos(ac - ae));
+  if (Math.sin(ae + da / 2) * out < 0) da -= Math.sign(da) * 2 * Math.PI;
+  const a = ae + da * (SLICE_OUT * smoothstep(u / 0.3) + (1 - SLICE_OUT) * smoothstep((u - 0.3) / 0.65)), t0 = mix(tl(exit.d), tl(cat.d));
+  const dir = (t) => [Math.sin(t) * Math.cos(a), Math.sin(t) * Math.sin(a), -Math.cos(t)];
+  // The power face, turned flat about the shaft through the carry, face up.
+  // From the way the drive left it to the way the next drive takes it (a
+  // sweep turns it), so it doesn't jump at either end. Which way it turns
+  // flat is the way that leaves the face up mid-carry, the same all stroke.
+  const fx = driveFace(g, r.samples[r.samples.length - 1]), fc = driveFace(g, r.samples[0]);
+  const th = mix(exit.th, cat.th), face0 = unit3(mix3(fx, fc, e)), fe = featherAt(u);
+  const am = ae + da * (SLICE_OUT + (1 - SLICE_OUT) * smoothstep(0.2 / 0.65)), tm = (tl(exit.d) + tl(cat.d)) / 2;
+  const dm = [Math.sin(tm) * Math.cos(am), Math.sin(tm) * Math.sin(am), -Math.cos(tm)], fm = unit3(mix3(fx, fc, 0.5));
+  const turnBy = turn3(fm, dm, FEATHER)[2] >= turn3(fm, dm, -FEATHER)[2] ? FEATHER : -FEATHER;
+  const paddle = (d) => {
+    const f = fe > 0 ? turn3(face0, d, turnBy * fe) : face0;
+    const P = { d, th, at: (s) => grip.map((v, j) => v + d[j] * s) };
+    return { P, B: S.blade(g, P, f) };
+  };
+  // The blade's lowest point: its tip and throat, across its width.
+  const lowest = ({ B }) => {
+    const along = unit3(sub3(B.tip, B.throat)), across = unit3(cross3(along, B.n)), w = g.bladeWidthM / 2;
+    return Math.min(B.tip[2] - Math.abs(across[2]) * w, B.throat[2] - Math.abs(across[2]) * w * 0.3);
+  };
+  let st = paddle(dir(t0));
   const target = lowest(st) + (BLADE_CLEAR - lowest(st)) * L.clear;
   if (lowest(st) < target) {
-    let lo = 0, hi = Math.PI / 2;
-    for (let i = 0; i < 30; i++) { const a = (lo + hi) / 2; if (lowest(tilted(a)) < target) lo = a; else hi = a; }
-    st = tilted(hi);
+    let lo = t0, hi = Math.PI / 2;
+    for (let i = 0; i < 30; i++) { const t = (lo + hi) / 2; if (lowest(paddle(dir(t))) < target) lo = t; else hi = t; }
+    st = paddle(dir(hi));
   }
   return { P: st.P, B: st.B, thrust: [0, 0, 0], F: 0, inDrive: false };
 }
@@ -3728,19 +3786,24 @@ function figJoints(r, c, ph, lift = null, m = 1) {
     fits.set(key, b);
   }
   const HIP = b.hip, sh = b.centre, off = b.off, pad = b.pad, k = (p.heightM || 1.78) / 1.78;
-  const head0 = add3(sh, b.up.map((v) => v * 0.24 * k));
+  // The neck holds the head up to look ahead: it tilts less than half as far as the trunk.
+  const head0 = add3(sh, unit3(mix3(b.up, [0, 0, 1], 0.6)).map((v) => v * 0.23 * k));
   const legDz = 0.04 * (p.legDrive || 0) * (ph < df ? Math.sin(Math.PI * ph / df) : 0);
   const along = (a, d, len) => { const n = Math.hypot(...d); return a.map((v, j) => v + (d[j] / n) * len); };
   const knee0 = along(HIP, [0.42, 0, 0.16], p.thighM); knee0[2] -= legDz;
   const foot0 = along(knee0, [0.36, 0, -0.30], p.shinM);
   const J = acrossTheBoat({ hip: HIP, knee: knee0, foot: foot0, sh, head: head0, off, pad }, m, st.P.at, sLow);
   J.k = k; J.fit = b; J.st = st;
-  // Elbows: upper arm and forearm, bent down and out (straight if the hand is at full reach).
+  // Elbows: upper arm and forearm (straight if the hand is at full reach),
+  // bent the way an elbow goes: down, out to its own side and back. The
+  // lower arm's points further back, so at the exit, with the hand behind
+  // the shoulder, it folds back and up behind the body as in a pull, not
+  // forward.
   const ua = p.upperArmM, fa = p.forearmM;
   const elbow = (a, b, out) => {
     const d = sub3(b, a), L = Math.hypot(...d);
     if (L >= ua + fa || L <= Math.abs(ua - fa)) return null;
-    const u = d.map((v) => v / L), hint = [0, out, -1], hu = hint.reduce((q, v, j) => q + v * u[j], 0);
+    const u = d.map((v) => v / L), hint = [out > 0 ? -0.3 : -0.8, 0.6 * out, -1], hu = hint.reduce((q, v, j) => q + v * u[j], 0);
     let n = hint.map((v, j) => v - hu * u[j]); const nl = Math.hypot(...n) || 1; n = n.map((v) => v / nl);
     const x0 = (ua * ua - fa * fa + L * L) / (2 * L), h = Math.sqrt(Math.max(0, ua * ua - x0 * x0));
     return a.map((v, j) => v + u[j] * x0 + n[j] * h);
@@ -4082,10 +4145,6 @@ function drawFitMap() {
 // pinch or Ctrl + scroll to zoom; tap a part to zoom to it and set it. Drawn
 // as SVG far to near (no depth buffer), with the water a tinted plane drawn
 // between what's under it and what's above.
-const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-const unit3 = (a) => { const n = Math.hypot(...a) || 1; return a.map((v) => v / n); };
-const mix3 = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
 const LIGHT3 = unit3([0.35, -0.45, 0.85]);   // from ahead, the paddle side and above
 // The hull as quads: the widest section (as the end view draws it), gunwale
 // to keel, scaled at each station to the gunwale and beam there, and from
@@ -4198,19 +4257,22 @@ function m3Scene(r, x, ph, ghost) {
   const add = (o) => out.push(Object.assign(o, { ghost }));
   const seg = (a, b, rr, fill, part) => a && b && add({ kind: "seg", a, b, r: rr, fill, part });
   const ball = (c, rr, fill, part) => add({ kind: "ball", c, r: rr, fill, part });
-  // Seat: a box under the hips, down to the floor.
-  const hip = J.hip, top = hip[2] - 0.07, floor = Math.min(top - 0.01, c1Keel(hip[0]) + 0.03);
-  const sx = [hip[0] - 0.16, hip[0] + 0.1], sy = [-0.15, 0.15];
-  const box = (a, b, c, d, n) => add({ kind: "poly", pts: [a, b, c, d], n, fill: "var(--m3-seat)", part: "seat", solid: true });
-  const v = (i, j, z) => [sx[i], sy[j], z];
-  box(v(0, 0, top), v(1, 0, top), v(1, 1, top), v(0, 1, top), [0, 0, 1]);
-  box(v(1, 0, top), v(1, 1, top), v(1, 1, floor), v(1, 0, floor), [1, 0, 0]);
-  box(v(0, 0, top), v(0, 1, top), v(0, 1, floor), v(0, 0, floor), [-1, 0, 0]);
-  box(v(0, 0, top), v(1, 0, top), v(1, 0, floor), v(0, 0, floor), [0, -1, 0]);
-  box(v(0, 1, top), v(1, 1, top), v(1, 1, floor), v(0, 1, floor), [0, 1, 0]);
+  // Seat: a pan under the hips on a pedestal down to the floor, fixed in
+  // the boat (the hips can bob above it), outlined so it reads inside the hull.
+  const hx = r.body.seatX, top = p.seatZM - 0.07, floor = c1Keel(hx) + 0.03;
+  const block = (x0, x1, w, z0, z1) => {
+    if (z1 - z0 < 0.002) return;
+    const v = (i, j, z) => [i ? x1 : x0, j ? w : -w, z];
+    for (const [pts, n] of [[[v(0, 0, z1), v(1, 0, z1), v(1, 1, z1), v(0, 1, z1)], [0, 0, 1]],
+      [[v(1, 0, z1), v(1, 1, z1), v(1, 1, z0), v(1, 0, z0)], [1, 0, 0]], [[v(0, 0, z1), v(0, 1, z1), v(0, 1, z0), v(0, 0, z0)], [-1, 0, 0]],
+      [[v(0, 0, z1), v(1, 0, z1), v(1, 0, z0), v(0, 0, z0)], [0, -1, 0]], [[v(0, 1, z1), v(1, 1, z1), v(1, 1, z0), v(0, 1, z0)], [0, 1, 0]]])
+      add({ kind: "poly", pts, n, fill: "var(--m3-seat)", part: "seat", solid: true, edge: true });
+  };
+  block(hx - 0.17, hx + 0.12, 0.16, Math.max(floor, top - 0.03), top);
+  block(hx - 0.12, hx + 0.07, 0.11, floor, top - 0.03);
   // Legs to a foot brace, both sides.
   const brace = J.foot[0] + 0.04;
-  seg([brace, -0.17, J.foot[2] - 0.02], [brace, 0.17, J.foot[2] - 0.02], 0.022, "var(--m3-seat)", "legs");
+  seg([brace, -0.17, J.foot[2] - 0.02], [brace, 0.17, J.foot[2] - 0.02], 0.022, "var(--m3-legs)", "legs");
   for (const s of [1, -1]) {
     const o = (q, dy) => [q[0], q[1] + s * dy, q[2]];
     seg(o(J.hip, 0.09), o(J.knee, 0.11), 0.065 * k, "var(--m3-legs)", "legs");
@@ -4257,7 +4319,7 @@ function m3Dims(sc) {
   const { J, r } = sc, p = r.params, st = J.st, B = st.B, grip = st.P.at(0), cm = (v) => `${fmtNum(v * 100, 0)} cm`;
   const offset = (a, b, d) => [add3(a, d), add3(b, d)];
   switch (m3.sel) {
-    case "seat": { const x = J.hip[0], y = -C1.beam - 0.12; return [{ a: [x, y, 0], b: [x, y, J.hip[2]], text: `Seat ${cm(p.seatZM)}` }]; }
+    case "seat": { const x = r.body.seatX + 0.12, y = -0.16; return [{ a: [x, y, 0], b: [x, y, p.seatZM], text: `hips ${cm(p.seatZM)} above the water` }]; }
     case "shaft": { const d = unit3(cross3(st.P.d, [0, 0, 1])).map((q) => q * 0.09), [a, b] = offset(grip, B.tip, d); return [{ a, b, text: `${fmtNum(p.paddleLenM / 0.0254, 1)} in` }]; }
     case "blade": { const d = unit3(cross3(st.P.d, [0, 0, 1])).map((q) => q * 0.16), [a, b] = offset(B.throat, B.tip, d); return [{ a, b, text: `${fmtNum(p.bladeLenM / 0.0254, 1)} × ${fmtNum(p.bladeWidthM / 0.0254, 1)} in` }]; }
     case "lowHand": { const d = unit3(cross3(st.P.d, [0, 0, 1])).map((q) => q * -0.09), [a, b] = offset(grip, J.rightHand, d); return [{ a, b, text: cm(S.lowerHand(r.geom)) }]; }
@@ -4298,11 +4360,13 @@ function m3Render() {
   // Everything, split at the water: under it, then the water, then above.
   const under = [], over = [];
   const put = (o, z) => (z < 0 ? under : over).push(o);
+  // Picking what's inside the hull: see through its near side.
+  const xray = m3.sel === "seat" || m3.sel === "legs";
   for (const q of HULL3.quads) {
     const outside = dot3(q.n, sub3(eye, q.c)) > 0, fill = shade("var(--m3-hull)", outside ? q.n : q.n.map((v) => -v), !outside);
     for (const [g, s] of [[(p) => p[2], 1], [(p) => -p[2], -1]]) {
       const pts = clipPoly(q.pts, g);
-      if (pts.length > 2) put({ kind: "poly", pts, fill, part: "hull" }, s > 0 ? 1 : -1);
+      if (pts.length > 2) put({ kind: "poly", pts, fill, part: "hull", xray: xray && outside }, s > 0 ? 1 : -1);
     }
   }
   for (const side of [1, -1]) {
@@ -4341,7 +4405,8 @@ function m3Render() {
         depth = v.reduce((a, q) => a + q[2], 0) / v.length;
         const d = `M${v.map((q) => pt(scr(q))).join(" L")} Z`;
         const fill = hl ? `color-mix(in srgb, var(--m3-pick) 55%, ${o.fill})` : o.fill;
-        svgEl = `<path${tag} d="${d}" fill="${fill}"${o.dry ? ` fill-opacity="0.75"` : ""} stroke="${fill}" stroke-width="0.6" stroke-linejoin="round"/>`;
+        svgEl = `<path${tag} d="${d}" fill="${fill}"${o.dry ? ` fill-opacity="0.75"` : o.xray ? ` fill-opacity="0.2" pointer-events="none"` : ""}` +
+          (o.edge ? ` stroke="var(--m3-edge)" stroke-width="1.2" stroke-opacity="0.8"` : o.xray ? ` stroke="none"` : ` stroke="${fill}" stroke-width="0.6"`) + ` stroke-linejoin="round"/>`;
       } else if (o.kind === "ball") {
         const v = view(o.c);
         if (v[2] < NEAR) continue;
@@ -4623,7 +4688,7 @@ requestAnimationFrame(frame);
 window.sim = {
   boats, results, PRESETS,
   get editing() { return editing; }, get race() { return race; }, get mode() { return mode; },
-  get run() { return run; }, setTab, shoulders, timeline, stateAt, get tab() { return tab; }, get score() { return lastScore && lastScore[0]; },
+  get run() { return run; }, setTab, shoulders, timeline, stateAt, figJoints, get tab() { return tab; }, get score() { return lastScore && lastScore[0]; },
   raceWallS: 12,   // seconds on screen for a whole race (tests shorten it)
 };
 })();
