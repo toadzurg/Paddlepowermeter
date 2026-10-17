@@ -65,7 +65,20 @@ console.log("\nCanoe Race Simulator physics");
   check("hull calibrated near a measured C-1 (k 4.26 at 109 kg)", base.speedAt(150) > 2.5 && base.speedAt(150) < 2.85,
         `${base.speedAt(150).toFixed(2)} m/s at 150 W`);
   check("plausible C1 speed at 150 W", base.speedAt(150) > 2.0 && base.speedAt(150) < 3.2, `${base.speedAt(150).toFixed(2)} m/s`);
-  check("blade stays buried during the drive", base.samples.every((s) => s.B.wet > 0.99));
+  // The blade goes in and comes out moving: still going in for the drive's
+  // first quarter and already coming out for its last, buried between, and
+  // its vertical speed carries on into the recovery and back out of it.
+  const mid = base.samples.filter((s) => s.u > 0.26 && s.u < 0.74), sm0 = base.samples;
+  check("blade buried through the pull, still going in at the catch and coming out at the exit",
+        mid.every((s) => s.B.wet > 0.99) && sm0[0].B.wet < 0.9 && sm0[sm0.length - 1].B.wet < 0.9,
+        `in ${(sm0[0].B.wet * 100).toFixed(0)}% at the catch, ${(sm0[sm0.length - 1].B.wet * 100).toFixed(0)}% at the exit`);
+  const flows = (() => { const g = S.paddled(S.DEFAULTS), pl = S.recoveryPlan(g), n = sm0.length, Tr = 60 / S.DEFAULTS.rateSpm * (1 - S.DEFAULTS.driveFraction), h = 1e-3;
+    const vz = (a, b, t) => (b.B.cop[2] - a.B.cop[2]) / t;
+    return [vz(sm0[n - 2], sm0[n - 1], sm0[n - 1].t - sm0[n - 2].t), vz(S.recoveryPose(g, 0, pl), S.recoveryPose(g, h, pl), h * Tr),
+            vz(S.recoveryPose(g, 1 - h, pl), S.recoveryPose(g, 1, pl), h * Tr), vz(sm0[0], sm0[1], sm0[1].t - sm0[0].t)]; })();
+  check("no dead stop at the exit or the catch: the blade's vertical speed carries across",
+        flows[0] > 0.5 && Math.abs(flows[1] / flows[0] - 1) < 0.1 && flows[3] < -0.5 && Math.abs(flows[2] / flows[3] - 1) < 0.1,
+        `exit ${flows[0].toFixed(2)} → ${flows[1].toFixed(2)} m/s, catch ${flows[2].toFixed(2)} → ${flows[3].toFixed(2)} m/s`);
 
   // The stroke itself doesn't care about rate; switching does: a switch takes
   // about the same time at any rate, so a higher rate loses more to it.
@@ -364,7 +377,9 @@ console.log("\nCanoe Race Simulator physics");
   const sim = (p, extra) => S.simulate(Object.assign({}, p, extra));
   const liftGain = (p) => sim(p, { bladeLift: 1 }).efficiency - sim(p, { bladeLift: 0 }).efficiency;
   check("lift never makes a stroke worse", liftGain(CL) >= 0 && liftGain(SW) >= 0 && liftGain({}) >= 0);
-  check("lift helps a sideways-slicing sweep much more than a clean stroke", liftGain(SW) > 5 * liftGain(CL),
+  // A clean stroke gets some too: its blade slices down going in and up
+  // coming out, across its face.
+  check("lift helps a sideways-slicing sweep much more than a clean stroke", liftGain(SW) > 2 * liftGain(CL),
         `+${pct(liftGain(SW))} vs +${pct(liftGain(CL))}`);
   check("a sweep's blade force is mostly lift; a clean stroke's mostly not", sim(SW, {}).liftShare > 0.4 && sim(CL, {}).liftShare < 0.25,
         `${pct(sim(SW, {}).liftShare)} vs ${pct(sim(CL, {}).liftShare)}`);
@@ -505,11 +520,15 @@ console.log("\nCanoe Race Simulator physics");
   const plan = (x) => S.recoveryPlan(S.paddled(Object.assign({}, S.DEFAULTS, x)));
   const presetPlans = Object.entries({ def: {}, long: LR, behind: { catchDeg: 12, exitDeg: 45 }, sweep: { leanDeg: 40, sweepDeg: 70, handOutM: 0.5, catchDeg: 25, exitDeg: 25 }, rot: { rotation: 1 } })
     .map(([k, x]) => [k, plan(x)]);
-  check("recovery: the cheapest pivots nearer the top hand than the lower hand (at it for the default stroke), in reach",
-        presetPlans.every(([, q]) => q.q < 0.5 && q.cost.past < 0.1) && presetPlans[0][1].q <= 0.1, presetPlans.map(([k, q]) => `${k} pivot ${(q.q * 100).toFixed(0)}%`).join(", "));
+  check("recovery: the cheapest pivots nearer the top hand than the lower hand (at or by it for the default stroke), in reach",
+        // (An upright catch spears the blade in from above: its top hand
+        // peaks a little over the forehead coming down into it.)
+        presetPlans.every(([k, q]) => q.q < 0.5 && q.cost.past < (k === "behind" ? 0.16 : 0.1)) && presetPlans[0][1].q <= 0.15, presetPlans.map(([k, q]) => `${k} pivot ${(q.q * 100).toFixed(0)}%`).join(", "));
   const lowSwing = plan({ recoveryPivot: 0 }), topSwing = plan({ recoveryPivot: 1 });
+  // (Less so since the blade leaves the water already coming out: there's
+  // less to lift it by.)
   check("recovery: the top hand dropping and swinging over the lower hand costs more, and overreaches",
-        topSwing.cost.joules > 1.4 * lowSwing.cost.joules && topSwing.cost.past > 0.3, `${topSwing.cost.joules.toFixed(0)} J vs ${lowSwing.cost.joules.toFixed(0)} J`);
+        topSwing.cost.joules > 1.15 * lowSwing.cost.joules && topSwing.cost.past > 0.3, `${topSwing.cost.joules.toFixed(0)} J vs ${lowSwing.cost.joules.toFixed(0)} J`);
   check("recovery: costs more at a higher rate (shorter, quicker) and with a heavier paddle",
         plan({ rateSpm: 80 }).watts > 1.6 * plan({}).watts && plan({ paddleKg: 0.6 }).cost.joules > plan({}).cost.joules,
         `${plan({}).watts.toFixed(0)} W at 60 spm, ${plan({ rateSpm: 80 }).watts.toFixed(0)} W at 80`);

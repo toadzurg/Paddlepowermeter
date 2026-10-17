@@ -830,8 +830,10 @@
       <details>
         <summary>How this works</summary>
         <ul>
-          <li><b>Blade:</b> stays buried to the throat. Its force grows with the square of its speed
-            through the water. The water hits it at an angle, so part of the force is lift.</li>
+          <li><b>Blade:</b> buried to the throat through the pull. It is still going in for the
+            first quarter of the drive and already coming out for the last, so it never stops dead at
+            the catch or the exit. Its force grows with the square of its speed through the water and
+            with how much of it is wet. The water hits it at an angle, so part of the force is lift.</li>
           <li><b>Boat:</b> a C1 marathon hull. Drag is from a coast-down test, scaled to the paddler's
             weight, plus an estimate of wave drag at race pace. Speed settles where the average forward
             push equals drag.</li>
@@ -861,7 +863,7 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of each engine file (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. The fit builds on the stroke engine. -->
-<script src="stroke-sim.js?v=29b03a7501"></script>
+<script src="stroke-sim.js?v=06d3cef223"></script>
 <script src="fit-sim.js?v=c12c9edd44"></script>
 <script>
 (() => {
@@ -905,7 +907,7 @@ function shown(el) {
 }
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 51;
+const NEEDS_API = 52;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";

@@ -221,18 +221,35 @@
     d = [d[0], d[1] * Math.cos(-phi) - d[2] * Math.sin(-phi), d[1] * Math.sin(-phi) + d[2] * Math.cos(-phi)];
     return [d[0] * Math.cos(psi) - d[1] * Math.sin(psi), d[0] * Math.sin(psi) + d[1] * Math.cos(psi), d[2]];
   }
+  // The blade going in and coming out: no paddler stops it dead at full
+  // depth at the catch and starts lifting it from there at the exit. It is
+  // still going in for the drive's first ENTRY and already coming out for
+  // its last EXIT_SHARE (the four-phase kayak stroke: entry, pull, exit,
+  // aerial), BLADE_OUT of its depth each way, moving: down as the drive
+  // starts, up as it ends; the recovery carries on from there. The force
+  // follows how much of the blade is in the water.
+  const ENTRY = 0.25, EXIT_SHARE = 0.25, BLADE_OUT = 0.25;
+  function inOut(p, u, d) {
+    const depth = BLADE_OUT * paddleOf(p).bladeLen * Math.max(0, -d[2]);
+    if (u < ENTRY) return depth * (1 - u / ENTRY) ** 2;
+    if (u > 1 - EXIT_SHARE) return depth * ((u - 1 + EXIT_SHARE) / EXIT_SHARE) ** 2;
+    return 0;
+  }
   // Paddle pose at drive progress u ∈ [0, 1].
   // When in the drive the force comes: leg drive holds it later, a drop
   // onto the paddle loads the blade early (u^w: w > 1 later, < 1 earlier).
   const driveWarp = (p) => (1 + 0.5 * (p.legDrive || 0)) * (1 - 0.35 * Math.min(1, (p.dropM || 0) / 0.1));
-  function pose(p, u) {
+  // dry: without the in and out (the swing alone, which sets the face).
+  function pose(p, u, dry = false) {
     const e = ease(Math.pow(u, driveWarp(p)));
     const th = rad(-p.catchDeg + (p.catchDeg + p.exitDeg) * e);
     const psi = rad(p.directionDeg + p.sweepDeg * (0.5 - e));
     const d = shaftDir(th, rad(p.leanDeg), psi);
     // The pivot stays put in the boat (plus hand travel aft), at the height
     // that puts the throat at the waterline.
-    const pivot = [-p.handTravelM * e, -p.handOutM, -d[2] * (paddleOf(p).throat - p.pivotFromGrip)];
+    // But for the blade still going in at the catch and already coming out
+    // at the exit (inOut, m).
+    const pivot = [-p.handTravelM * e, -p.handOutM, -d[2] * (paddleOf(p).throat - p.pivotFromGrip) + (dry ? 0 : inOut(p, u, d))];
     const at = (s) => add(pivot, mul(d, s - p.pivotFromGrip));  // point s m from the grip
     return { d, pivot, at, th, psi };
   }
@@ -429,7 +446,7 @@
     const seatX = seatFor(pg), arm = armOf(pg), out = [];
     let prev = null, last = null, path = 0, hand = 0, carried = 0, trunk = 0;
     for (let i = 0; i <= n; i++) {
-      const u = i / n, P = pose(pg, u), nn = neutralAt(pg, u), low = P.at(lowerHand(pg));
+      const u = i / n, P = pose(pg, u, true), nn = neutralAt(pg, u), low = P.at(lowerHand(pg));
       const b = fitBody(pg, seatX, P.at(0), low, nn, 0, prev || nn);
       prev = b.pose;
       const grip = P.at(0);
@@ -437,6 +454,7 @@
         // Along the pull: the hand's step, less what the shoulder carries
         // that way. The shoulder moving across the pull (rising out of a
         // drop as the hand goes aft) is the trunk's doing, not the arm's.
+        // (On the swing: the paddle going in and out isn't the pull.)
         const dh = sub(low, last.low), ds = sub(b.pad, last.pad), along = unit(dh), withHand = dot(ds, along);
         path += Math.abs(norm(dh) - withHand);
         hand += norm(dh); carried += withHand; trunk += norm(ds);
@@ -495,7 +513,8 @@
     let prev = null;
     const sAt = (u) => {
       if (p.strengthOn === 1) return strengthAt(p, (pose(p, u).th * 180) / Math.PI);
-      const P = pose(p, u), nn = neutralAt(p, u);
+      // The body on the swing: going in and out is the shoulders' small lift.
+      const P = pose(p, u, true), nn = neutralAt(p, u);
       const b = fitBody(p, seatX, P.at(0), P.at(lowerHand(p)), nn, 0, prev || nn);
       prev = b.pose;
       return (0.75 * pullStrength(p, b.low) + 0.25 * armStrength(p, b.top, TOP_ARM_BEST)) * trunkStrength(p, b.pose, nn);
@@ -538,11 +557,11 @@
       const span = (tb - ta) * Td;
       // Velocity of the shaft-axis point level with the blade centre.
       const sC = PADDLE.throat + PADDLE.copFromThroat;
-      let vAxis = mul(sub(Pb.at(sC), Pa.at(sC)), 1 / span);
-      // At the very ends the blade is momentarily still; use the swing
-      // direction there so the face orientation stays defined.
-      let face = vAxis;
-      if (norm(face) < 1e-6) face = sub(pose(p, Math.min(1, u + 0.02)).at(sC), pose(p, Math.max(0, u - 0.02)).at(sC));
+      // The face squares to the swing (going in and out doesn't turn it).
+      // At the very ends the swing is momentarily still; use its direction
+      // there so the face orientation stays defined.
+      let face = sub(pose(p, timing.at(tb), true).at(sC), pose(p, timing.at(ta), true).at(sC));
+      if (norm(face) < 1e-9) face = sub(pose(p, Math.min(1, u + 0.02), true).at(sC), pose(p, Math.max(0, u - 0.02), true).at(sC));
       const B = blade(p, P, face);
       const Ba = blade(p, Pa, face), Bb = blade(p, Pb, face);
       const vBlade = mul(sub(Bb.cop, Ba.cop), 1 / span);       // relative to the boat
@@ -1052,8 +1071,27 @@
   // The face the drive leaves the blade with, and takes it at (its motion there).
   const driveFace = (p, u) => {
     const sC = paddleOf(p).throat + paddleOf(p).copFromThroat;
-    return unit(sub(pose(p, Math.min(1, u + 0.02)).at(sC), pose(p, Math.max(0, u - 0.02)).at(sC)));
+    return unit(sub(pose(p, Math.min(1, u + 0.02), true).at(sC), pose(p, Math.max(0, u - 0.02), true).at(sC)));
   };
+  // The paddle's rise at recovery progress u (m) that carries on the
+  // drive's: up as the blade comes out at the exit, down as it goes in at
+  // the catch (Hermite terms: nothing at either end, the speed there the
+  // drive's), so the blade never stops dead.
+  const carryCache = new Map(), CARRY = 0.25;
+  function carryOn(p) {
+    const key = JSON.stringify(p);
+    if (carryCache.has(key)) return carryCache.get(key);
+    const tm = driveTiming(p), Td = 60 / p.rateSpm * p.driveFraction, Tr = 60 / p.rateSpm * (1 - p.driveFraction), h = 1e-3;
+    const z = (u) => pose(p, u).pivot[2];
+    const vOut = (z(1) - z(tm.at(1 - h))) / (h * Td), vIn = (z(tm.at(h)) - z(0)) / (h * Td);
+    // Each dies away over CARRY of the recovery, as the arms take the paddle's
+    // weight: no further rise or fall than its speed carries it that far.
+    const k = (x) => (x < CARRY ? x * (1 - x / CARRY) ** 2 : 0);
+    const f = (u) => vOut * Tr * k(u) - vIn * Tr * k(1 - u);
+    if (carryCache.size > 60) carryCache.clear();
+    carryCache.set(key, f);
+    return f;
+  }
   // The paddle at recovery progress u for plan { q, lift, in }. L: the
   // shares { clear, top, over } in place of the ordinary ones (a switch).
   function recoveryPose(p, u, plan, L = null) {
@@ -1062,7 +1100,7 @@
     L = L || { clear: recoveryClear(u), top: carryAt(u), over: 0 };
     const pe = exit.at(sp), pc = cat.at(sp), piv = [mix(pe[0], pc[0]), mix(pe[1], pc[1]), mix(pe[2], pc[2])];
     piv[1] -= out * plan.in * carryAt(u);
-    piv[2] += plan.lift * L.top + L.over;
+    piv[2] += plan.lift * L.top + L.over + carryOn(p)(u);
     const tl = (d) => Math.acos(Math.max(-1, Math.min(1, -d[2]))), az = (d) => Math.atan2(d[1], d[0]);
     const ae = az(exit.d), ac = az(cat.d);
     let da = Math.atan2(Math.sin(ac - ae), Math.cos(ac - ae));
@@ -1136,10 +1174,15 @@
     const T = 60 / p.rateSpm * (1 - p.driveFraction), N = REC_STEPS, dt = T / N, sLow = lowerHand(p);
     const k = (p.heightM || 1.78) / 1.78, body = (p.massKg - BOAT_KG), sm = SEG.m[p.female ? 1 : 0].map((f) => f * body);
     const mP = p.paddleKg, mShaft = 0.4 * mP / 5, mBlade = 0.6 * mP / 3, arm = p.upperArmM + p.forearmM;
+    // One step either side of the recovery is the drive's, so the speed the
+    // arms and paddle carry across the exit and the catch counts.
+    const tm = driveTiming(p), Td = 60 / p.rateSpm * p.driveFraction;
+    const driveAt = (u) => { const P = pose(p, u); return { P, B: blade(p, P, driveFace(p, u)) }; };
     const frames = [];
     let past = 0, wide = 0;
-    for (let i = 0; i <= N; i++) {
-      const u = i / N, e = ease(u), st = recoveryPose(p, u, plan), P = st.P, B = st.B;
+    for (let i = -1; i <= N + 1; i++) {
+      const u = Math.min(1, Math.max(0, i / N)), e = ease(u);
+      const st = i < 0 ? driveAt(tm.at(1 - dt / Td)) : i > N ? driveAt(tm.at(dt / Td)) : recoveryPose(p, u, plan), P = st.P, B = st.B;
       const sh = (k2) => add(mul(ends[0][k2], 1 - e), mul(ends[1][k2], e));
       const off = sh("off"), pad = sh("pad"), head = sh("head"), centre = sh("centre");
       const grip = P.at(0), low = P.at(sLow), pts = [];
@@ -1150,31 +1193,33 @@
           pts.push([add(com, r), m / 2], [sub(com, r), m / 2]);   // a dumbbell with the segment's radius of gyration
         }
         pts.push([H, sm[2]]);
-        past += Math.max(0, dist(S, H) / arm - REACH);
+        if (i >= 0 && i <= N) past += Math.max(0, dist(S, H) / arm - REACH);
       }
       for (let j = 0; j < 5; j++) pts.push([P.at((j + 0.5) / 5 * paddleOf(p).throat), mShaft]);
       const along = sub(B.tip, B.throat);
       for (const f of [1 / 6, 0.5, 5 / 6]) pts.push([add(B.throat, mul(along, f)), mBlade]);
       // The top hand: below the forehead, in front of the face.
-      past += Math.max(0, grip[2] - centre[2] - 0.3 * k) + Math.max(0, head[0] + 0.12 * k - grip[0]);
-      wide = Math.max(wide, Math.abs(B.cop[1]));
+      if (i >= 0 && i <= N) {
+        past += Math.max(0, grip[2] - centre[2] - 0.3 * k) + Math.max(0, head[0] + 0.12 * k - grip[0]);
+        wide = Math.max(wide, Math.abs(B.cop[1]));
+      }
       frames.push({ pts, B });
     }
-    // Energy at each step: kinetic between steps (at rest at both ends),
-    // potential at them.
+    // Energy between steps: kinetic and potential, from the drive's last
+    // step into the recovery to its first step back into the drive.
     const pe = (f) => f.pts.reduce((a, [x, m]) => a + m * G * x[2], 0);
-    const energy = [pe(frames[0])];
+    const energy = [];
     let air = 0;
-    for (let i = 0; i < N; i++) {
+    for (let i = 0; i + 1 < frames.length; i++) {
       const a = frames[i], b = frames[i + 1];
       let ke = 0;
       a.pts.forEach(([x, m], j) => { const v = dist(b.pts[j][0], x) / dt; ke += 0.5 * m * v * v; });
       energy.push(ke + (pe(a) + pe(b)) / 2);
+      if (i === 0 || i === frames.length - 2) continue;   // the drive's own steps
       // The blade through still air, the boat carrying it forward too.
       const v = add(mul(sub(b.B.cop, a.B.cop), 1 / dt), [NOMINAL_V, 0, 0]), vm = norm(v);
       if (vm > 1e-9) air += 0.5 * AIR * paddleOf(p).bladeLen * p.bladeWidthM * vm * vm * (BLADE_CD * Math.abs(dot(a.B.n, v)) / vm + SKIN_CD) * vm * dt;
     }
-    energy.push(pe(frames[N]));
     let pos = 0, neg = 0;
     for (let i = 1; i < energy.length; i++) { const d = energy[i] - energy[i - 1]; if (d > 0) pos += d; else neg -= d; }
     return { pos, neg, air, joules: pos + NEG_WORK * neg + air, past, wide };
@@ -1564,7 +1609,7 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 51;
+  const API_LEVEL = 52;
   const PADDLE = paddleOf(DEFAULTS);
   const api = { API_LEVEL, shaftDir, paddled, paddleOf, gearFactor, trunkGearFactor, bestRate, recoveryPlan, recoveryPose, recoveryCost, recoveryClear, elbowAt, handForces, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
