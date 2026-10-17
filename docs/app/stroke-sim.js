@@ -168,14 +168,14 @@
     strengthOn: 0,
     strengthPeakDeg: 0,        // shaft angle you pull hardest at; + = behind vertical
     strengthDrop: 0.4,
-    // Gearing (off by default): the arms hold the most power at one speed.
-    gearOn: 0,
+    // Gearing: the arms hold the most power at one speed.
+    gearOn: 1,
     armBestMs: 0.87,           // the lower hand's speed against its shoulder (along the pull) you hold the most power at, m/s: the default stroke's at 60 spm
-    gearDrop: 0.15,            // share of the arms' power lost at half or 1.5 times it
+    gearDrop: 0.15,            // share of the arms' power lost at half its best speed (less going faster)
     // The trunk's own (with gearing on): its paddle-side shoulder's speed
     // through the drive it holds the most power at (the default stroke with
     // full rotation, at 60 spm), and the share of the power rotation and a
-    // hinge add that it loses at half or 1.5 times that.
+    // hinge add that it loses at half that.
     trunkBestMs: 0.91,
     trunkDrop: 0.15,
     paddleKg: 0.3,             // the paddle's mass (a ZRE bent shaft: ~0.24–0.33 kg), most of it in the blade
@@ -987,12 +987,12 @@
     const ref = Object.assign({}, DEFAULTS, Object.fromEntries(PROFILE_KEYS.map((k) => [k, q[k]])));
     return driveTiming(paddled(q)).mean / driveTiming(paddled(ref)).mean;
   }
-  // Gearing (off by default): muscles make the most power at one speed (Hill's
+  // Gearing: muscles make the most power at one speed (Hill's
   // force–velocity relation). A linear force–velocity line makes power a
   // parabola in speed, so the arms hold less the further their speed
   // (armSpeed, set by the stroke rate, the drive's share, the stroke's
-  // length and the hands' spacing) is from armBestMs, losing gearDrop at
-  // half or 1.5 times it. It sets the arms' share of what you hold.
+  // length and the hands' spacing) is from its best, losing gearDrop at
+  // half of it (Hill's curve, below). It sets the arms' share of what you hold.
   // The trunk has its own: what rotation and a hinge add scales the same way
   // with the trunk's speed (trunkSpeed) against trunkBestMs, losing
   // trunkDrop. Its muscles are mostly slow fibres (erector spinae and the
@@ -1001,26 +1001,92 @@
   // arms'. The legs move at their own speed. Assumed until measured: the
   // meter's force and shaft speed at a few rates give the paddler's arms'
   // line; the trunk's needs its motion as well.
-  const parabola = (speed, best, drop) => { const x = speed / best - 1; return Math.max(STRENGTH_MIN, 1 - 4 * drop * x * x); };
+  //
+  // The best speeds rise with how hard you work: a cyclist's least-tiring
+  // cadence rises with power (Coast & Welch 1985, Foss & Hallén 2004: ~66
+  // rpm at the first lactate threshold to ~84 at maximal aerobic power), as
+  // a higher cadence asks less force each stroke (Takaishi 1996: least
+  // neuromuscular fatigue at 80–90 rpm, though oxygen cost is lowest at
+  // 60–70; Lucía 2004: pros at 366 W 7% more efficient at 100 rpm than at
+  // 60). So a paddler fitter than is typical for their size (whose every
+  // stroke is heavier at the same rate) is best moving faster, as
+  // (fitness / typical)^SPEED_WITH_FITNESS: ×1.18 at 1.5 times typical (the
+  // cycling studies give 0.3–0.45 for power within one rider).
+  // And the trunk's best is for the muscles it uses: rotation (the obliques)
+  // and a hinge (the hips and back) are each best at their own speed, so its
+  // best is trunkBestMs (full rotation's) scaled to the motion this mix of
+  // the two makes in the default stroke at 60 spm.
+  const SPEED_WITH_FITNESS = 0.4;
+  // A typical racer's one-hour power for age, sex and weight. The 200 W
+  // default is a 79 kg man of 35. It scales with muscle as body mass^⅔;
+  // a woman holds about 80% of a man's at the same weight (assumed: the gap is
+  // widest in the upper body, and women's kayak race speeds run 12–14% behind
+  // men's); and from 35 it falls 0.6% a year to 60, 1.2% to 70 and 2% after
+  // (masters records: 0.5–1% a year from 35, steeper after 60–70).
+  function ageShare(a) {
+    if (a <= 35) return 1;
+    if (a <= 60) return 1 - 0.006 * (a - 35);
+    if (a <= 70) return 0.85 - 0.012 * (a - 60);
+    return Math.max(0.3, 0.73 - 0.02 * (a - 70));
+  }
+  function typicalFitness(p) {
+    const q = Object.assign({}, DEFAULTS, p), kg = Math.max(30, q.massKg - BOAT_KG);
+    return Math.round((200 * Math.pow(kg / 79, 2 / 3) * (q.female ? 0.8 : 1) * ageShare(q.ageY)) / 5) * 5;
+  }
+  const fitnessSpeedUp = (q) => Math.pow(q.fitnessW / typicalFitness(q), SPEED_WITH_FITNESS);
+  const armBest = (p) => { const q = Object.assign({}, DEFAULTS, p); return q.armBestMs * fitnessSpeedUp(q); };
+  const trunkMixCache = new Map();
+  function trunkBest(p) {
+    const q = Object.assign({}, DEFAULTS, p), rot = q.rotation || 0, hinge = q.hinge || 0;
+    const key = `${rot}|${hinge}`;
+    if (!trunkMixCache.has(key)) {
+      const at = (x) => bodyThroughDrive(paddled(Object.assign({}, DEFAULTS, x))).trunkSpeed;
+      if (trunkMixCache.size > 60) trunkMixCache.clear();
+      trunkMixCache.set(key, rot + hinge > 0 ? at({ rotation: rot, hinge }) / at({ rotation: 1, hinge: 0 }) : 1);
+    }
+    return q.trunkBestMs * trunkMixCache.get(key) * fitnessSpeedUp(q);
+  }
+  // Power against speed is Hill's: force (1 − v)/(1 + v/k) of the
+  // isometric at shortening speed v (of the fastest), so power v·force,
+  // best at v* = k(√(1 + 1/k) − 1). k (a/F₀) is about 0.25 in human muscle,
+  // which loses 15% at half the best speed and only 9% at 1.5 times it
+  // (faster, the curve falls more slowly). k is set so `drop` is what's
+  // lost at half the best speed.
+  const hillCache = new Map();
+  function hillK(drop) {
+    if (!hillCache.has(drop)) {
+      const lossAtHalf = (k) => { const vs = k * (Math.sqrt(1 + 1 / k) - 1), P = (v) => v * (1 - v) / (1 + v / k); return 1 - P(vs / 2) / P(vs); };
+      let lo = 1e-4, hi = 1e4;   // a larger k: a straighter force line, more lost (25% at most)
+      for (let i = 0; i < 80; i++) { const m = Math.sqrt(lo * hi); if (lossAtHalf(m) > drop) hi = m; else lo = m; }
+      hillCache.set(drop, Math.sqrt(lo * hi));
+    }
+    return hillCache.get(drop);
+  }
+  const parabola = (speed, best, drop) => {
+    if (drop <= 0) return 1;
+    const k = hillK(Math.min(0.24, drop)), vs = k * (Math.sqrt(1 + 1 / k) - 1), P = (v) => v * (1 - v) / (1 + v / k);
+    return Math.max(STRENGTH_MIN, P(Math.min(1, vs * speed / best)) / P(vs));
+  };
   function gearFactor(p) {
     const q = Object.assign({}, DEFAULTS, p);
-    return q.gearOn ? parabola(bodyThroughDrive(paddled(q)).armSpeed, q.armBestMs, q.gearDrop) : 1;
+    return q.gearOn ? parabola(bodyThroughDrive(paddled(q)).armSpeed, armBest(q), q.gearDrop) : 1;
   }
   function trunkGearFactor(p) {
     const q = Object.assign({}, DEFAULTS, p);
-    return q.gearOn ? parabola(bodyThroughDrive(paddled(q)).trunkSpeed, q.trunkBestMs, q.trunkDrop) : 1;
+    return q.gearOn ? parabola(bodyThroughDrive(paddled(q)).trunkSpeed, trunkBest(q), q.trunkDrop) : 1;
   }
   // The power rotation and a hinge add, as a share of fitness.
   const trunkShareOf = (q) => 0.12 * (q.rotation || 0) + 0.08 * (q.hinge || 0);
   // The stroke rate that holds the most: arm and trunk speeds both go as the
-  // rate, so it's where the two parabolas, weighted by the power each sets
-  // and how fast it drops, peak together. With no rotation or hinge, the
-  // rate that puts the arms at their best.
+  // rate, so it's where the two curves, weighted by the power each sets,
+  // peak together. With no rotation or hinge, the rate that puts the arms
+  // at their best.
   const bestRate = (p) => {
-    const q = Object.assign({}, DEFAULTS, p), b = bodyThroughDrive(paddled(q));
-    const aA = b.armSpeed / q.rateSpm / q.armBestMs, aT = b.trunkSpeed / q.rateSpm / q.trunkBestMs;
-    const wA = 0.7 * q.gearDrop, wT = trunkShareOf(q) * q.trunkDrop;
-    return (wA * aA + wT * aT) / (wA * aA * aA + wT * aT * aT);
+    const q = Object.assign({}, DEFAULTS, p), b = bodyThroughDrive(paddled(q)), aB = armBest(q), tB = trunkBest(q), wT = trunkShareOf(q);
+    const held = (r) => 0.7 * parabola(b.armSpeed * r / q.rateSpm, aB, q.gearDrop) + wT * parabola(b.trunkSpeed * r / q.rateSpm, tB, q.trunkDrop);
+    let lo = 10, hi = 200;
+    for (let i = 0; i < 80; i++) { const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3; if (held(m1) < held(m2)) lo = m1; else hi = m2; }
+    return (lo + hi) / 2;
   };
   function capacity(p, hours = 1) {
     const q = Object.assign({}, DEFAULTS, p);
@@ -1609,9 +1675,9 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 52;
+  const API_LEVEL = 53;
   const PADDLE = paddleOf(DEFAULTS);
-  const api = { API_LEVEL, shaftDir, paddled, paddleOf, gearFactor, trunkGearFactor, bestRate, recoveryPlan, recoveryPose, recoveryCost, recoveryClear, elbowAt, handForces, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
+  const api = { API_LEVEL, shaftDir, typicalFitness, armBest, trunkBest, paddled, paddleOf, gearFactor, trunkGearFactor, bestRate, recoveryPlan, recoveryPose, recoveryCost, recoveryClear, elbowAt, handForces, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.StrokeSim = api;
 })(typeof window !== "undefined" ? window : globalThis);

@@ -106,7 +106,7 @@ console.log("\nCanoe Race Simulator physics");
   check("paddling on the right turns the bow left", clean.yawMoment > 0);
   check("no J-stroke model left", !("steeringPower" in base) && !("steerLD" in S.DEFAULTS));
   // Paddler engine: what each can hold, and how body use shapes the drive.
-  const holdArms = S.capacity({}), holdAll = S.capacity({ rotation: 1, legDrive: 1, hinge: 1 }), holdLong = S.capacity({ rotation: 1, legDrive: 1, hinge: 1 }, 16);
+  const holdArms = S.capacity({ gearOn: 0 }), holdAll = S.capacity({ rotation: 1, legDrive: 1, hinge: 1, gearOn: 0 }), holdLong = S.capacity({ rotation: 1, legDrive: 1, hinge: 1, gearOn: 0 }, 16);
   check("capacity: arms only 70%, whole body 100%, fading over a long race", Math.round(holdArms) === 140 && Math.round(holdAll) === 200 && Math.round(holdLong) === 165,
         `${holdArms} ${holdAll} ${holdLong}`);
   const peakPct = (rr) => { const sm = rr.samples, Td = sm[sm.length - 1].t; let m = 0, t = 0; for (const q of sm) if (q.thrust[0] > m) { m = q.thrust[0]; t = q.t; } return t / Td; };
@@ -473,8 +473,16 @@ console.log("\nCanoe Race Simulator physics");
   // Gearing: the arms hold the most power at one speed of the lower hand
   // against its shoulder.
   const gear = (x) => Object.assign({ gearOn: 1 }, x), gF = (x) => S.gearFactor(gear(x)), armV = (x) => S.simulate(x).body.armSpeed;
-  check("gearing: off by default, changes nothing", !S.DEFAULTS.gearOn && S.gearFactor({ rateSpm: 85 }) === 1 &&
-        S.capacity({ rateSpm: 85 }) === S.capacity({}));
+  check("gearing: on by default; off, changes nothing", S.DEFAULTS.gearOn === 1 && S.gearFactor({ rateSpm: 85, gearOn: 0 }) === 1 &&
+        S.capacity({ rateSpm: 85, gearOn: 0 }) === S.capacity({ gearOn: 0 }));
+  // The best speeds rise with fitness against what's typical for your size
+  // (a cyclist's least-tiring cadence rises with power).
+  const fit300 = { fitnessW: 300 }, big = { massKg: 111 };
+  check("gearing: a fitter paddler is best moving faster, at a higher rate; the typical paddler at 60 spm",
+        S.typicalFitness({}) === 200 && Math.abs(S.armBest(fit300) / S.armBest({}) - Math.pow(1.5, 0.4)) < 1e-9 &&
+        S.bestRate(fit300) > 66 && S.bestRate(fit300) < 72 && Math.abs(S.bestRate({}) - 60) < 1 &&
+        S.typicalFitness(big) > 200 && S.bestRate(big) < S.bestRate({}),
+        `best at ${S.bestRate({}).toFixed(0)} spm, fitter (300 W) ${S.bestRate(fit300).toFixed(0)}, heavier at 200 W ${S.bestRate(big).toFixed(0)}`);
   check("gearing: the default stroke moves the arms at about their best speed", Math.abs(gF({}) - 1) < 0.005,
         `${armV({}).toFixed(2)} m/s, ×${gF({}).toFixed(3)}`);
   check("gearing: arm speed goes as the stroke rate", Math.abs(armV({ rateSpm: 75 }) / armV({}) - 75 / 60) < 1e-9);
@@ -483,7 +491,10 @@ console.log("\nCanoe Race Simulator physics");
   const lrBest = S.bestRate(gear(LR));
   check("gearing: a longer stroke suits a lower rate, and its best rate puts the arms at their best",
         lrBest < 50 && gF(Object.assign({}, LR, { rateSpm: lrBest })) > 1 - 1e-9, `${lrBest.toFixed(0)} spm`);
-  check("gearing: loses gearDrop at 1.5 times the best arm speed", Math.abs(gF({ armBestMs: armV({}) / 1.5 }) - (1 - S.DEFAULTS.gearDrop)) < 1e-9);
+  // Hill's curve: gearDrop lost at half the best speed, less at 1.5 times.
+  const gFast = gF({ armBestMs: armV({}) / 1.5 });
+  check("gearing: Hill's curve: loses gearDrop at half the best arm speed, less going faster", Math.abs(gF({ armBestMs: armV({}) * 2 }) - (1 - S.DEFAULTS.gearDrop)) < 1e-6 &&
+        gFast > 1 - S.DEFAULTS.gearDrop && gFast < 0.95, `×${gF({ armBestMs: armV({}) * 2 }).toFixed(3)} at half, ×${gFast.toFixed(3)} at 1.5 times`);
   // Rotation and a hinge carry the hand further; the paddle-side shoulder
   // carries that extra travel, so the arms don't speed up. Arm speed counts
   // the hand's motion along the pull, less what the shoulder carries that
@@ -504,15 +515,17 @@ console.log("\nCanoe Race Simulator physics");
   // rotation at 60 spm; with neither, it changes nothing.
   const tF = (x) => S.trunkGearFactor(gear(x)), ROT = { rotation: 1 }, BOTH = { rotation: 1, hinge: 1 }, capOf = (x) => S.capacity(x);
   check("trunk gearing: the default stroke with full rotation moves the trunk at its best",
-        Math.abs(tF(ROT) - 1) < 0.005 && S.trunkGearFactor(ROT) === 1, `${tb(ROT).trunkSpeed.toFixed(2)} m/s, ×${tF(ROT).toFixed(3)}`);
+        Math.abs(tF(ROT) - 1) < 0.005 && S.trunkGearFactor(Object.assign({ gearOn: 0 }, ROT)) === 1, `${tb(ROT).trunkSpeed.toFixed(2)} m/s, ×${tF(ROT).toFixed(3)}`);
   check("trunk gearing: with no rotation or hinge, changes nothing (the best rate is the arms')",
         Math.abs(S.capacity(gear({ rateSpm: 75 })) - S.DEFAULTS.fitnessW * 0.7 * gF({ rateSpm: 75 })) < 1e-9 &&
-        Math.abs(S.bestRate(gear(LR)) - S.DEFAULTS.rateSpm * S.DEFAULTS.armBestMs / armV(LR)) < 1e-9);
+        Math.abs(S.bestRate(gear(LR)) - S.DEFAULTS.rateSpm * S.DEFAULTS.armBestMs / armV(LR)) < 1e-6);
   check("trunk gearing: scales only what rotation and a hinge add",
         Math.abs(capOf(gear(BOTH)) - S.DEFAULTS.fitnessW * (0.7 * gF(BOTH) + 0.2 * tF(BOTH))) < 1e-9);
-  check("trunk gearing: rotation at a quick rate holds less; rotation and a hinge together suit a lower rate",
-        tF(Object.assign({ rateSpm: 80 }, ROT)) < 0.97 && S.bestRate(gear(BOTH)) < 57 &&
-        capOf(gear(Object.assign({}, BOTH, { rateSpm: S.bestRate(gear(BOTH)) }))) > capOf(gear(BOTH)),
+  // Rotation and a hinge are different muscles, each best at its own speed:
+  // together they move the shoulder faster, and that's their best.
+  check("trunk gearing: rotation at a quick rate holds less; rotation and a hinge together still suit the default rate",
+        tF(Object.assign({ rateSpm: 80 }, ROT)) < 0.97 && Math.abs(tF(BOTH) - 1) < 0.005 && Math.abs(S.bestRate(gear(BOTH)) - 60) < 3 &&
+        tb(BOTH).trunkSpeed > tb(ROT).trunkSpeed * 1.3,
         `80 spm ×${tF(Object.assign({ rateSpm: 80 }, ROT)).toFixed(3)}; rotation and a hinge: trunk ×${tF(BOTH).toFixed(2)} at 60, best at ${S.bestRate(gear(BOTH)).toFixed(0)} spm`);
   // The recovery: the cheapest motion that carries the blade clear, in
   // reach and with the top hand in front of the face, costed from the arms'
@@ -538,7 +551,7 @@ console.log("\nCanoe Race Simulator physics");
   check("recovery: starts where the drive leaves the paddle and ends where it takes it, the blade's face too", ends < 1e-3, ends.toExponential(1));
   const rot80 = { rotation: 1, rateSpm: 80 };
   check("gearing: sets only the arms' share of what you hold, and what the trunk adds",
-        Math.abs(capOf(gear(rot80)) - capOf(rot80) + S.DEFAULTS.fitnessW * (0.7 * (1 - gF(rot80)) + 0.12 * (1 - tF(rot80)))) < 1e-9);
+        Math.abs(capOf(gear(rot80)) - capOf(Object.assign({ gearOn: 0 }, rot80)) + S.DEFAULTS.fitnessW * (0.7 * (1 - gF(rot80)) + 0.12 * (1 - tF(rot80)))) < 1e-9);
   const armCurve = S.simulate(arms(LR)).strengthCurve;
   let bumpy = 0; for (let i = 2; i < armCurve.length; i++) bumpy = Math.max(bumpy, Math.abs(armCurve[i][1] - 2 * armCurve[i - 1][1] + armCurve[i - 2][1]));
   check("strength from the arms: a smooth curve through the drive (no steps)", bumpy < 0.1, bumpy.toFixed(3));
@@ -1299,10 +1312,10 @@ console.log("\nPaddle fit");
     await page.$eval("#ctl-paddler", (e) => e.closest("details").open = true);
     check(`${tag}: engine box: arms only by default`, /What Boat A can hold140 W for an hour/.test(await text("#engine-box")), await text("#engine-box"));
     await slide("#c-rotation", 0.8); await page.waitForTimeout(400);
-    check(`${tag}: rotation: reach and muscle`, /^Reach \+12\.0°, hand travel \+9\.6 cm\. Uses more muscle: \+19 W you can hold$/.test(await text("#e-rotation")) &&
+    check(`${tag}: rotation: reach and muscle`, /^Reach \+12\.0°, hand travel \+9\.6 cm\. Uses more muscle: \+19 W you can hold \(trunk ×1\.00\)$/.test(await text("#e-rotation")) &&
           /159 W/.test(await text("#engine-box")), await text("#e-rotation"));
     await slide("#c-hinge", 0.5); await page.waitForTimeout(400);
-    check(`${tag}: hinge: reach, swing and muscle`, /^Reach \+4\.0°, hand travel \+7\.5 cm\. Your body swings ±3\.0 cm, costing [\d.]+%\. Hips and back: \+8 W you can hold$/.test(await text("#e-hinge")) &&
+    check(`${tag}: hinge: reach, swing and muscle`, /^Reach \+4\.0°, hand travel \+7\.5 cm\. Your body swings ±3\.0 cm, costing [\d.]+%\. Hips and back: \+8 W you can hold \(trunk ×1\.00\)$/.test(await text("#e-hinge")) &&
           (await page.$$("#hp-chart path.ln.still")).length >= 1, await text("#e-hinge"));
     check(`${tag}: pitch readout and the paddler`, /^A Pitches ±[\d.]+°, the bow moving ±[\d.]+ mm, costing [\d.]+%/.test(await text("#hull-pitch-read")) &&
           (await page.$$("#hp-pitch .fig-head")).length >= 1 && (await page.$$("svg.view .fig-head")).length >= 3, await text("#hull-pitch-read"));
@@ -1488,7 +1501,8 @@ console.log("\nPaddle fit");
           /Arms at up to \d+% \(lower\)/.test(await text("#strength-read")) && !(await visible("#c-strengthPeakDeg")));
     await page.click("#strength-mode >> text=Off");
     await page.click("#presets >> text=Defaults"); await settle();
-    check(`${tag}: gearing: off by default, its settings hidden`, !(await visible("#c-armBestMs")));
+    check(`${tag}: gearing: on by default, its settings there`, (await page.$eval("#gear-ctl", (e) => !e.hidden)) &&
+          (await page.$eval('#gear-mode button[aria-pressed="true"]', (b) => b.textContent)) === "On");
     await page.click("#gear-mode >> text=On"); await slide("#c-rateSpm", 80); await settle();
     check(`${tag}: gearing: arm speed, what the arms hold and the best rate`, (await visible("#c-armBestMs")) &&
           /moves [\d.]+ m\/s against its shoulder.*×0\.\d\d.*best at \d+ spm/.test(await text("#gear-read")) && /Gearing: your arms hold ×0\.\d\d/.test(await text("#engine-box")),
@@ -1543,7 +1557,7 @@ console.log("\nPaddle fit");
     await page.waitForTimeout(300);
     const torsoRead = await page.textContent("#m3-part-read");
     check(`${tag}: 3D model: the torso reads the trunk's speed, against its best, and now`,
-          /Trunk speed [\d.]+ m\/s \(best 0\.91\)/.test(torsoRead) && /Trunk now [\d.]+ m\/s/.test(torsoRead) &&
+          torsoRead.includes(`(best ${(await page.evaluate(() => window.StrokeSim.trunkBest(window.sim.results.a.params))).toFixed(2)})`) && /Trunk now [\d.]+ m\/s/.test(torsoRead) &&
           (await page.$$('#m3-ctl input[data-key="trunkBestMs"]')).length === 1, torsoRead);
     // The arms read their speed live too; the stroke shows the recovery and
     // its styles, set from there as from the side panel.
@@ -1629,15 +1643,15 @@ console.log("\nPaddle fit");
         // The best arm speed's default went from 0.9 to 0.87 m/s (version 3): a
         // saved 0.9 follows it, in boats and in profiles saved before then; a
         // value chosen since stays.
-        await mem.evaluate(() => { localStorage.setItem("ppm.sim.boats", '{"version":2,"a":{"armBestMs":0.9},"b":{"armBestMs":0.95}}');
+        await mem.evaluate(() => { localStorage.setItem("ppm.sim.boats", '{"version":2,"a":{"armBestMs":0.9,"gearOn":0},"b":{"armBestMs":0.95}}');
           localStorage.setItem("ppm.sim.profiles", '{"Old":{"armBestMs":0.9,"heightM":1.9},"New":{"armBestMs":0.9,"heightM":1.9,"version":3}}'); });
         await mem.reload(); await mem.waitForTimeout(500);
-        const arms0 = await mem.evaluate(() => [window.sim.boats.a.armBestMs, window.sim.boats.b.armBestMs]);
+        const arms0 = await mem.evaluate(() => [window.sim.boats.a.armBestMs, window.sim.boats.b.armBestMs, window.sim.boats.a.gearOn]);
         await mem.click("#profile summary");
         const pick = async (n) => { await mem.selectOption("#profile-pick", n); await mem.waitForTimeout(200); return mem.evaluate(() => [window.sim.boats.a.armBestMs, window.sim.boats.a.heightM]); };
         const oldProf = await pick("Old"), newProf = await pick("New");
-        check(`${tag}: old saves and profiles take the new best arm speed; one chosen since stays`,
-              arms0[0] === 0.87 && arms0[1] === 0.95 && oldProf[0] === 0.87 && oldProf[1] === 1.9 && newProf[0] === 0.9,
+        check(`${tag}: old saves and profiles take the new best arm speed and gearing on; one chosen since stays`,
+              arms0[0] === 0.87 && arms0[1] === 0.95 && arms0[2] === 1 && oldProf[0] === 0.87 && oldProf[1] === 1.9 && newProf[0] === 0.9,
               `boats ${arms0} | profiles ${oldProf[0]} / ${newProf[0]}`);
         await mem.evaluate(() => { localStorage.removeItem("ppm.sim.boats"); localStorage.removeItem("ppm.sim.profiles"); });
         await mem.close();
@@ -1650,6 +1664,8 @@ console.log("\nPaddle fit");
       await mob.goto("file://" + path.resolve(__dirname, "../../docs/app/simulator.html"));
       await mob.waitForTimeout(500);
       await mob.tap("nav.tabs button[data-tab=race]"); await mob.waitForTimeout(300);
+      // Two boats near each other (the map frames the finishing gap): even efforts.
+      await mob.tap("#effort-mode >> text=Set by hand"); await mob.waitForTimeout(300);
       await mob.tap("#water >> text=AuSable / GPX"); await mob.waitForTimeout(800);
       await mob.$eval("#race-start", (e) => e.scrollIntoView({ block: "center" }));
       const barKm = async () => { const m = (await mob.textContent("#course-view")).match(/([\d.]+) (k?m)N/); return m ? +m[1] * (m[2] === "km" ? 1 : 0.001) : 0; };
@@ -1679,6 +1695,7 @@ console.log("\nPaddle fit");
       await lp.goto("file://" + path.resolve(__dirname, "../../docs/app/simulator.html"));
       await lp.waitForTimeout(500);
       await lp.click("nav.tabs button[data-tab=race]"); await lp.waitForTimeout(300);
+      await lp.click("#effort-mode >> text=Set by hand"); await lp.waitForTimeout(300);   // the two boats together
       await lp.$eval("#scrub", (el) => { el.value = 500; el.dispatchEvent(new Event("input")); });
       await lp.click("#zoom-out"); await lp.waitForTimeout(100);
       check(`${tag}: open water: each boat's weave`, (await lp.$$("#race-view .line-a")).length === 1 && (await lp.$$("#race-view .line-b")).length === 1);
