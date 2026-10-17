@@ -170,13 +170,13 @@
     strengthDrop: 0.4,
     // Gearing: the arms hold the most power at one speed.
     gearOn: 1,
-    armBestMs: 0.87,           // the lower hand's speed against its shoulder (along the pull) you hold the most power at, m/s: the default stroke's at 60 spm
+    armBestMs: 0.89,           // the lower hand's speed against its shoulder (along the pull) you hold the most power at, m/s: the default stroke's at 60 spm
     gearDrop: 0.15,            // share of the arms' power lost at half its best speed (less going faster)
     // The trunk's own (with gearing on): its paddle-side shoulder's speed
     // through the drive it holds the most power at (the default stroke with
     // full rotation, at 60 spm), and the share of the power rotation and a
     // hinge add that it loses at half that.
-    trunkBestMs: 0.91,
+    trunkBestMs: 0.92,
     trunkDrop: 0.15,
     paddleKg: 0.3,             // the paddle's mass (a ZRE bent shaft: ~0.24–0.33 kg), most of it in the blade
     recoveryPivot: -1,         // the recovery: -1 the cheapest; 0 the lower hand swings, 1 the top hand drops and swings, between a mix
@@ -225,32 +225,57 @@
   // depth at the catch and starts lifting it from there at the exit. It is
   // still going in for the drive's first ENTRY and already coming out for
   // its last EXIT_SHARE (the four-phase kayak stroke: entry, pull, exit,
-  // aerial), BLADE_OUT of its depth each way, moving: down as the drive
-  // starts, up as it ends; the recovery carries on from there. The force
-  // follows how much of the blade is in the water.
-  const ENTRY = 0.25, EXIT_SHARE = 0.25, BLADE_OUT = 0.25;
+  // aerial), BLADE_OUT of its depth at the catch and EXIT_OUT at the exit
+  // (the lower hand lifts the rest out in the recovery, the top hand not
+  // riding up with it), moving: down as the drive
+  // starts, up as it ends; the recovery carries on from there. It goes in
+  // and out SPEAR of the way along its own length, edge first, the rest
+  // straight down: not slapping its face down on the water, and the hands
+  // not pushed forward at the catch. The force follows how much is in.
+  const ENTRY = 0.25, EXIT_SHARE = 0.25, BLADE_OUT = 0.25, EXIT_OUT = 0.1, SPEAR = 0.5;
   function inOut(p, u, d) {
     const depth = BLADE_OUT * paddleOf(p).bladeLen * Math.max(0, -d[2]);
     if (u < ENTRY) return depth * (1 - u / ENTRY) ** 2;
-    if (u > 1 - EXIT_SHARE) return depth * ((u - 1 + EXIT_SHARE) / EXIT_SHARE) ** 2;
+    if (u > 1 - EXIT_SHARE) return (EXIT_OUT / BLADE_OUT) * depth * ((u - 1 + EXIT_SHARE) / EXIT_SHARE) ** 2;
     return 0;
   }
   // Paddle pose at drive progress u ∈ [0, 1].
-  // When in the drive the force comes: leg drive holds it later, a drop
-  // onto the paddle loads the blade early (u^w: w > 1 later, < 1 earlier).
-  const driveWarp = (p) => (1 + 0.5 * (p.legDrive || 0)) * (1 - 0.35 * Math.min(1, (p.dropM || 0) / 0.1));
+  // The blade is locked at the catch: the pull is already under way as it
+  // goes in (and still is as it comes out), so it takes hold of the water
+  // at once rather than waiting for the hands to catch up with the boat.
+  // The pull's pace: DRIVE_LOCK of it steady, the rest a surge peaking
+  // PACE_PEAK into the drive, so the force rises from the catch to a peak
+  // in the drive's first half and falls away to the exit, as measured
+  // kayak and canoe force curves do. When in the drive the force comes:
+  // leg drive holds it later, a drop onto the paddle loads it early.
+  const DRIVE_LOCK = 0.4, PACE_PEAK = 0.35, paceCache = new Map();
+  function paceAt(p, u) {
+    const pk = PACE_PEAK * (1 + 0.25 * (p.legDrive || 0)) * (1 - 0.3 * Math.min(1, (p.dropM || 0) / 0.1)), key = pk.toFixed(5);
+    if (!paceCache.has(key)) {
+      // The surge sin(π x^g), its peak at x = pk; the swing so far, 0 to 1.
+      const g = Math.log(0.5) / Math.log(pk), n = 400, cum = [0];
+      for (let i = 1; i <= n; i++) cum.push(cum[i - 1] + DRIVE_LOCK + (1 - DRIVE_LOCK) * Math.sin(Math.PI * Math.pow((i - 0.5) / n, g)));
+      if (paceCache.size > 50) paceCache.clear();
+      paceCache.set(key, cum.map((c) => c / cum[n]));
+    }
+    const c = paceCache.get(key), x = Math.min(1, Math.max(0, u)) * 400, i = Math.min(399, Math.floor(x));
+    return c[i] + (c[i + 1] - c[i]) * (x - i);
+  }
   // dry: without the in and out (the swing alone, which sets the face).
   function pose(p, u, dry = false) {
-    const e = ease(Math.pow(u, driveWarp(p)));
+    const e = paceAt(p, u);
     const th = rad(-p.catchDeg + (p.catchDeg + p.exitDeg) * e);
     const psi = rad(p.directionDeg + p.sweepDeg * (0.5 - e));
     const d = shaftDir(th, rad(p.leanDeg), psi);
     // The pivot stays put in the boat (plus hand travel aft), at the height
-    // that puts the throat at the waterline.
-    // But for the blade still going in at the catch and already coming out
-    // at the exit (inOut, m).
-    const pivot = [-p.handTravelM * e, -p.handOutM, -d[2] * (paddleOf(p).throat - p.pivotFromGrip) + (dry ? 0 : inOut(p, u, d))];
-    const at = (s) => add(pivot, mul(d, s - p.pivotFromGrip));  // point s m from the grip
+    // that puts the throat at the waterline. But for the blade still going
+    // in at the catch and already coming out at the exit (inOut, m).
+    const io = dry ? 0 : inOut(p, u, d), L = paddleOf(p).throat, pfg = p.pivotFromGrip;
+    const base = [-p.handTravelM * e, -p.handOutM, -d[2] * (L - pfg)];
+    // In and out: SPEAR of the way along the shaft, the rest straight down.
+    const along = SPEAR * io / Math.max(0.2, -d[2]);
+    const pivot = [base[0] - d[0] * along, base[1] - d[1] * along, base[2] + io];
+    const at = (s) => add(pivot, mul(d, s - pfg));  // point s m from the grip
     return { d, pivot, at, th, psi };
   }
 
@@ -561,7 +586,8 @@
       // At the very ends the swing is momentarily still; use its direction
       // there so the face orientation stays defined.
       let face = sub(pose(p, timing.at(tb), true).at(sC), pose(p, timing.at(ta), true).at(sC));
-      if (norm(face) < 1e-9) face = sub(pose(p, Math.min(1, u + 0.02), true).at(sC), pose(p, Math.max(0, u - 0.02), true).at(sC));
+      // At the very ends, the face the recovery takes it from and leaves it with.
+      if (norm(face) < 1e-9 || i === 0 || i === steps) face = driveFace(p, u);
       const B = blade(p, P, face);
       const Ba = blade(p, Pa, face), Bb = blade(p, Pb, face);
       const vBlade = mul(sub(Bb.cop, Ba.cop), 1 / span);       // relative to the boat
@@ -1177,7 +1203,7 @@
   // drops and swings over it. The plan with the least cost, inside reach,
   // with the top hand below the forehead and in front of the face, is the
   // one paddled (recoveryPivot -1), or one pivot can be set to compare.
-  const ELASTIC = 0.65, NEG_WORK = 0.25, AIR = 1.2, BLADE_CD = 1.17, SKIN_CD = 0.02, NOMINAL_V = 2.6;
+  const TOP_HAND_MAX = 0.22, ELASTIC = 0.65, NEG_WORK = 0.25, AIR = 1.2, BLADE_CD = 1.17, SKIN_CD = 0.02, NOMINAL_V = 2.6;
   const SEG = { m: [[0.0271, 0.0162, 0.0061], [0.0255, 0.0138, 0.0056]], com: [0.577, 0.457], gyr: [0.285, 0.276] };
   const REC_CLEAR = 0.05, REC_RAMP = 0.25, SLICE_OUT = 0.3, FEATHER = rad(80);
   const smooth = (x) => { const t = Math.min(1, Math.max(0, x)); return t * t * (3 - 2 * t); };
@@ -1196,24 +1222,32 @@
     const sC = paddleOf(p).throat + paddleOf(p).copFromThroat;
     return unit(sub(pose(p, Math.min(1, u + 0.02), true).at(sC), pose(p, Math.max(0, u - 0.02), true).at(sC)));
   };
-  // The paddle's rise at recovery progress u (m) that carries on the
-  // drive's: up as the blade comes out at the exit, down as it goes in at
-  // the catch (Hermite terms: nothing at either end, the speed there the
-  // drive's), so the blade never stops dead.
+  // The paddle's motion at recovery progress u that carries on the
+  // drive's: the hands still moving back and the blade coming up at the
+  // exit, already moving back and going down at the catch (Hermite terms:
+  // nothing at either end, the speed there the drive's), so neither the
+  // paddle nor its swing ever stops dead. pos(u, s): the offset (m) of the
+  // point s m from the grip; tilt(u), az(u): of the shaft's angles (rad).
   const carryCache = new Map(), CARRY = 0.25;
+  const tiltOf = (d) => Math.acos(Math.max(-1, Math.min(1, -d[2]))), azOf = (d) => Math.atan2(d[1], d[0]);
   function carryOn(p) {
     const key = JSON.stringify(p);
     if (carryCache.has(key)) return carryCache.get(key);
-    const tm = driveTiming(p), Td = 60 / p.rateSpm * p.driveFraction, Tr = 60 / p.rateSpm * (1 - p.driveFraction), h = 1e-3;
-    const z = (u) => pose(p, u).pivot[2];
-    const vOut = (z(1) - z(tm.at(1 - h))) / (h * Td), vIn = (z(tm.at(h)) - z(0)) / (h * Td);
-    // Each dies away over CARRY of the recovery, as the arms take the paddle's
-    // weight: no further rise or fall than its speed carries it that far.
+    const tm = driveTiming(p), Td = 60 / p.rateSpm * p.driveFraction, Tr = 60 / p.rateSpm * (1 - p.driveFraction), h = 1e-3, dt = h * Td;
+    const rate = (A, B) => ({ piv: mul(sub(B.pivot, A.pivot), 1 / dt), d: mul(sub(B.d, A.d), 1 / dt), tilt: (tiltOf(B.d) - tiltOf(A.d)) / dt,
+      az: Math.atan2(Math.sin(azOf(B.d) - azOf(A.d)), Math.cos(azOf(B.d) - azOf(A.d))) / dt });
+    const out = rate(pose(p, tm.at(1 - h)), pose(p, 1)), inn = rate(pose(p, 0), pose(p, tm.at(h)));
+    // Each dies away over CARRY of the recovery, as the arms take the paddle
+    // round: no further than its speed carries it that far.
     const k = (x) => (x < CARRY ? x * (1 - x / CARRY) ** 2 : 0);
-    const f = (u) => vOut * Tr * k(u) - vIn * Tr * k(1 - u);
+    const both = (u, f) => f(out) * Tr * k(u) - f(inn) * Tr * k(1 - u);
+    const c = {
+      pos: (u, sp) => [0, 1, 2].map((i) => both(u, (r) => r.piv[i] + r.d[i] * (sp - p.pivotFromGrip))),
+      tilt: (u) => both(u, (r) => r.tilt), az: (u) => both(u, (r) => r.az),
+    };
     if (carryCache.size > 60) carryCache.clear();
-    carryCache.set(key, f);
-    return f;
+    carryCache.set(key, c);
+    return c;
   }
   // The paddle at recovery progress u for plan { q, lift, in }. L: the
   // shares { clear, top, over } in place of the ordinary ones (a switch).
@@ -1222,15 +1256,16 @@
     const sp = plan.q * lowerHand(p), out = Math.sign(exit.at(0)[1]) || -1;
     L = L || { clear: recoveryClear(u), top: carryAt(u), over: 0 };
     const pe = exit.at(sp), pc = cat.at(sp), piv = [mix(pe[0], pc[0]), mix(pe[1], pc[1]), mix(pe[2], pc[2])];
-    piv[1] -= out * plan.in * carryAt(u);
-    piv[2] += plan.lift * L.top + L.over + carryOn(p)(u);
-    const tl = (d) => Math.acos(Math.max(-1, Math.min(1, -d[2]))), az = (d) => Math.atan2(d[1], d[0]);
+    const carry = carryOn(p), cp = carry.pos(u, sp);
+    piv[0] += cp[0]; piv[1] += cp[1] - out * plan.in * carryAt(u);
+    piv[2] += plan.lift * L.top + L.over + cp[2];
+    const tl = tiltOf, az = azOf;
     const ae = az(exit.d), ac = az(cat.d);
     let da = Math.atan2(Math.sin(ac - ae), Math.cos(ac - ae));
     if (Math.sin(ae + da / 2) * out < 0) da -= Math.sign(da) * 2 * Math.PI;
     const slice = plan.slice === undefined ? SLICE_OUT : plan.slice;
     const turnShare = (v) => slice * smooth(v / 0.3) + (1 - slice) * smooth((v - 0.3 * slice / SLICE_OUT) / (1 - 0.3 * slice / SLICE_OUT - 0.05));
-    const a = ae + da * turnShare(u), t0 = mix(tl(exit.d), tl(cat.d)), th = mix(exit.th, cat.th);
+    const a = ae + da * turnShare(u) + carry.az(u), t0 = mix(tl(exit.d), tl(cat.d)) + carry.tilt(u), th = mix(exit.th, cat.th);
     const dir = (t, aa = a) => [Math.sin(t) * Math.cos(aa), Math.sin(t) * Math.sin(aa), -Math.cos(t)];
     // The face: from the drive's, turned flat for the carry, face up (the
     // same way all stroke: from the middle of the carry).
@@ -1280,7 +1315,9 @@
     const d = sub(b, a), L = norm(d);
     if (L >= ua + fa - 1e-6) return add(a, mul(d, ua / (ua + fa)));
     const u = mul(d, 1 / L), perp = (v) => sub(v, mul(u, dot(v, u)));
-    const rest = unit(perp(side > 0 ? [-0.2, 1, 0.25] : [-0.8, -0.6, -1]));
+    // Relaxed: the top elbow bends out and a little down (not lifted), the
+    // lower one back, out and down.
+    const rest = unit(perp(side > 0 ? [-0.2, 1, -0.4] : [-0.8, -0.6, -1]));
     let n = rest;
     if (f && w > 0 && norm(f) > 1e-9) {
       const fu = unit(f), m = mul(add(a, b), 0.5), x = add(b, mul(fu, dot(sub(m, b), fu)));   // the force line's nearest point to the arm
@@ -1330,9 +1367,10 @@
       for (let j = 0; j < 5; j++) pts.push([P.at((j + 0.5) / 5 * paddleOf(p).throat), mShaft]);
       const along = sub(B.tip, B.throat);
       for (const f of [1 / 6, 0.5, 5 / 6]) pts.push([add(B.throat, mul(along, f)), mBlade]);
-      // The top hand: below the forehead, in front of the face.
+      // The top hand: no higher than the eyes (between the ends, which the
+      // drive sets), in front of the face.
       if (i >= 0 && i <= N) {
-        past += Math.max(0, grip[2] - centre[2] - 0.3 * k) + Math.max(0, head[0] + 0.12 * k - grip[0]);
+        past += (i > 0 && i < N ? Math.max(0, grip[2] - centre[2] - TOP_HAND_MAX * k) : 0) + Math.max(0, head[0] + 0.12 * k - grip[0]);
         wide = Math.max(wide, Math.abs(B.cop[1]));
       }
       frames.push({ pts, B });
@@ -1768,7 +1806,7 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 55;
+  const API_LEVEL = 56;
   const PADDLE = paddleOf(DEFAULTS);
   const api = { API_LEVEL, driveShareAt, fastestRate, shaftDir, typicalFitness, armBest, trunkBest, paddled, paddleOf, gearFactor, trunkGearFactor, recoveryPlan, recoveryPose, recoveryCost, recoveryClear, elbowAt, handForces, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
