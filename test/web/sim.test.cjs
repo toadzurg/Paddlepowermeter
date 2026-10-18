@@ -645,8 +645,22 @@ console.log("\nPaddle fit");
   // The search: the seat as high as the water allows, inside every limit.
   const plain = run(F.search(Object.assign({}, D, { gearOn: 0, strengthOn: 0 }), chop)), z = plain.best.setup.seatZM;
   const gmAt = (seatZM) => F.measure(Object.assign({}, D, { seatZM }), chop).GM;
-  check("fit: the seat as high as the water allows", plain.best.ok && plain.best.GM >= chop.gmMin && gmAt(z + F.RANGES.seatZM[2]) < chop.gmMin,
-        `${(z * 100).toFixed(1)} cm, metacentric height ${(plain.best.GM * 100).toFixed(0)} cm`);
+  check("fit: the seat no higher than the water allows", plain.best.ok && plain.best.GM >= chop.gmMin && z <= plain.maxSeat + 1e-9 &&
+        gmAt(plain.maxSeat) >= chop.gmMin && gmAt(plain.maxSeat + F.RANGES.seatZM[2]) < chop.gmMin,
+        `${(z * 100).toFixed(1)} cm (up to ${(plain.maxSeat * 100).toFixed(1)}), metacentric height ${(plain.best.GM * 100).toFixed(0)} cm`);
+  // The seat by speed: a higher one wants a longer paddle, a higher gear,
+  // which pays at a quick rate, not at 60 spm.
+  const flatW = F.CONDITIONS.find((c) => c.id === "flat"), heldAt = (x) => Object.assign({}, D, x, { effortW: S.capacity(Object.assign({}, D, x)) });
+  const at60 = run(F.search(heldAt({}), flatW)), at80 = run(F.search(heldAt({ rateSpm: 80 }), flatW));
+  check("fit: the seat by speed: low at 60 spm, higher at 80 with a longer paddle, on flat water",
+        at60.best.setup.seatZM === D.seatZM && at60.maxSeat > 0.2 && at80.best.setup.seatZM > D.seatZM + 0.04 &&
+        at80.best.setup.paddleLenM > D.paddleLenM + 0.03 && at80.best.speed > at80.current.speed * 1.02,
+        `60 spm ${at60.best.setup.seatZM * 100} cm; 80 spm ${at80.best.setup.seatZM * 100} cm, ${(at80.best.setup.paddleLenM / 0.0254).toFixed(0)} in, ` +
+        `+${((at80.best.speed / at80.current.speed - 1) * 100).toFixed(1)}%`);
+  // An assumed leverage from a higher seat: none by default; set, it scales what you hold.
+  const lev = (x) => S.capacity(Object.assign({ gearOn: 0, seatZM: 0.2 }, x));
+  check("fit: higher seat leverage: none by default, set it scales what you hold",
+        S.DEFAULTS.seatLeverage === 0 && Math.abs(lev({ seatLeverage: 0.01 }) / lev({}) - 1.02) < 1e-9 && Math.abs(S.capacity({ seatLeverage: 0.01 }) - S.capacity({})) < 1e-9);
   check("fit: with gearing and strength off, setups inside the limits are about as fast",
         plain.best.speed >= plain.current.speed && plain.best.speed < plain.current.speed * 1.01,
         `${((plain.best.speed / plain.current.speed - 1) * 100).toFixed(2)}%`);
@@ -1588,6 +1602,13 @@ function opening(page) {
     await page.click("#strength-mode >> text=Off"); await settle();
     await page.selectOption("#profile-pick", "Tall"); await settle();
     const loaded = await page.evaluate(() => [window.sim.boats.a.heightM, window.sim.boats.a.fitnessW, window.sim.boats.a.strengthOn]);
+    // Arm span sets the arms; height scales it with the rest.
+    await page.click("#profile summary");
+    const arms = () => page.evaluate(() => [window.sim.boats.a.upperArmM, window.sim.boats.a.forearmM]);
+    const arms0 = await arms(); await slide("#c-armSpanM", 2.05); await settle();
+    const arms1 = await arms(), span1 = await text("#o-armSpanM");
+    check(`${tag}: arm span sets both arms`, arms1[0] > arms0[0] && arms1[1] > arms0[1] && Math.abs(arms1[0] / arms1[1] - arms0[0] / arms0[1]) < 0.01 && span1.startsWith("205 cm"),
+          `${arms0} → ${arms1} | ${span1}`);
     check(`${tag}: profile: saved and loaded`, JSON.stringify(loaded) === "[1.95,260,1]" && (await page.$$("#profile-pick option")).length === 2, `${loaded}`);
     page.once("dialog", (d) => d.accept());
     await page.click("#profile-delete"); await settle();
@@ -1644,7 +1665,7 @@ function opening(page) {
     await page.waitForFunction(() => !document.getElementById("fit-result").hidden, null, { timeout: 60000 });
     const fitShown = await page.evaluate(() => ({ rows: document.querySelectorAll("#fit-table tbody tr").length, why: document.querySelectorAll("#fit-why li").length,
       cells: document.querySelectorAll("#fit-map .cell").length, table: document.getElementById("fit-table").textContent }));
-    check(`${tag}: fit: a suggestion with reasons and a map`, fitShown.rows >= 10 && fitShown.why >= 3 && fitShown.cells === 45 && /\+\d+\.\d%/.test(fitShown.table),
+    check(`${tag}: fit: a suggestion with reasons and a map`, fitShown.rows >= 10 && fitShown.why >= 3 && fitShown.cells === 5 * 15 && /\+\d+\.\d%/.test(fitShown.table),
           `${fitShown.rows} rows, ${fitShown.why} reasons, ${fitShown.cells} squares`);
     // The search's seat and paddle are marked where they are on the map, not
     // on the nearest square; the 3D model shows yours with the suggestion,
@@ -1659,7 +1680,7 @@ function opening(page) {
     check(`${tag}: fit: the suggested seat has its own row on the map`, marks.seatRows.includes(sugSeat) && marks.under !== undefined, `${sugSeat} in ${marks.seatRows.join(", ")}`);
     await page.click('#m3-parts button[data-value="seat"]'); await settle();
     check(`${tag}: fit: the 3D model shows yours and the suggestion, reading the seat as the table does`,
-          (await pressed("#m3-show")).join() === "both" && (await page.textContent("#m3-part-read")).includes(`→ ${sugSeat}`), await page.textContent("#m3-part-read"));
+          (await pressed("#m3-show")).join() === "both" && (await page.textContent("#m3-part-read")).includes(sugSeat), await page.textContent("#m3-part-read"));
     await page.click("#m3-done");
     // The 3D model: the boat, paddle and paddler drawn; a part picked brings up its sliders, which set the boat.
     const parts3d = () => page.$$eval("#m3 [data-part]", (es) => [...new Set(es.map((e) => e.dataset.part))].sort().join(" "));

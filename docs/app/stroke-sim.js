@@ -170,6 +170,11 @@
     strengthPeakDeg: 0,        // shaft angle you pull hardest at; + = behind vertical
     strengthDrop: 0.4,
     bodyStrengthDrop: 0.4,
+    // An assumed extra from sitting higher (body weight over the paddle,
+    // leverage), beyond what the geometry already gives: the share of what
+    // you hold gained per 5 cm above the default seat (less below). None by
+    // default: no study has measured it.
+    seatLeverage: 0,
     // Gearing: the arms hold the most power at one speed.
     gearOn: 1,
     armBestMs: 0.82,           // the lower hand's speed against its shoulder (along the pull) you hold the most power at, m/s: the default stroke's at 60 spm
@@ -200,7 +205,7 @@
 
   // Who's paddling, as opposed to how.
   const PROFILE_KEYS = ["heightM", "torsoM", "shoulderM", "upperArmM", "forearmM", "thighM", "shinM", "massKg", "fitnessW",
-                        "strengthOn", "strengthPeakDeg", "strengthDrop", "bodyStrengthDrop", "gearOn", "armBestMs", "gearDrop", "trunkBestMs"];
+                        "strengthOn", "strengthPeakDeg", "strengthDrop", "bodyStrengthDrop", "seatLeverage", "gearOn", "armBestMs", "gearDrop", "trunkBestMs"];
   const rad = (d) => (d * Math.PI) / 180;
   const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
   const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -1134,8 +1139,9 @@
   }
   // The power rotation and a hinge add, as a share of fitness.
   const trunkShareOf = (q) => 0.12 * (q.rotation || 0) + 0.08 * (q.hinge || 0);
+  const seatFactor = (q) => Math.max(0.5, 1 + (q.seatLeverage || 0) * (q.seatZM - DEFAULTS.seatZM) / 0.05);
   function muscleCapacity(q, hours) {
-    return q.fitnessW * (0.7 * gearFactor(q) + trunkShareOf(q) * trunkGearFactor(q) + 0.1 * q.legDrive) * strengthFactor(q) *
+    return q.fitnessW * (0.7 * gearFactor(q) + trunkShareOf(q) * trunkGearFactor(q) + 0.1 * q.legDrive) * strengthFactor(q) * seatFactor(q) *
       Math.pow(Math.max(1, hours), -0.07);
   }
   // The blade's path through the drive against the boat (m).
@@ -1174,10 +1180,12 @@
   // default drive share: a quicker rate, or a longer drive (so a quicker
   // recovery), costs what you can hold. Against the same stroke, so its
   // shape and recovery style, whose costs are an upper bound, only compare.
+  // The reference is the same recovery motion, timed at 60 spm and the
+  // default share (planned once: the motion's best changes little).
   function recoveryExtra(p) {
-    const q = Object.assign({}, DEFAULTS, p);
+    const q = Object.assign({}, DEFAULTS, p), pg = paddled(q);
     const ref = Object.assign({}, q, { rateSpm: 60, driveFraction: DEFAULTS.driveFraction });
-    return recoveryWatts(paddled(q)) - recoveryWatts(paddled(ref));
+    return recoveryWatts(pg) - recoveryWatts(paddled(ref), pg);
   }
   function capacity(p, hours = 1) {
     const q = Object.assign({}, DEFAULTS, p), C = muscleCapacity(q, hours);
@@ -1462,11 +1470,12 @@
   // The recovery's power (W) at this stroke's rate, for what you can hold:
   // the motion planned at 60 spm (its best changes little with rate), costed
   // at this rate's timing. Quicker, the planner's own result.
+  // planFrom: the stroke whose motion is costed (pg's own by default).
   const recWattsCache = new Map();
-  function recoveryWatts(pg) {
-    const key = JSON.stringify(REC_KEYS.map((k) => pg[k]));
+  function recoveryWatts(pg, planFrom = pg) {
+    const key = JSON.stringify(REC_KEYS.map((k) => pg[k])) + (planFrom === pg ? "" : JSON.stringify(REC_KEYS.map((k) => planFrom[k])));
     if (recWattsCache.has(key)) return recWattsCache.get(key);
-    const at60 = Object.assign({}, pg, { rateSpm: 60, driveFraction: pg.driveFraction / Math.pow(pg.rateSpm / 60, 1 - DRIVE_TIME_EXP) });
+    const at60 = Object.assign({}, planFrom, { rateSpm: 60, driveFraction: planFrom.driveFraction / Math.pow(planFrom.rateSpm / 60, 1 - DRIVE_TIME_EXP) });
     const plan = recoveryPlan(at60), seatX = seatFor(pg), sLow = lowerHand(pg);
     const ends = [1, 0].map((u) => { const P = pose(pg, u); return fitBody(pg, seatX, P.at(0), P.at(sLow), neutralAt(pg, u)); });
     const w = recoveryCost(pg, plan, ends).joules * pg.rateSpm / 60;
@@ -1832,7 +1841,7 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 58;
+  const API_LEVEL = 59;
   const PADDLE = paddleOf(DEFAULTS);
   const api = { API_LEVEL, HINGE_SWING_M, recoveryExtra, muscleCapacity: (p, hours = 1) => muscleCapacity(Object.assign({}, DEFAULTS, p), hours), driveShareAt, fastestRate, shaftDir, typicalFitness, armBest, trunkBest, paddled, paddleOf, gearFactor, trunkGearFactor, recoveryPlan, recoveryPose, recoveryCost, recoveryClear, elbowAt, handForces, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
