@@ -866,7 +866,7 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of each engine file (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. The fit builds on the stroke engine. -->
-<script src="stroke-sim.js?v=74aa1b6f31"></script>
+<script src="stroke-sim.js?v=418b5a715e"></script>
 <script src="fit-sim.js?v=c12c9edd44"></script>
 <script>
 (() => {
@@ -910,7 +910,7 @@ function shown(el) {
 }
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 57;
+const NEEDS_API = 58;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -936,7 +936,7 @@ const PRESETS = {
 };
 // The paddler profile: who's paddling, not how. Presets never change it.
 const BODY = ["torsoM", "shoulderM", "upperArmM", "forearmM", "thighM", "shinM"];
-const PROFILE = ["ageY", "female", "heightM", ...BODY, "massKg", "fitnessW", "strengthOn", "strengthPeakDeg", "strengthDrop", "gearOn", "armBestMs", "gearDrop", "trunkBestMs"];
+const PROFILE = ["ageY", "female", "heightM", ...BODY, "massKg", "fitnessW", "strengthOn", "strengthPeakDeg", "strengthDrop", "bodyStrengthDrop", "gearOn", "armBestMs", "gearDrop", "trunkBestMs"];
 // Presets set the technique; the profile, the paddle, the seat and the blade force model stay.
 const KEEP = ["effortW", ...PROFILE, "bladeLift", "paddleLenM", "bladeLenM", "bladeWidthM", "seatZM"];
 // Each boat's settings are remembered in this browser; Reset goes back to these.
@@ -948,7 +948,7 @@ const BOATS_KEY = "ppm.sim.boats";
 // Saves carry SAVE_VERSION. A default changed since a save was made: the
 // saved value that was the old default follows the new one (it was never
 // chosen); any other value is kept. Saves before versions were added are 1.
-const SAVE_VERSION = 7;
+const SAVE_VERSION = 8;
 const RETIRED_DEFAULTS = [
   { key: "switchLossS", was: 0.3, until: 2 },   // the default was 0.3 s before version 2
   { key: "armBestMs", was: 0.9, until: 3 },     // 0.9 m/s before arm speed counted only the pull (version 3)
@@ -968,6 +968,12 @@ const RETIRED_DEFAULTS = [
 const retiredIn = (version, k, v) => RETIRED_DEFAULTS.some((d) => d.key === k && version < d.until && Math.abs(v - d.was) < 1e-9);
 // Saved settings, on top of the starting ones: a setting added since they
 // were saved keeps its default, and anything unknown or not a number is dropped.
+// Strength's one fall-off became two (version 8), one for each way of
+// counting it: a save from before sets both to the one it had.
+function splitStrengthDrop(saved, into) {
+  if (saved && typeof saved.strengthDrop === "number" && isFinite(saved.strengthDrop) && typeof saved.bodyStrengthDrop !== "number")
+    into.bodyStrengthDrop = saved.strengthDrop;
+}
 function loadBoats() {
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(BOATS_KEY)); } catch {}
@@ -979,6 +985,7 @@ function loadBoats() {
     const sv = saved && saved[x];
     if (sv && typeof sv === "object")
       for (const k of Object.keys(S.DEFAULTS)) if (typeof sv[k] === "number" && isFinite(sv[k]) && !retired(k, sv[k])) out[x][k] = sv[k];
+    splitStrengthDrop(sv, out[x]);
   }
   return out;
 }
@@ -1033,7 +1040,7 @@ const CONTROLS = [
     help: "Same effort at a slower rate: bigger pulls, more surge." },
   { group: "ctl-stroke", key: "driveFraction", label: "Time in the drive", min: 0.3, max: 0.8, step: 0.05, unit: "",
     fmt: (v, p) => { const sh = S.driveShareAt({ driveFraction: v, rateSpm: p.rateSpm }); return `${Math.round(sh * 100)}% · ${fmtNum(sh * 60 / p.rateSpm, 2)} s`; },
-    help: "The share of each stroke from catch to exit at your stroke rate, and how long that is; the rest is the recovery. Set at 60 spm: a quicker rate mostly shortens the recovery (rowers' drive time hardly changes with rate), so the share shown rises with the rate. A longer drive moves more water more gently: lower peak force, less slip, but a quicker recovery, whose cost isn't counted in what you can hold." },
+    help: "The share of each stroke from catch to exit at your stroke rate, and how long that is; the rest is the recovery. Set at 60 spm: a quicker rate mostly shortens the recovery (rowers' drive time hardly changes with rate), so the share shown rises with the rate. A longer drive moves more water more gently: lower peak force, less slip, but a quicker recovery, which costs more (with gearing on, it comes off what you can hold)." },
   { group: "ctl-stroke", key: "catchDeg", label: "Reach at the catch", min: 0, max: 60, step: 1, unit: "°",
     fmt: (v, p) => { const add = bodyReach(p); return add ? `${v}° + ${fmtNum(add, 0)}° body = ${fmtNum(v + add, 0)}°` : `${v}°`; },
     help: "Shaft angle forward of vertical when the blade goes in, reaching with the arms. Trunk rotation and a hinge reach further on top (15° and 8° at full): the total is the angle the blade goes in at." },
@@ -1095,8 +1102,11 @@ const CONTROLS = [
   { group: "ctl-strength", key: "strengthPeakDeg", label: "Strongest at", min: -30, max: 30, step: 1, unit: "",
     fmt: (v) => (v === 0 ? "shaft vertical" : `${Math.abs(v)}° ${v < 0 ? "forward" : "behind"} vertical`),
     help: "The paddle angle you pull hardest at." },
-  { group: "ctl-strength", key: "strengthDrop", label: "Weaker toward the ends", min: 0, max: 0.8, step: 0.05, unit: "",
-    fmt: (v) => `${Math.round(v * 100)}% weaker`, help: "By paddle angle: how much weaker 45° from your strongest angle. By body position: how much weaker with the lower arm folded up, the top arm bent or either reaching past its reach." },
+  // Each way of counting strength has its own fall-off; only its own shows.
+  { group: "ctl-strength", key: "strengthDrop", label: "Weaker 45° away", min: 0, max: 0.8, step: 0.05, unit: "",
+    fmt: (v) => `${Math.round(v * 100)}% weaker`, help: "How much weaker 45° from your strongest paddle angle (with average arms; longer arms keep strength further out)." },
+  { group: "ctl-strength", key: "bodyStrengthDrop", label: "Weaker at the extremes", min: 0, max: 0.8, step: 0.05, unit: "",
+    fmt: (v) => `${Math.round(v * 100)}% weaker`, help: "How much weaker with the lower arm folded up, the top arm bent, either arm reaching past its reach, or leaning, turning or dropping a shoulder far to reach the catch." },
   { group: "ctl-gear", key: "armBestMs", label: "Best arm speed", min: 0.5, max: 1.5, step: 0.01, unit: "",
     fmt: (v) => `${fmtNum(v, 2)} m/s`, help: "Your lower hand's speed against its shoulder that you hold the most power at." },
   { group: "ctl-gear", key: "trunkBestMs", label: "Best trunk speed", min: 0.3, max: 1.8, step: 0.01, unit: "",
@@ -1136,7 +1146,7 @@ const RECOVERIES = [["-1", "Cheapest"], ["0", "Lower hand swings"], ["0.5", "Eve
 {
   const wrap = document.createElement("div");
   wrap.className = "ctl";
-  const tip = ("How the paddle gets from the exit to the catch: about a swing point on the shaft (not the pull's pivot) that travels smoothly while the paddle swings around it. Lower hand swings: the top hand stays steady, a fulcrum in front of your face, and the lower hand swings the blade. Top hand swings: the lower hand stays and the top hand drops and swings over it. Cheapest: the one that costs least, from the arms' and paddle's kinetic energy (each arm ~5% of body mass, de Leva 1996), lifting them, and air drag on the blade, with negative work costing a quarter of positive work, inside reach and with the top hand in front of the face. The costs compare styles: the model starts and stops the hands at the exit and catch, so their size is an upper bound, and they don't change what you can hold.").replace(/"/g, "&quot;");
+  const tip = ("How the paddle gets from the exit to the catch: about a swing point on the shaft (not the pull's pivot) that travels smoothly while the paddle swings around it. Lower hand swings: the top hand stays steady, a fulcrum in front of your face, and the lower hand swings the blade. Top hand swings: the lower hand stays and the top hand drops and swings over it. Cheapest: the one that costs least, from the arms' and paddle's kinetic energy (each arm ~5% of body mass, de Leva 1996), lifting them, and air drag on the blade, with negative work costing a quarter of positive work, inside reach and with the top hand in front of the face. The model starts and stops the hands at the exit and catch, so the costs are an upper bound. The styles and stroke shapes only compare by them. With gearing on, what a quicker rate or a longer drive adds to this stroke's recovery (at 60 spm, half the stroke in the drive) comes off what you can hold.").replace(/"/g, "&quot;");
   wrap.innerHTML = `<div class="top"><span>Recovery<button type="button" class="info" data-tip="${tip}" aria-label="What is this?">?</button></span></div>` +
     `<div class="row chips" id="recovery-mode" role="group" aria-label="Recovery" style="margin-top:6px"></div><div class="help" id="recovery-read"></div>`;
   $("c-handTravelM").closest(".ctl").after(wrap);
@@ -1165,6 +1175,13 @@ function renderRecovery() {
     if ($("m3-recovery-read")) $("m3-recovery-read").innerHTML = text;
   }, 120);
 }
+// What the rate and drive share add to the recovery (against 60 spm, half
+// the stroke in the drive), off what you can hold.
+function extraText(p) {
+  const x = S.recoveryExtra(p);
+  return Math.abs(x) < 0.5 ? "" :
+    `Recovery at this rate and drive: <b>${x > 0 ? "+" : "−"}${fmtNum(Math.abs(x), 0)} W</b>, ${x > 0 ? "off" : "added to"} what you can hold.`;
+}
 // What the recovery does and costs, and the styles against each other.
 const styleCache = new WeakMap();
 function recoveryStyles(r) {
@@ -1175,7 +1192,8 @@ function recoveryText(r) {
   const pl = planOf(r), c = pl.cost, J = (v) => `${fmtNum(v, 0)} J`;
   const styles = recoveryStyles(r).map((q, i) => `${["lower hand swings", "even mix", "top hand swings"][i]} ${J(q.cost.joules)}${q.cost.past > 0.15 ? " (out of reach)" : ""}`);
   return `${r.params.recoveryPivot >= 0 ? "Set" : "Cheapest"}: swing point ${fmtNum(pl.q * 100, 0)}% of the way to the lower hand, lifted ${fmtNum(pl.lift * 100, 0)} cm and brought in ${fmtNum(pl.in * 100, 0)} cm mid-carry; ` +
-    `the blade swings ${fmtNum(c.wide * 100, 0)} cm out. Costs <b>${J(c.joules)}</b> a stroke (arms and paddle ${J(c.pos + 0.25 * c.neg)}, air ${J(c.air)}). Styles: ${styles.join(", ")}.`;
+    `the blade swings ${fmtNum(c.wide * 100, 0)} cm out. Costs <b>${J(c.joules)}</b> a stroke (arms and paddle ${J(c.pos + 0.25 * c.neg)}, air ${J(c.air)}). Styles: ${styles.join(", ")}.` +
+    (r.params.gearOn ? ` ${extraText(r.params)}` : "");
 }
 // When the body swings: aft through the drive, or forward.
 const SWING_TIMING = [["1", "Back in the drive"], ["-1", "Forward in the drive"]];
@@ -1215,7 +1233,7 @@ function showBodyEffects() {
     `<div class="help">This race (${fmtNum(hours, hours < 10 ? 1 : 0)} h): <b>${fmtNum(S.capacity(p, hours), 0)} W</b>, as power fades over a long race (${fmtNum(Math.pow(Math.max(1, hours), -0.07) * 100, 0)}%).</div>` +
     `<div class="help">Arms only: ${fmtNum(0.7 * p.fitnessW, 0)} W. Whole body: ${fmtNum(p.fitnessW, 0)} W.` +
     `${p.strengthOn ? ` Strength by position: ×${fmtNum(S.strengthFactor(p), 2)} for this stroke.` : ""}` +
-    `${p.gearOn ? ` Gearing: your arms hold ×${fmtNum(S.gearFactor(p), 2)}${p.rotation || p.hinge ? `, your trunk ×${fmtNum(S.trunkGearFactor(p), 2)}` : ""}.` : ""}</div>`;
+    `${p.gearOn ? ` Gearing: your arms hold ×${fmtNum(S.gearFactor(p), 2)}${p.rotation || p.hinge ? `, your trunk ×${fmtNum(S.trunkGearFactor(p), 2)}` : ""}. ${extraText(p)}` : ""}</div>`;
   if (p.heelDeg && !(bodyRef[editing] && bodyRef[editing].key === JSON.stringify(Object.assign({}, p, { heelDeg: 0 }))))
     bodyRef[editing] = { key: JSON.stringify(Object.assign({}, p, { heelDeg: 0 })), r: S.simulate(Object.assign({}, p, { heelDeg: 0 })) };
   const r0 = p.heelDeg ? bodyRef[editing].r : r;
@@ -1313,6 +1331,8 @@ function renderStrength() {
   $("strength-ctl").hidden = !on;
   // The strongest angle only applies by paddle angle.
   $("c-strengthPeakDeg").closest(".ctl").hidden = boats[editing].strengthOn !== 1;
+  $("c-strengthDrop").closest(".ctl").hidden = boats[editing].strengthOn !== 1;
+  $("c-bodyStrengthDrop").closest(".ctl").hidden = boats[editing].strengthOn !== 2;
 }
 const GEAR_MODES = [["0", "Off"], ["1", "On"]];
 // Switching sides, or an ideal boat that runs straight without it.
@@ -1442,6 +1462,7 @@ $("profile-pick").addEventListener("change", () => {
     // A setting saved at what was then its default follows today's default.
     const saved = all[name], version = typeof saved.version === "number" ? saved.version : 1;
     const kept = Object.fromEntries(Object.entries(saved).filter(([k, v]) => k !== "version" && !retiredIn(version, k, v)));
+    splitStrengthDrop(kept, kept);
     Object.assign(boats[editing], profileOf(Object.assign({}, S.DEFAULTS, kept))); changed(editing);
   }
 });
