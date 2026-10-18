@@ -807,7 +807,7 @@
         </div>
         <div id="ctl-profile"></div>
         <div class="engine-box" id="engine-box"></div>
-        <h4 class="sub-h">Strength by position<button type="button" class="info" data-tip="Off: you can pull equally hard all through the stroke. By paddle angle: strongest at one angle, weaker toward the catch and exit. From the arms: your body follows the paddle. Your lower arm pulls: weaker folded past a right angle, where your elbow bends the pull, but no weaker from there to straight, where your shoulder and trunk pull through it as a link; weaker reaching past your reach. Your top arm pushes: strongest nearly straight. And weaker leaning, turning or dropping a shoulder far to reach the catch. Where you're weak the paddle moves slower, so the force bunches where you're strong, and what you can hold drops. Assumed curves, not measured." aria-label="What is this?">?</button></h4>
+        <h4 class="sub-h">Strength by position<button type="button" class="info" data-tip="Off: you can pull equally hard all through the stroke. By paddle angle: strongest at one angle, weaker toward the catch and exit. By body position (the default): your body follows the paddle. Your lower arm pulls: weaker folded past a right angle, where your elbow bends the pull, but no weaker from there to straight, where your shoulder and trunk pull through it as a link; weaker reaching past your reach. Your top arm pushes: strongest nearly straight. And weaker leaning, turning or dropping a shoulder far to reach the catch. Where you're weak the paddle moves slower, so the force bunches where you're strong, and what you can hold drops. Assumed curves, not measured." aria-label="What is this?">?</button></h4>
         <div class="row chips" id="strength-mode" role="group" aria-label="Strength by position"></div>
         <div id="strength-ctl"><div id="ctl-strength"></div>
           <svg class="hv" id="strength-curve" role="img" aria-label="Strength at each paddle angle, with this stroke's range"></svg>
@@ -815,7 +815,7 @@
         <h4 class="sub-h">Gearing<button type="button" class="info" data-tip="Off: you hold the same power at any stroke rate. On: your arms, and your trunk, each hold the most power moving at one speed, like a cyclist's best cadence. Away from it they hold less, along Hill's force–velocity curve: more lost going slower than faster. Arm speed is your lower hand against its shoulder through the drive: a higher rate, a longer stroke or wider hands move it faster. Trunk rotation and a hinge don't: your trunk carries their extra travel. Only the pull counts: your shoulder rising or dropping across it is your trunk's work. Your trunk has its own best speed (its paddle-side shoulder's): what rotation and a hinge add holds less away from it. Its muscles are mostly slow fibres, as rowing and skiing studies find the trunk working early in the drive and the arms late, so its best needn't be your arms'. It changes what you can hold, and so does the rate itself: a quicker rate costs more to swing the arms and paddle back, a slower one asks a heavier pull every stroke, and heavy pulls tire you far sooner (it's why cyclists ride at 80–90 rpm though 60–70 costs the least oxygen). The fitter you are for your size, the heavier each stroke at the same rate, so the quicker your best rate: fitted so a typical paddler using the whole body is fastest near 60 spm and one 1.5 times as fit near 75, as club and elite C1 racers paddle. Assumed until measured: your paddle can find your best speed from strokes at a few rates." aria-label="What is this?">?</button></h4>
         <div class="row chips" id="gear-mode" role="group" aria-label="Gearing"></div>
         <div id="gear-ctl"><div id="ctl-gear"></div><div class="help" id="gear-read"></div></div>
-        <h4 class="sub-h">Body<button type="button" class="info" data-tip="Height scales every length; then set any one. Female: shoulders 3.4% and forearms 3.5% shorter for the same height (ANSUR II, radius lengths); the rest scales alike. You sit with your hips where the blade leaves the water on the Defaults stroke (further forward only if you can't reach it from there); every technique is paddled from that seat, and the body leans, turns and drops the paddle-side shoulder at each moment so both hands are within reach, the face behind the top hand. With strength from the arms, every length changes results; by paddle angle, only the arms do." aria-label="What is this?">?</button></h4>
+        <h4 class="sub-h">Body<button type="button" class="info" data-tip="Height scales every length; then set any one. Female: shoulders 3.4% and forearms 3.5% shorter for the same height (ANSUR II, radius lengths); the rest scales alike. You sit with your hips where the blade leaves the water on the Defaults stroke (further forward only if you can't reach it from there); every technique is paddled from that seat, and the body leans, turns and drops the paddle-side shoulder at each moment so both hands are within reach, the face behind the top hand. With strength by body position, every length changes results; by paddle angle, only the arms do." aria-label="What is this?">?</button></h4>
         <div id="ctl-body-size"></div>
         <button type="button" class="small" id="profile-fit">Lengths from height</button>
       </details>
@@ -850,7 +850,7 @@
           wakes. The paddler sits with the hips where the blade leaves the water on a plain stroke, paddles
           every technique from that seat, and the body is fitted
           to the paddle (lean, twist) so the hands are within reach; it says when a stroke isn't.
-          Seat height sets how stable the boat is. Your strength is the power you can hold; with strength
+          Seat height sets how stable the boat is (and, with strength by body position, where your body sits against the paddle). Your strength is the power you can hold; with strength
           by position on (Paddler profile), also an assumed curve of how hard you can pull at each paddle
           angle or arm position. With gearing on, your arms also hold the most power moving at one speed,
           so the stroke rate and the stroke's length matter. The Fit tab searches seat height, paddle length
@@ -863,7 +863,7 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of each engine file (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. The fit builds on the stroke engine. -->
-<script src="stroke-sim.js?v=35bd71576f"></script>
+<script src="stroke-sim.js?v=bda4805a6b"></script>
 <script src="fit-sim.js?v=c12c9edd44"></script>
 <script>
 (() => {
@@ -944,13 +944,14 @@ const BOATS_KEY = "ppm.sim.boats";
 // Saves carry SAVE_VERSION. A default changed since a save was made: the
 // saved value that was the old default follows the new one (it was never
 // chosen); any other value is kept. Saves before versions were added are 1.
-const SAVE_VERSION = 5;
+const SAVE_VERSION = 6;
 const RETIRED_DEFAULTS = [
   { key: "switchLossS", was: 0.3, until: 2 },   // the default was 0.3 s before version 2
   { key: "armBestMs", was: 0.9, until: 3 },     // 0.9 m/s before arm speed counted only the pull (version 3)
   { key: "gearOn", was: 0, until: 4 },          // gearing was off before the best speeds rose with fitness (version 4)
   { key: "armBestMs", was: 0.87, until: 5 },    // 0.87 m/s before the blade locked at the catch (version 5)
   { key: "trunkBestMs", was: 0.91, until: 5 },  // 0.91 m/s then too
+  { key: "strengthOn", was: 0, until: 6 },      // strength by position was off before it defaulted to by body position (version 6)
 ];
 // Whether saved value v of setting k, from a save of `version`, was the default then.
 const retiredIn = (version, k, v) => RETIRED_DEFAULTS.some((d) => d.key === k && version < d.until && Math.abs(v - d.was) < 1e-9);
@@ -1039,9 +1040,9 @@ const CONTROLS = [
     fmt: (v) => (v === 0 ? "shaft vertical" : `${Math.abs(v)}° ${v < 0 ? "forward" : "behind"} vertical`),
     help: "The paddle angle you pull hardest at." },
   { group: "ctl-strength", key: "strengthDrop", label: "Weaker toward the ends", min: 0, max: 0.8, step: 0.05, unit: "",
-    fmt: (v) => `${Math.round(v * 100)}% weaker`, help: "By paddle angle: how much weaker 45° from your strongest angle. From the arms: how much weaker with the lower arm folded up, the top arm bent or either reaching past its reach." },
+    fmt: (v) => `${Math.round(v * 100)}% weaker`, help: "By paddle angle: how much weaker 45° from your strongest angle. By body position: how much weaker with the lower arm folded up, the top arm bent or either reaching past its reach." },
   { group: "ctl-gear", key: "armBestMs", label: "Best arm speed", min: 0.5, max: 1.5, step: 0.01, unit: "",
-    fmt: (v) => `${fmtNum(v, 2)} m/s`, help: "Your lower hand's speed against its shoulder that you hold the most power at,." },
+    fmt: (v) => `${fmtNum(v, 2)} m/s`, help: "Your lower hand's speed against its shoulder that you hold the most power at." },
   { group: "ctl-gear", key: "gearDrop", label: "Weaker away from it", min: 0, max: 0.4, step: 0.01, unit: "",
     fmt: (v) => `${Math.round(v * 100)}% weaker`, help: "How much of your arms' power you lose at half your best arm speed. Faster, less is lost (Hill's curve: about half as much at 1.5 times)." },
   { group: "ctl-gear", key: "trunkBestMs", label: "Best trunk speed", min: 0.3, max: 1.8, step: 0.01, unit: "",
@@ -1270,7 +1271,7 @@ $("swap").addEventListener("click", () => {
 $("c-effortW").addEventListener("input", (ev) => { effortW = parseFloat(ev.target.value); changed(); });
 
 // ------------------------------------------------------- paddler profile
-const STRENGTH_MODES = [["0", "Off"], ["1", "By paddle angle"], ["2", "From the arms"]];
+const STRENGTH_MODES = [["0", "Off"], ["1", "By paddle angle"], ["2", "By body position"]];
 function renderStrength() {
   const el = $("strength-mode"), on = !!boats[editing].strengthOn;
   el.innerHTML = "";
@@ -1355,7 +1356,7 @@ function drawStrength() {
   $("strength-read").innerHTML = `Shaded: this stroke, ${fmtNum(g.catchDeg, 0)}° forward to ${fmtNum(g.exitDeg, 0)}° back. ` +
     `What you can hold: <b>×${fmtNum(f, 2)}</b> against the default stroke.`;
 }
-// From the arms: strength through this drive, from how bent or stretched
+// By body position: strength through this drive, from how bent or stretched
 // each arm is as the body follows the paddle.
 function drawArmStrength(r) {
   const W = 320, H = 120, l = 34, rr = 10, t = 10, b = 26, c = r.strengthCurve || [];

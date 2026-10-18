@@ -161,11 +161,11 @@
     rotation: 0,               // trunk rotation, 0–1: more reach and hand travel, more muscle
     legDrive: 0,               // leg drive, 0–1: force held later in the drive, more muscle
     hinge: 0,                  // hinge from the waist, 0–1: lean to the catch, sit up through the drive
-    // Strength by position (off by default). 1: by paddle angle, weakest far
-    // from strengthPeakDeg, losing strengthDrop of your strength 45° away
-    // (with arms of ARM_REF). 2: from the arms, weakest with an arm folded
-    // or at full stretch, losing strengthDrop at full stretch.
-    strengthOn: 0,
+    // Strength by position. 0: off. 1: by paddle angle, weakest far from
+    // strengthPeakDeg, losing strengthDrop of your strength 45° away (with
+    // arms of ARM_REF). 2 (the default): by body position, weakest with an
+    // arm folded or at full stretch, losing strengthDrop at full stretch.
+    strengthOn: 2,
     strengthPeakDeg: 0,        // shaft angle you pull hardest at; + = behind vertical
     strengthDrop: 0.4,
     // Gearing: the arms hold the most power at one speed.
@@ -182,7 +182,7 @@
     recoveryPivot: -1,         // the recovery: -1 the cheapest; 0 the lower hand swings, 1 the top hand drops and swings, between a mix
     // The paddler's body, m, fitted to the paddle each moment (see fitBody).
     // Results change through strength by position: by angle, the arm length;
-    // from the arms, every length. Otherwise it's for the drawings and the
+    // by body position, every length. Otherwise it's for the drawings and the
     // reach check.
     lowerHandM: 0.60,          // grip to the lower hand, along the shaft
     heightM: 1.78,
@@ -495,7 +495,7 @@
     bodyCache.set(key, body);
     return body;
   }
-  // From the arms: the lower arm pulls, strongest with the elbow near 90°
+  // By body position: the lower arm pulls, strongest with the elbow near 90°
   // (elbow flexors' torque peaks about there): ARM_BEST of full stretch. The
   // top arm pushes, the paddle's fulcrum, and pushing is strongest nearer
   // straight (an ascending strength curve, as in a press): TOP_ARM_BEST.
@@ -532,7 +532,7 @@
     if (timingCache.has(key)) return timingCache.get(key);
     const n = p.strengthOn === 2 ? 80 : 400, cum = [0], strength = [];
     let sumS = 0;
-    // From the arms: fit the body through the drive, warm-starting each
+    // By body position: fit the body through the drive, warm-starting each
     // moment from the last.
     const seatX = p.strengthOn === 2 ? seatFor(p) : 0;
     let prev = null;
