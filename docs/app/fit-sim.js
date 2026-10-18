@@ -2,11 +2,12 @@
 // seat height, paddle length and hand placement that suit a paddler, on the
 // stroke engine (stroke-sim.js).
 //
-//  - The seat goes as high as the water allows: higher gives leverage the
-//    engine doesn't count yet, and costs stability, which it does.
-//  - Then paddle length, the lower hand and the top hand are searched for
-//    the most speed at the power the paddler can hold, keeping both hands in
-//    reach and the top hand between chin and forehead.
+//  - The seat, paddle length, lower hand and top hand are searched for the
+//    most speed at the power the paddler can hold, keeping both hands in
+//    reach, the top hand between chin and forehead, and the seat no higher
+//    than the water's stability allows. A higher seat wants a longer paddle
+//    (a higher gear), so it pays at a quick rate and with long arms; any
+//    leverage beyond that is the seatLeverage assumption (none by default).
 //  - A new paddle length keeps the stroke's blade path: the blade goes in
 //    and comes out where it did, so a longer paddle sweeps a smaller angle
 //    and the arms move slower (a higher gear).
@@ -27,7 +28,7 @@
   // Search ranges [low, high, step] (m).
   const RANGES = {
     seatZM: [0.05, 0.25, 0.025],
-    paddleLenM: [47 * 0.0254, 55 * 0.0254, 0.0254],   // 47″ to 55″
+    paddleLenM: [46 * 0.0254, 60 * 0.0254, 0.0254],   // 46″ to 60″
     lowerHandM: [0.5, 0.72, 0.02],
     handOutM: [0.25, 0.45, 0.025],
   };
@@ -93,15 +94,34 @@
     }
     return seats[seats.length - 1];
   }
+  // A seat to try, with paddles and a top hand to suit: sitting higher by
+  // dz needs about dz more paddle for the same top hand, so that length and
+  // an inch either side, each with the top hand where it is or 5 cm nearer
+  // the boat (on the blade path of ref).
+  const INCH = 0.0254;
+  function seatTrials(setup, z, ref) {
+    const [lo, hi] = RANGES.paddleLenM, L0 = setup.paddleLenM + (z - setup.seatZM), out = [];
+    const Ls = [-1, 0, 1].map((d) => Math.min(hi, Math.max(lo, Math.round(L0 / INCH + d) * INCH))).filter((L, i, a) => a.indexOf(L) === i);
+    const hands = [setup.handOutM, +(setup.handOutM - 0.05).toFixed(3)].filter((h) => h >= RANGES.handOutM[0] - 1e-6);
+    for (const L of Ls) for (const handOutM of hands) out.push(withBladePath(Object.assign({}, setup, { seatZM: z, paddleLenM: L, handOutM }), ref));
+    return out;
+  }
+  const SEAT_TRIALS = 6;
   // The search, a step at a time: yields its progress (0–1), returns
-  // { current, best } measured.
+  // { current, best, maxSeat } measured (maxSeat: the highest seat the
+  // water allows).
   function* search(p, needs) {
-    const total = 1 + 2 * (steps(RANGES.paddleLenM).length + steps(RANGES.lowerHandM).length + steps(RANGES.handOutM).length);
     let n = 0;
     const current = measure(p, needs);
-    const seatZM = yield* seatFor(p, needs);
-    let best = measure(Object.assign({}, p, { seatZM }), needs);
+    const maxSeat = yield* seatFor(p, needs);
+    // Every seat in range up to the highest the water allows.
+    const seats = steps(RANGES.seatZM).filter((z) => z <= maxSeat + 1e-6);
+    const total = 1 + 2 * (SEAT_TRIALS * seats.length + steps(RANGES.paddleLenM).length + steps(RANGES.lowerHandM).length + steps(RANGES.handOutM).length);
+    // From your own setup, the seat lowered into what the water allows.
+    let best = p.seatZM <= maxSeat + 1e-6 ? current : seatTrials(p, maxSeat, p).map((t) => measure(t, needs)).reduce((a, b) => (beats(b, a) ? b : a));
     yield ++n / total;
+    // The paddle and hands for the seat, then the seats (each with its
+    // paddles), then the paddle and hands again for the seat found.
     for (let pass = 0; pass < 2; pass++) {
       let moved = false;
       for (const key of ["paddleLenM", "lowerHandM", "handOutM"]) for (const v of steps(RANGES[key])) {
@@ -111,9 +131,14 @@
         const m = measure(key === "paddleLenM" ? withBladePath(trial, p) : trial, needs);
         if (beats(m, best)) { best = m; moved = true; }
       }
+      for (const z of seats) {
+        yield (n += SEAT_TRIALS) / total;
+        if (Math.abs(z - best.setup.seatZM) < 1e-6) continue;
+        for (const trial of seatTrials(best.setup, z, p)) { const m = measure(trial, needs); if (beats(m, best)) { best = m; moved = true; } }
+      }
       if (!moved) break;
     }
-    return { current, best };
+    return { current, best, maxSeat };
   }
   // Seat height × paddle length with the hands of `p`, each length keeping
   // its blade path. `also`: setups whose seat and length get a row and a

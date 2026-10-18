@@ -753,7 +753,7 @@
       </section>
       <!-- ------------------------------------------------------ fit -->
       <section class="card" id="fit-card">
-        <h2>Fit: seat, paddle and hands<button type="button" class="info" data-tip="The seat goes as high as your water allows (a higher seat gives leverage the model doesn't count yet, and costs stability, which it does). Then paddle length, lower hand and top hand are searched for the most speed at what you can hold, with both hands in reach and the top hand between chin and forehead. A new paddle length keeps your blade path: the blade goes in and comes out where it does now, so a longer paddle sweeps less angle and your arms move slower, like a higher gear." aria-label="What is this?">?</button></h2>
+        <h2>Fit: seat, paddle and hands<button type="button" class="info" data-tip="Seat height, paddle length, lower hand and top hand are searched for the most speed at what you can hold, the seat no higher than your water allows, with both hands in reach and the top hand between chin and forehead. A new paddle length keeps your blade path: the blade goes in and comes out where it does now, so a longer paddle sweeps less angle and your arms move slower, like a higher gear." aria-label="What is this?">?</button></h2>
         <div class="sub" id="fit-sub"></div>
         <h3>How stable you need it</h3>
         <div class="row chips" id="fit-water" role="group" aria-label="How stable you need it"></div>
@@ -822,6 +822,8 @@
         <h4 class="sub-h">Gearing<button type="button" class="info" data-tip="Off: you hold the same power at any stroke rate. On: your arms, and your trunk, each hold the most power moving at one speed, like a cyclist's best cadence. Away from it they hold less, along Hill's force–velocity curve: more lost going slower than faster. Arm speed is your lower hand against its shoulder through the drive: a higher rate, a longer stroke or wider hands move it faster. Trunk rotation and a hinge don't: your trunk carries their extra travel. Only the pull counts: your shoulder rising or dropping across it is your trunk's work. Your trunk has its own best speed (its paddle-side shoulder's): what rotation and a hinge add holds less away from it. Its muscles are mostly slow fibres, as rowing and skiing studies find the trunk working early in the drive and the arms late, so its best needn't be your arms'. It changes what you can hold, and so does the rate itself: a quicker rate costs more to swing the arms and paddle back, a slower one asks a heavier pull every stroke, and heavy pulls tire you far sooner (it's why cyclists ride at 80–90 rpm though 60–70 costs the least oxygen). The fitter you are for your size, the heavier each stroke at the same rate, so the quicker your best rate: fitted so a typical paddler using the whole body is fastest near 60 spm and one 1.5 times as fit near 75, as club and elite C1 racers paddle. Assumed until measured: your paddle can find your best speed from strokes at a few rates." aria-label="What is this?">?</button></h4>
         <div class="row chips" id="gear-mode" role="group" aria-label="Gearing"></div>
         <div id="gear-ctl"><div id="ctl-gear"></div><div class="help" id="gear-read"></div></div>
+        <h4 class="sub-h">Seat height<button type="button" class="info" data-tip="What sitting higher gives beyond what the model already works out (the gear of a longer paddle, your reach and joint angles, and stability). The Fit search weighs it against the stability your water needs." aria-label="What is this?">?</button></h4>
+        <div id="ctl-seat"></div>
         <h4 class="sub-h">Blade force<button type="button" class="info" data-tip="With lift: the blade still pushes hard when the water hits it at an angle. Drag only ignores that." aria-label="What is this?">?</button></h4>
         <div class="row chips" id="lift-mode" role="group" aria-label="Blade force model"></div>
         <h4 class="sub-h">Steering<button type="button" class="info" data-tip="Run straight: an ideal boat held on course for free, with no time lost to switches and no zigzag. For comparison: no real canoe steers itself." aria-label="What is this?">?</button></h4>
@@ -866,8 +868,8 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of each engine file (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. The fit builds on the stroke engine. -->
-<script src="stroke-sim.js?v=418b5a715e"></script>
-<script src="fit-sim.js?v=c12c9edd44"></script>
+<script src="stroke-sim.js?v=e39650ae19"></script>
+<script src="fit-sim.js?v=7d17ab7618"></script>
 <script>
 (() => {
 "use strict";
@@ -910,7 +912,7 @@ function shown(el) {
 }
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 58;
+const NEEDS_API = 59;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -936,7 +938,7 @@ const PRESETS = {
 };
 // The paddler profile: who's paddling, not how. Presets never change it.
 const BODY = ["torsoM", "shoulderM", "upperArmM", "forearmM", "thighM", "shinM"];
-const PROFILE = ["ageY", "female", "heightM", ...BODY, "massKg", "fitnessW", "strengthOn", "strengthPeakDeg", "strengthDrop", "bodyStrengthDrop", "gearOn", "armBestMs", "gearDrop", "trunkBestMs"];
+const PROFILE = ["ageY", "female", "heightM", ...BODY, "massKg", "fitnessW", "strengthOn", "strengthPeakDeg", "strengthDrop", "bodyStrengthDrop", "seatLeverage", "gearOn", "armBestMs", "gearDrop", "trunkBestMs"];
 // Presets set the technique; the profile, the paddle, the seat and the blade force model stay.
 const KEEP = ["effortW", ...PROFILE, "bladeLift", "paddleLenM", "bladeLenM", "bladeWidthM", "seatZM"];
 // Each boat's settings are remembered in this browser; Reset goes back to these.
@@ -1005,12 +1007,16 @@ function presetName(p) {
 }
 
 // ------------------------------------------------------------- controls
-// Lengths in cm, with inches (as paddlers often give them) in brackets.
+// Fingertip to fingertip: the shoulders, and each arm with the hand past
+// the middle of the grip (about 9 cm).
+const HAND_TIP = 0.09;
+const armSpan = (b) => b.shoulderM + 2 * (b.upperArmM + b.forearmM + HAND_TIP);
 // What the body adds as the engine adds it: reach at the catch and hand
 // travel (rotation and a hinge), and heel bringing the top hand in.
 const bodyReach = (p) => 15 * (p.rotation || 0) + 8 * (p.hinge || 0);
 const bodyTravel = (p) => 0.12 * (p.rotation || 0) + 0.15 * (p.hinge || 0);
 const heelIn = (p) => 0.9 * Math.sin((p.heelDeg || 0) * Math.PI / 180);
+// Lengths in cm, with inches (as paddlers often give them) in brackets.
 const cmIn = (v, d = 1) => `${fmtNum(v * 100, d)} cm (${fmtNum(v / 0.0254, 1)} in)`;
 const CONTROLS = [
   // Paddler
@@ -1023,6 +1029,10 @@ const CONTROLS = [
     help: "Past 40 the heat costs you more. Also sets the fitness suggestion." },
   { group: "ctl-body-size", key: "heightM", label: "Height", min: 1.4, max: 2.1, step: 0.01, unit: "",
     fmt: (v) => `${fmtNum(v * 100, 0)} cm (${Math.floor(v / 0.3048)}′${Math.round((v / 0.0254) % 12)}″)`, help: "Scales all the lengths below." },
+  // Not a setting of its own: the arms and shoulders, set from it.
+  { group: "ctl-body-size", key: "armSpanM", label: "Arm span", min: 1.3, max: 2.3, step: 0.01, unit: "", get: armSpan,
+    fmt: (v) => `${fmtNum(v * 100, 0)} cm (${Math.floor(v / 0.3048)}′${Math.round((v / 0.0254) % 12)}″)`,
+    help: "Fingertip to fingertip, arms out: easier to measure than each arm. Sets the upper arm and forearm (alike) to match, with your shoulder width. Usually about your height; longer arms reach further, which lets a higher seat and a longer paddle pay." },
   { group: "ctl-body-len", key: "upperArmM", label: "Upper arm", min: 0.2, max: 0.42, step: 0.005, unit: "", fmt: (v) => cmIn(v),
     help: "Shoulder to elbow." },
   { group: "ctl-body-len", key: "forearmM", label: "Forearm", min: 0.2, max: 0.42, step: 0.005, unit: "", fmt: (v) => cmIn(v),
@@ -1082,7 +1092,7 @@ const CONTROLS = [
   { group: "ctl-body", key: "hipRock", label: "Hip rock against the roll", min: 0, max: 1, step: 0.05, unit: "", eff: true,
     fmt: (v) => (v ? `${Math.round(v * 100)}%` : "none"), help: "Rock your hips toward the paddle side as the blade lifts it." },
   // Gear
-  { group: "ctl-paddle", key: "paddleLenM", label: "Paddle length", min: 1.1, max: 1.5, step: 0.005, unit: "",
+  { group: "ctl-paddle", key: "paddleLenM", label: "Paddle length", min: 1.1, max: 1.55, step: 0.005, unit: "",
     fmt: (v) => cmIn(v), help: "Grip to tip. A C1 paddle is typically about 51 in." },
   { group: "ctl-paddle", key: "bladeLenM", label: "Blade length", min: 0.3, max: 0.6, step: 0.005, unit: "",
     fmt: (v) => cmIn(v), help: "A ZRE Revolution is 17 in." },
@@ -1097,7 +1107,7 @@ const CONTROLS = [
   { group: "ctl-paddle", key: "paddleKg", label: "Paddle weight", min: 0.2, max: 0.8, step: 0.01, unit: "",
     fmt: (v) => `${fmtNum(v * 1000, 0)} g (${fmtNum(v / 0.02835, 1)} oz)`, help: "Most of it in the blade. A ZRE bent shaft is about 240–330 g. Only the recovery's cost sees it." },
   { group: "ctl-paddle", key: "seatZM", label: "Seat height", min: 0, max: 0.3, step: 0.005, unit: "", eff: true, fmt: (v) => cmIn(v),
-    help: "Your hips above the water, sitting in the boat. Higher is less stable: the boat tips more easily and rolls more slowly. Any extra leverage from sitting higher isn't counted." },
+    help: "Your hips above the water, sitting in the boat. Higher is less stable: the boat tips more easily and rolls more slowly. It moves your body against the paddle (reach, joint angles, the top hand's height), and wants a longer paddle. Any leverage beyond that is the Higher seat leverage assumption." },
   // Model assumptions
   { group: "ctl-strength", key: "strengthPeakDeg", label: "Strongest at", min: -30, max: 30, step: 1, unit: "",
     fmt: (v) => (v === 0 ? "shaft vertical" : `${Math.abs(v)}° ${v < 0 ? "forward" : "behind"} vertical`),
@@ -1107,6 +1117,9 @@ const CONTROLS = [
     fmt: (v) => `${Math.round(v * 100)}% weaker`, help: "How much weaker 45° from your strongest paddle angle (with average arms; longer arms keep strength further out)." },
   { group: "ctl-strength", key: "bodyStrengthDrop", label: "Weaker at the extremes", min: 0, max: 0.8, step: 0.05, unit: "",
     fmt: (v) => `${Math.round(v * 100)}% weaker`, help: "How much weaker with the lower arm folded up, the top arm bent, either arm reaching past its reach, or leaning, turning or dropping a shoulder far to reach the catch." },
+  { group: "ctl-seat", key: "seatLeverage", label: "Higher seat leverage", min: 0, max: 0.03, step: 0.0025, unit: "",
+    fmt: (v) => (v ? `+${fmtNum(v * 100, 2).replace(/\.?0+$/, "")}% per 5 cm` : "none"),
+    help: "An assumed gain in what you can hold for each 5 cm the seat is above 10 cm (a loss below): sitting higher to get your weight over the paddle, as some paddlers find. No study has measured it, so it's none by default. What the model already counts: a higher seat wants a longer paddle (a higher gear), changes your reach and joint angles, and costs stability." },
   { group: "ctl-gear", key: "armBestMs", label: "Best arm speed", min: 0.5, max: 1.5, step: 0.01, unit: "",
     fmt: (v) => `${fmtNum(v, 2)} m/s`, help: "Your lower hand's speed against its shoulder that you hold the most power at." },
   { group: "ctl-gear", key: "trunkBestMs", label: "Best trunk speed", min: 0.3, max: 1.8, step: 0.01, unit: "",
@@ -1137,6 +1150,12 @@ for (const c of CONTROLS) {
     const v = parseFloat(ev.target.value), b = boats[editing];
     // Height scales every length, keeping your proportions.
     if (c.key === "heightM") for (const k of BODY) b[k] = Math.round((b[k] * v) / b.heightM * 1000) / 1000;
+    // The span sets both arm segments, in proportion.
+    if (c.get) {
+      const arm = (v - b.shoulderM) / 2 - HAND_TIP, now = b.upperArmM + b.forearmM;
+      for (const k of ["upperArmM", "forearmM"]) b[k] = Math.round(b[k] * arm / now * 1000) / 1000;
+      return changed(editing);
+    }
     b[c.key] = v;
     changed(editing);
   });
@@ -1246,7 +1265,8 @@ function showBodyEffects() {
 const fmtValue = (c, v, p = boats[editing]) => (c.fmt ? c.fmt(v, p) : `${+v.toFixed(c.step < 1 ? 2 : 0)}${c.unit}`);
 // A length in cm, to the mm where it has one: 10 cm, 22.5 cm.
 const cmTrim = (v) => `${fmtNum(+(v * 100).toFixed(1), Number.isInteger(+(v * 100).toFixed(1)) ? 0 : 1)} cm`;
-const showValue = (c) => { $(`o-${c.key}`).textContent = fmtValue(c, boats[editing][c.key]); };
+const ctlValue = (c, b = boats[editing]) => (c.get ? c.get(b) : b[c.key]);
+const showValue = (c) => { $(`o-${c.key}`).textContent = fmtValue(c, ctlValue(c)); };
 const LIFT_MODES = [["1", "With lift"], ["0", "Drag only"]];
 function renderLift() {
   $("lift-mode").innerHTML = "";
@@ -1262,7 +1282,7 @@ function renderLift() {
   }
 }
 function syncControls() {
-  for (const c of CONTROLS) { $(`c-${c.key}`).value = boats[editing][c.key]; showValue(c); }
+  for (const c of CONTROLS) { $(`c-${c.key}`).value = ctlValue(c); showValue(c); }
   renderLift();
   renderSwingTiming();
   renderRecovery();
@@ -4221,14 +4241,17 @@ function showFit() {
     row("Trunk carries", `${fmtNum(now.trunkShare * 100, 0)}%`, `${fmtNum(best.trunkShare * 100, 0)}%`) +
     row("Strokes per side", fmtNum(now.strokesPerSide, 1), fmtNum(best.strokesPerSide, 1));
   const why = [];
-  why.push(s.seatZM < F.RANGES.seatZM[1] - 1e-6
-    ? `The seat is as high as ${needs.label.toLowerCase()} water allows: ${fmtNum(best.GM * 100, 0)} cm of metacentric height (${fmtNum(needs.gmMin * 100, 0)} cm needed).`
-    : `The seat is at the top of the range searched; ${needs.label.toLowerCase()} water would allow more.`);
+  const maxSeat = found.maxSeat, higher = s.seatZM > p.seatZM + 1e-6, lower = s.seatZM < p.seatZM - 1e-6;
+  why.push(s.seatZM >= maxSeat - 1e-6
+    ? `The seat is as high as ${needs.label.toLowerCase()} water allows (${cmTrim(maxSeat)}: ${fmtNum(best.GM * 100, 0)} cm of metacentric height, ${fmtNum(needs.gmMin * 100, 0)} cm needed)${higher ? ": sitting higher is faster here" : ""}.`
+    : `The seat is ${cmTrim(s.seatZM)}, though ${needs.label.toLowerCase()} water allows up to ${cmTrim(maxSeat)}: ${higher ? "higher than now, but" : lower ? "lower than now:" : ""} higher still isn't faster for this paddler and rate.`);
+  if (higher && !p.seatLeverage)
+    why.push("Sitting higher pays here through the longer paddle's higher gear, not leverage: the model counts none of that unless you set Higher seat leverage (Model assumptions).");
   if (Math.abs(s.paddleLenM - p.paddleLenM) > 1e-6)
     why.push(`A ${fmtValue(ctlOf("paddleLenM"), s.paddleLenM)} paddle on the same blade path reaches ${fmtNum(s.catchDeg + bodyReach(s), 0)}° and exits at ${fmtNum(s.exitDeg, 0)}° (from ${fmtNum(p.catchDeg + bodyReach(p), 0)}° and ${fmtNum(p.exitDeg, 0)}°).`);
   if (p.gearOn && Math.abs(best.armSpeed - now.armSpeed) > 0.01)
     why.push(`Your arms move ${fmtNum(best.armSpeed, 2)} m/s instead of ${fmtNum(now.armSpeed, 2)} (best ${fmtNum(S.armBest(p), 2)}): you hold ${fmtNum(best.watts, 0)} W instead of ${fmtNum(now.watts, 0)}.`);
-  if (p.gearOn && (p.rotation || p.hinge) && Math.abs(best.trunkSpeed - now.trunkSpeed) > 0.02)
+  if (p.gearOn && (p.rotation || p.hinge) && Math.abs(best.trunkSpeed - now.trunkSpeed) > 0.02 && fmtNum(S.trunkGearFactor(s), 2) !== fmtNum(S.trunkGearFactor(p), 2))
     why.push(`Your trunk moves ${fmtNum(best.trunkSpeed, 2)} m/s instead of ${fmtNum(now.trunkSpeed, 2)} (best ${fmtNum(S.trunkBest(p), 2)}): what rotation and a hinge add holds ×${fmtNum(S.trunkGearFactor(s), 2)} instead of ×${fmtNum(S.trunkGearFactor(p), 2)}.`);
   if (s.handOutM < p.handOutM - 1e-6)
     why.push(`The top hand nearer the boat brings the blade in, so each stroke turns the boat less: ${fmtNum(best.strokesPerSide, 1)} strokes a side instead of ${fmtNum(now.strokesPerSide, 1)}.`);
@@ -4352,7 +4375,7 @@ const M3_PARTS = [
   { id: "hull", label: "Hull", keys: ["massKg"],
     about: "A USCA C1 marathon canoe: 18′6″ long, 32″ at its widest, 17″ at the gunwale. Heavier sits deeper: more drag." },
   { id: "seat", label: "Seat", keys: ["seatZM", "hipRock"],
-    about: "Your hips above the water. Higher is less stable: it keeps less metacentric height. The Fit search puts it as high as your water allows." },
+    about: "Your hips above the water. Higher is less stable: it keeps less metacentric height. The Fit search picks the fastest seat your water allows." },
   { id: "shaft", label: "Paddle", keys: ["paddleLenM", "bendDeg", "leanDeg", "pivotFromGrip"],
     about: "Grip to tip, and how it's held. A longer paddle on the same blade path sweeps less angle: a higher gear." },
   { id: "blade", label: "Blade", keys: ["bladeLenM", "bladeWidthM", "pitchDeg"],

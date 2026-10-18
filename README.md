@@ -211,6 +211,11 @@ and move the sliders.
   Too few loses time switching; too many zigzags.
 - **Fit:** seat height, paddle length and hand placement for the most speed
   at what you can hold, within reach, the top hand's height and stability.
+  A higher seat wants a longer paddle (46–60 in searched), a higher gear:
+  it pays at a quick rate and with long arms, not at 60 spm. No study has
+  measured any leverage beyond that (Broomfield & Lauder 2015 found a seat
+  raise's gains individual), so "Higher seat leverage" is an assumption,
+  none by default.
   A 3D model of the boat, paddle and paddler turns and zooms; tap a part
   (seat, paddle, blade, hands, arms, torso, legs, stroke) to zoom in on it
   and set it, and compare yours with the suggested fit.
