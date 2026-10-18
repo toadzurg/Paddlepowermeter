@@ -311,9 +311,13 @@ outweigh the paddle about 25 times. A top hand that drops and swings over
 the lower hand costs about twice as much and can't stay in reach. The
 recovery has barely been studied in any paddle sport (rowing calls it
 [a grey area](https://www.row2k.com/features/5722/the-biomechanics-of-the-recovery-phase-by-dr-valery-kleshnev/)),
-so this is mechanics, not measurement. Its costs compare styles: the model
-starts and stops the hands at the exit and catch, so their size is an upper
-bound, and they don't change what you can hold.
+so this is mechanics, not measurement. The model starts and stops the hands
+at the exit and catch, so its costs are an upper bound. Styles and stroke
+shapes are compared by them, not charged. With gearing on, what a quicker
+rate or a longer drive (so a quicker recovery) adds to the stroke's own
+recovery at 60 spm and half the stroke in the drive comes off what you can
+hold. That makes the drive's share a trade-off: the default stroke is
+fastest at about half the stroke in the drive.
 
 **Opening it:**
 - iPhone: open the link in the free **Bluefy** browser. Safari, Chrome and

@@ -165,10 +165,11 @@
     // Strength by position. 0: off. 1: by paddle angle, weakest far from
     // strengthPeakDeg, losing strengthDrop of your strength 45° away (with
     // arms of ARM_REF). 2 (the default): by body position, weakest with an
-    // arm folded or at full stretch, losing strengthDrop at full stretch.
+    // arm folded or at full stretch, losing bodyStrengthDrop at full stretch.
     strengthOn: 2,
     strengthPeakDeg: 0,        // shaft angle you pull hardest at; + = behind vertical
     strengthDrop: 0.4,
+    bodyStrengthDrop: 0.4,
     // Gearing: the arms hold the most power at one speed.
     gearOn: 1,
     armBestMs: 0.82,           // the lower hand's speed against its shoulder (along the pull) you hold the most power at, m/s: the default stroke's at 60 spm
@@ -199,7 +200,7 @@
 
   // Who's paddling, as opposed to how.
   const PROFILE_KEYS = ["heightM", "torsoM", "shoulderM", "upperArmM", "forearmM", "thighM", "shinM", "massKg", "fitnessW",
-                        "strengthOn", "strengthPeakDeg", "strengthDrop", "gearOn", "armBestMs", "gearDrop", "trunkBestMs"];
+                        "strengthOn", "strengthPeakDeg", "strengthDrop", "bodyStrengthDrop", "gearOn", "armBestMs", "gearDrop", "trunkBestMs"];
   const rad = (d) => (d * Math.PI) / 180;
   const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
   const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -505,23 +506,23 @@
   // straight (an ascending strength curve, as in a press): TOP_ARM_BEST.
   // Weaker folded up or stretched out; the lower (pulling) arm counts most.
   const ARM_BEST = 0.72, TOP_ARM_BEST = 0.9, ARM_SPAN = 0.25;
-  const armStrength = (p, e, best = ARM_BEST) => Math.max(STRENGTH_MIN, 1 - p.strengthDrop * ((Math.min(1.05, e) - best) / ARM_SPAN) ** 2);
+  const armStrength = (p, e, best = ARM_BEST) => Math.max(STRENGTH_MIN, 1 - p.bodyStrengthDrop * ((Math.min(1.05, e) - best) / ARM_SPAN) ** 2);
   // The lower arm pulling: folded past a right angle, the elbow's flexors
   // bend the pull and weaken as above. From there to straight it's the
   // shoulder's extensors (the lats; extension is the shoulder's strongest
   // movement) and the trunk that pull, the arm a link: no weaker. Past
   // reach it overreaches.
   const pullStrength = (p, e) => e < ARM_BEST ? armStrength(p, e) : e <= REACH ? 1 :
-    Math.max(STRENGTH_MIN, 1 - p.strengthDrop * ((Math.min(1.05, e) - REACH) / (1.05 - REACH)) ** 2);
+    Math.max(STRENGTH_MIN, 1 - p.bodyStrengthDrop * ((Math.min(1.05, e) - REACH) / (1.05 - REACH)) ** 2);
   // Reaching far with the trunk is weaker too: wound up, it can't brace
   // the pull. Each way it goes past the technique's own posture costs
   // strength as the square of the excess: leaning past LEAN0 (losing
-  // strengthDrop LEAN_SPAN past it), dropping the paddle-side shoulder past
+  // bodyStrengthDrop LEAN_SPAN past it), dropping the paddle-side shoulder past
   // ROLL0 (ROLL_SPAN), and turning past the technique's own wind-up
   // (TWIST_SPAN, past the first TWIST0). With the face kept behind the top hand, a long reach
   // turns and drops the shoulder more than it leans. Assumed, not measured.
   const LEAN_SPAN = rad(40), ROLL0 = rad(10), ROLL_SPAN = rad(40), TWIST0 = rad(20), TWIST_SPAN = rad(50);
-  const trunkStrength = (p, v, n) => Math.max(STRENGTH_MIN, 1 - p.strengthDrop * ((Math.max(0, v[0] - LEAN0) / LEAN_SPAN) ** 2 +
+  const trunkStrength = (p, v, n) => Math.max(STRENGTH_MIN, 1 - p.bodyStrengthDrop * ((Math.max(0, v[0] - LEAN0) / LEAN_SPAN) ** 2 +
     (Math.max(0, Math.abs(v[1]) - ROLL0) / ROLL_SPAN) ** 2 + (Math.max(0, Math.abs(v[2] - n[2]) - TWIST0) / TWIST_SPAN) ** 2));
 
   // Drive progress u at each moment. Where you're weaker the paddle moves
@@ -1169,12 +1170,21 @@
   // 60 spm (club racers: 55–60), one at 1.5 times typical fitness at about
   // 75 (elites: 65–90, ~75 over long races).
   const FORCE_K = 0.15, FORCE_N = 4;
+  // The recovery's power (W) beyond this stroke's at 60 spm with the
+  // default drive share: a quicker rate, or a longer drive (so a quicker
+  // recovery), costs what you can hold. Against the same stroke, so its
+  // shape and recovery style, whose costs are an upper bound, only compare.
+  function recoveryExtra(p) {
+    const q = Object.assign({}, DEFAULTS, p);
+    const ref = Object.assign({}, q, { rateSpm: 60, driveFraction: DEFAULTS.driveFraction });
+    return recoveryWatts(paddled(q)) - recoveryWatts(paddled(ref));
+  }
   function capacity(p, hours = 1) {
     const q = Object.assign({}, DEFAULTS, p), C = muscleCapacity(q, hours);
     if (!q.gearOn) return C;
     const ref = Object.assign({}, q, { rateSpm: 60 });
     const pg = paddled(q), pr = paddled(ref);
-    const dR = recoveryWatts(pg) - recoveryWatts(pr);
+    const dR = recoveryExtra(q);
     const shareAll = 0.7 + trunkShareOf(q) + 0.1 * q.legDrive;
     // Stroke force (N, mean through the drive) per watt held, and the reference's.
     const a = (60 / q.rateSpm) / bladePath(pg), Fr = typicalFitness(q) * shareAll / bladePath(pr);
@@ -1822,9 +1832,9 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 57;
+  const API_LEVEL = 58;
   const PADDLE = paddleOf(DEFAULTS);
-  const api = { API_LEVEL, HINGE_SWING_M, driveShareAt, fastestRate, shaftDir, typicalFitness, armBest, trunkBest, paddled, paddleOf, gearFactor, trunkGearFactor, recoveryPlan, recoveryPose, recoveryCost, recoveryClear, elbowAt, handForces, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
+  const api = { API_LEVEL, HINGE_SWING_M, recoveryExtra, muscleCapacity: (p, hours = 1) => muscleCapacity(Object.assign({}, DEFAULTS, p), hours), driveShareAt, fastestRate, shaftDir, typicalFitness, armBest, trunkBest, paddled, paddleOf, gearFactor, trunkGearFactor, recoveryPlan, recoveryPose, recoveryCost, recoveryClear, elbowAt, handForces, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.StrokeSim = api;
 })(typeof window !== "undefined" ? window : globalThis);

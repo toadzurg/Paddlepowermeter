@@ -594,6 +594,16 @@ console.log("\nCanoe Race Simulator physics");
   check("recovery: costs more at a higher rate (shorter, quicker) and with a heavier paddle",
         plan({ rateSpm: 80 }).watts > 1.6 * plan({}).watts && plan({ paddleKg: 0.6 }).cost.joules > plan({}).cost.joules,
         `${plan({}).watts.toFixed(0)} W at 60 spm, ${plan({ rateSpm: 80 }).watts.toFixed(0)} W at 80`);
+  // What a quicker rate or a longer drive adds to the recovery comes off
+  // what you can hold; the stroke's shape and the recovery's style don't.
+  const spHeld = (x) => S.simulate(x).speedAt(S.capacity(x));
+  check("recovery: a longer drive costs what you can hold, so the default's half is fastest",
+        Math.abs(S.recoveryExtra({})) < 1e-9 && S.recoveryExtra({ driveFraction: 0.6 }) > 5 && S.capacity({ driveFraction: 0.6 }) < S.capacity({}) - 5 &&
+        spHeld({}) > spHeld({ driveFraction: 0.4 }) && spHeld({}) > spHeld({ driveFraction: 0.6 }),
+        `+${S.recoveryExtra({ driveFraction: 0.6 }).toFixed(0)} W at 60%; ${[0.4, 0.5, 0.6].map((d) => spHeld({ driveFraction: d }).toFixed(3)).join(" / ")} m/s`);
+  check("recovery: its style and the stroke's shape compare, not charged; a quicker rate is",
+        Math.abs(S.recoveryExtra({ recoveryPivot: 1 })) < 1e-9 && Math.abs(S.recoveryExtra(PRE.clean)) < 1e-9 && S.recoveryExtra({ rateSpm: 80 }) > 20,
+        `+${S.recoveryExtra({ rateSpm: 80 }).toFixed(0)} W at 80 spm`);
   const ends = (() => { const g = S.paddled(S.DEFAULTS), pl = plan({}), r = S.simulate({}), a = S.recoveryPose(g, 0, pl), b = S.recoveryPose(g, 1, pl);
     const last = r.samples[r.samples.length - 1], first = r.samples[0], d = (x, y) => Math.hypot(...x.map((v, i) => v - y[i]));
     return Math.max(d(a.P.at(0), last.P.at(0)), d(a.B.tip, last.B.tip), d(a.B.n, last.B.n), d(b.P.at(0), first.P.at(0)), d(b.B.tip, first.B.tip), d(b.B.n, first.B.n)); })();
@@ -887,6 +897,8 @@ function opening(page) {
     await slide("#c-driveFraction", 0.8); await settle();
     check(`${tag}: drive time goes to 80%`, (await page.$eval("#c-driveFraction", (e) => e.max)) === "0.8" &&
           (await text("#o-driveFraction")) === "80% · 0.80 s" && (await cellVal("eff", 2)) > 0);
+    check(`${tag}: a long drive's quick recovery costs what you can hold`, /Recovery at this rate and drive: \+\d+ W, off what you can hold/.test(await text("#engine-box")),
+          await text("#engine-box"));
     await slide("#c-driveFraction", 0.5); await settle();
     // At a quicker rate the drive's share rises, its time hardly shorter.
     await slide("#c-rateSpm", 80); await settle();
@@ -1556,7 +1568,11 @@ function opening(page) {
     const torso1 = await page.evaluate(() => window.sim.boats.a.torsoM);
     check(`${tag}: profile: height scales the body`, Math.abs(torso1 / torso0 - 1.95 / 1.78) < 0.01 && /195 cm/.test(await text("#o-heightM")),
           `${torso0} → ${torso1}`);
+    const shownCtl = (sel) => page.$eval(sel, (e) => !e.closest(".ctl").hidden);
+    check(`${tag}: strength: by body position shows its own fall-off`, (await shownCtl("#c-bodyStrengthDrop")) && !(await shownCtl("#c-strengthDrop")));
     await page.click("#strength-mode >> text=By paddle angle"); await slide("#c-fitnessW", 260); await settle();
+    check(`${tag}: strength: by paddle angle shows its own`, (await shownCtl("#c-strengthDrop")) && !(await shownCtl("#c-bodyStrengthDrop")) &&
+          (await shownCtl("#c-strengthPeakDeg")));
     check(`${tag}: profile: strength by position shows its curve`, (await visible("#strength-curve")) &&
           (await page.$$("#strength-curve path.cur")).length === 1 && /×[\d.]+ against the default stroke/.test(await text("#strength-read")));
     await page.click("#presets >> text=Long reach"); await settle();
@@ -1817,6 +1833,12 @@ function opening(page) {
         await mem.evaluate(() => localStorage.setItem("ppm.sim.boats", '{"version":7,"a":{"rotation":0,"catchDeg":35},"b":{}}'));
         await mem.reload(); await mem.waitForTimeout(500);
         const body1 = await mem.evaluate(() => [window.sim.boats.a.rotation, window.sim.boats.a.catchDeg]);
+        // Strength's fall-off became one for each way of counting it (version 8):
+        // an older save's sets both.
+        await mem.evaluate(() => localStorage.setItem("ppm.sim.boats", '{"version":7,"a":{"strengthDrop":0.6},"b":{"strengthDrop":0.3,"bodyStrengthDrop":0.5}}'));
+        await mem.reload(); await mem.waitForTimeout(500);
+        const drops = await mem.evaluate(() => ["a", "b"].map((x) => [window.sim.boats[x].strengthDrop, window.sim.boats[x].bodyStrengthDrop].join()));
+        check(`${tag}: an old save's strength fall-off sets both`, drops[0] === "0.6,0.6" && drops[1] === "0.3,0.5", drops.join(" / "));
         check(`${tag}: old saves take the body's defaults; arms only chosen since stays`,
               body0[0] === "0.6,0.4,0.5,0.02,23" && body0[1] === "0.3,0.4,0.5,0.02,40" && JSON.stringify(body1) === "[0,35]", `${body0.join(" / ")} | ${body1}`);
         check(`${tag}: old saves take strength by body position; off chosen since stays`,
