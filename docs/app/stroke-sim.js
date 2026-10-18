@@ -129,7 +129,7 @@
   const DEFAULTS = {
     pivotFromGrip: 0.10,  // m: the point on the shaft that stays put
     leanDeg: 10,          // outward from vertical (end view)
-    catchDeg: 35,         // forward reach at the catch
+    catchDeg: 23,         // forward reach at the catch, before the body's (rotation and a hinge add 12° here: 35° in all)
     exitDeg: 20,          // angle behind vertical at the exit
     directionDeg: 0,      // stroke direction vs the keel; + = aft and outward
     sweepDeg: 0,          // how much the direction turns during the drive
@@ -153,14 +153,15 @@
     // Body motion, relative to the boat.
     swingM: 0,                 // torso fore-aft, ± m (half the travel)
     swingTiming: 1,            // 1: moving back (aft) through the drive; -1: forward
-    dropM: 0,                  // drop onto the paddle at the catch, m
+    dropM: 0.02,               // drop onto the paddle at the catch, m
     heelDeg: 0,                // boat heeled toward the paddle side
     hipRock: 0,                // share of the blade's roll the hips cancel, 0–1
     // The paddler's engine.
     fitnessW: 200,             // power you could hold for an hour using your whole body
-    rotation: 0,               // trunk rotation, 0–1: more reach and hand travel, more muscle
-    legDrive: 0,               // leg drive, 0–1: force held later in the drive, more muscle
-    hinge: 0,                  // hinge from the waist, 0–1: lean to the catch, sit up through the drive
+    // The body joins in by default, as in a solid sit-and-switch stroke.
+    rotation: 0.6,             // trunk rotation, 0–1: more reach and hand travel, more muscle
+    legDrive: 0.5,             // leg drive, 0–1: force held later in the drive, more muscle
+    hinge: 0.4,                // hinge from the waist, 0–1: lean to the catch, sit up through the drive
     // Strength by position. 0: off. 1: by paddle angle, weakest far from
     // strengthPeakDeg, losing strengthDrop of your strength 45° away (with
     // arms of ARM_REF). 2 (the default): by body position, weakest with an
@@ -170,13 +171,13 @@
     strengthDrop: 0.4,
     // Gearing: the arms hold the most power at one speed.
     gearOn: 1,
-    armBestMs: 0.89,           // the lower hand's speed against its shoulder (along the pull) you hold the most power at, m/s: the default stroke's at 60 spm
+    armBestMs: 0.82,           // the lower hand's speed against its shoulder (along the pull) you hold the most power at, m/s: the default stroke's at 60 spm
     gearDrop: 0.15,            // share of the arms' power lost at half its best speed (less going faster)
     // The trunk's own (with gearing on): its paddle-side shoulder's speed
     // through the drive it holds the most power at (the default stroke with
     // full rotation, at 60 spm), and the share of the power rotation and a
     // hinge add that it loses at half that.
-    trunkBestMs: 0.92,
+    trunkBestMs: 0.80,
     trunkDrop: 0.15,
     paddleKg: 0.3,             // the paddle's mass (a ZRE bent shaft: ~0.24–0.33 kg), most of it in the blade
     recoveryPivot: -1,         // the recovery: -1 the cheapest; 0 the lower hand swings, 1 the top hand drops and swings, between a mix
@@ -433,11 +434,16 @@
   // paddler's does. That puts the top hand ahead of its shoulder. Every
   // technique is paddled from that seat, so one that pulls behind exits
   // behind the hip. If the whole of their own stroke can't be reached from
-  // there, the nearest seat that reaches it.
+  // there, the nearest seat that reaches it. Their own stroke here is with
+  // the body still and arms only: leaning, turning or driving with the legs
+  // moves the body in the seat, never the seat. (On the default's blade
+  // path: the catch the body reaches, with the arms.)
   const SEAT_KEYS = [...PROFILE_KEYS, "paddleLenM", "bladeLenM", "bendDeg", "seatZM"];
+  const SEAT_STROKE = Object.assign({}, DEFAULTS, { rotation: 0, hinge: 0, legDrive: 0, dropM: 0,
+    catchDeg: DEFAULTS.catchDeg + 15 * DEFAULTS.rotation + 8 * DEFAULTS.hinge });
   const seatCache = new Map();
   function seatFor(pg) {
-    const own = paddled(Object.assign({}, DEFAULTS, Object.fromEntries(SEAT_KEYS.map((k) => [k, pg[k]]))));
+    const own = paddled(Object.assign({}, SEAT_STROKE, Object.fromEntries(SEAT_KEYS.map((k) => [k, pg[k]]))));
     const key = JSON.stringify(own);
     if (seatCache.has(key)) return seatCache.get(key);
     const frames = [0, 0.25, 0.5, 0.75, 1].map((u) => {
