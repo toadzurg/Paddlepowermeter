@@ -266,6 +266,9 @@
      behind light accent colours. */
   .editing-b input[type=range], #effB { accent-color: #c4501c; }
   .controls details.group { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; color: var(--text-primary); }
+  .controls details.sub { margin-top: 10px; }
+  .controls details.sub > summary { font-size: 14px; color: var(--text-secondary); cursor: pointer; }
+  .controls .boat-actions .info { align-self: center; }
   .controls details.group > summary { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); }
 
   /* Race */
@@ -759,8 +762,8 @@
       <section class="card" id="fit-card">
         <h2>Fit: seat, paddle and hands<button type="button" class="info" data-tip="The seat goes as high as your water allows (a higher seat gives leverage the model doesn't count yet, and costs stability, which it does). Then paddle length, lower hand and top hand are searched for the most speed at what you can hold, with both hands in reach and the top hand between chin and forehead. A new paddle length keeps your blade path: the blade goes in and comes out where it does now, so a longer paddle sweeps less angle and your arms move slower, like a higher gear." aria-label="What is this?">?</button></h2>
         <div class="sub" id="fit-sub"></div>
-        <h3>Water you race in</h3>
-        <div class="row chips" id="fit-water" role="group" aria-label="Water you race in"></div>
+        <h3>How stable you need it</h3>
+        <div class="row chips" id="fit-water" role="group" aria-label="How stable you need it"></div>
         <div class="help" id="fit-water-help"></div>
         <div class="help warn" id="fit-flat"></div>
         <div class="row fit-go"><button type="button" class="primary" id="fit-go">Find a fit</button>
@@ -779,26 +782,20 @@
 
     <!-- -------------------------------------------------- controls -->
     <aside class="card controls" id="controls">
+      <h2 class="ctl-title">Settings for <span id="editing-name">Boat A</span></h2>
       <div class="row boat-actions">
         <button class="small" id="copy">Copy to B</button>
         <button class="small" id="swap">Swap A and B</button>
         <button class="small" id="reset">Reset Boat A</button>
         <button class="small" id="reset-both">Reset both</button>
-        <div class="help" style="flex-basis:100%">Each boat's settings are remembered in this browser.</div>
+        <button type="button" class="info" data-tip="Each boat's settings are remembered in this browser." aria-label="What is this?">?</button>
       </div>
-      <h2 class="ctl-title">Settings for <span id="editing-name">Boat A</span></h2>
       <h3>Presets</h3>
       <div class="row chips" id="presets" role="group" aria-label="Presets"></div>
       <div class="note warn" id="reach-warn" hidden></div>
-      <details class="group" open><summary>Stroke shape</summary><div id="ctl-stroke"></div></details>
-      <details class="group" open><summary>Paddle</summary><div id="ctl-paddle"></div>
-        <div class="ctl"><div class="top"><span>Blade force</span></div>
-          <div class="row chips" id="lift-mode" role="group" aria-label="Blade force model" style="margin-top:6px"></div>
-          <div class="help">With lift: the blade still pushes hard when the water hits it at an angle. Drag only ignores that.</div></div>
-      </details>
-      <details class="group"><summary>Technique</summary><div id="ctl-paddler"></div></details>
-      <details class="group" id="profile"><summary>Paddler profile</summary>
-        <div class="help">Who's paddling: body, fitness and strength. Presets change the technique, never the profile.</div>
+      <!-- Groups: who, then how (rhythm and reach, hands, body), then the gear, the
+           racecraft and the model's assumptions. Each tab opens its own few. -->
+      <details class="group" id="profile" data-g="paddler"><summary>Paddler<button type="button" class="info" data-tip="Who's paddling: fitness, weight and body. Presets change the technique, never the profile." aria-label="What is this?">?</button></summary>
         <div class="row profile-actions">
           <select id="profile-pick" aria-label="Saved profiles"><option value="">Saved profiles…</option></select>
           <button type="button" class="small" id="profile-save">Save</button>
@@ -807,6 +804,21 @@
         </div>
         <div id="ctl-profile"></div>
         <div class="engine-box" id="engine-box"></div>
+        <h4 class="sub-h">Body<button type="button" class="info" data-tip="Height scales every length; then set any one. Female: shoulders 3.4% and forearms 3.5% shorter for the same height (ANSUR II, radius lengths); the rest scales alike. You sit with your hips where the blade leaves the water on the Defaults stroke with the arms alone (further forward only if you can't reach it from there); every technique is paddled from that seat, and the body leans, turns and drops the paddle-side shoulder at each moment so both hands are within reach, the face behind the top hand. With strength by body position, every length changes results; by paddle angle, only the arms do." aria-label="What is this?">?</button></h4>
+        <div id="ctl-body-size"></div>
+        <details class="sub" id="body-lengths"><summary>Limb lengths</summary>
+          <div id="ctl-body-len"></div>
+          <button type="button" class="small" id="profile-fit">Lengths from height</button>
+        </details>
+      </details>
+      <details class="group" data-g="rhythm"><summary>Rhythm and reach</summary><div id="ctl-stroke"></div></details>
+      <details class="group" data-g="hands"><summary>Hands</summary><div id="ctl-hands"></div></details>
+      <details class="group" data-g="body"><summary>Body</summary><div id="ctl-paddler"></div><div id="ctl-body"></div></details>
+      <details class="group" data-g="gear"><summary>Gear</summary><div id="ctl-paddle"></div></details>
+      <details class="group" data-g="switch"><summary>Switching sides</summary>
+        <div class="help" id="switch-off" hidden>Off: Run straight (ideal) is on, under Model assumptions.</div>
+        <div id="ctl-switch"></div></details>
+      <details class="group" data-g="model"><summary>Model assumptions<button type="button" class="info" data-tip="How the simulator treats the paddler and the blade. Assumed, not measured: change them to see how much a result depends on them." aria-label="What is this?">?</button></summary>
         <h4 class="sub-h">Strength by position<button type="button" class="info" data-tip="Off: you can pull equally hard all through the stroke. By paddle angle: strongest at one angle, weaker toward the catch and exit. By body position (the default): your body follows the paddle. Your lower arm pulls: weaker folded past a right angle, where your elbow bends the pull, but no weaker from there to straight, where your shoulder and trunk pull through it as a link; weaker reaching past your reach. Your top arm pushes: strongest nearly straight. And weaker leaning, turning or dropping a shoulder far to reach the catch. Where you're weak the paddle moves slower, so the force bunches where you're strong, and what you can hold drops. Assumed curves, not measured." aria-label="What is this?">?</button></h4>
         <div class="row chips" id="strength-mode" role="group" aria-label="Strength by position"></div>
         <div id="strength-ctl"><div id="ctl-strength"></div>
@@ -815,15 +827,11 @@
         <h4 class="sub-h">Gearing<button type="button" class="info" data-tip="Off: you hold the same power at any stroke rate. On: your arms, and your trunk, each hold the most power moving at one speed, like a cyclist's best cadence. Away from it they hold less, along Hill's force–velocity curve: more lost going slower than faster. Arm speed is your lower hand against its shoulder through the drive: a higher rate, a longer stroke or wider hands move it faster. Trunk rotation and a hinge don't: your trunk carries their extra travel. Only the pull counts: your shoulder rising or dropping across it is your trunk's work. Your trunk has its own best speed (its paddle-side shoulder's): what rotation and a hinge add holds less away from it. Its muscles are mostly slow fibres, as rowing and skiing studies find the trunk working early in the drive and the arms late, so its best needn't be your arms'. It changes what you can hold, and so does the rate itself: a quicker rate costs more to swing the arms and paddle back, a slower one asks a heavier pull every stroke, and heavy pulls tire you far sooner (it's why cyclists ride at 80–90 rpm though 60–70 costs the least oxygen). The fitter you are for your size, the heavier each stroke at the same rate, so the quicker your best rate: fitted so a typical paddler using the whole body is fastest near 60 spm and one 1.5 times as fit near 75, as club and elite C1 racers paddle. Assumed until measured: your paddle can find your best speed from strokes at a few rates." aria-label="What is this?">?</button></h4>
         <div class="row chips" id="gear-mode" role="group" aria-label="Gearing"></div>
         <div id="gear-ctl"><div id="ctl-gear"></div><div class="help" id="gear-read"></div></div>
-        <h4 class="sub-h">Body<button type="button" class="info" data-tip="Height scales every length; then set any one. Female: shoulders 3.4% and forearms 3.5% shorter for the same height (ANSUR II, radius lengths); the rest scales alike. You sit with your hips where the blade leaves the water on the Defaults stroke (further forward only if you can't reach it from there); every technique is paddled from that seat, and the body leans, turns and drops the paddle-side shoulder at each moment so both hands are within reach, the face behind the top hand. With strength by body position, every length changes results; by paddle angle, only the arms do." aria-label="What is this?">?</button></h4>
-        <div id="ctl-body-size"></div>
-        <button type="button" class="small" id="profile-fit">Lengths from height</button>
-      </details>
-      <details class="group"><summary>Body motion</summary><div id="ctl-body"></div></details>
-      <details class="group"><summary>Switching sides</summary>
+        <h4 class="sub-h">Blade force<button type="button" class="info" data-tip="With lift: the blade still pushes hard when the water hits it at an angle. Drag only ignores that." aria-label="What is this?">?</button></h4>
+        <div class="row chips" id="lift-mode" role="group" aria-label="Blade force model"></div>
+        <h4 class="sub-h">Steering<button type="button" class="info" data-tip="Run straight: an ideal boat held on course for free, with no time lost to switches and no zigzag. For comparison: no real canoe steers itself." aria-label="What is this?">?</button></h4>
         <div class="row chips" id="switch-mode" role="group" aria-label="Switching sides"></div>
-        <div class="help">Run straight: an ideal boat held on course for free, with no time lost to switches and no zigzag. For comparison: no real canoe steers itself.</div>
-        <div id="ctl-switch"></div></details>
+      </details>
     </aside>
   </div>
   <section class="card how" id="how">
@@ -851,7 +859,7 @@
           every technique from that seat, and the body is fitted
           to the paddle (lean, twist) so the hands are within reach; it says when a stroke isn't.
           Seat height sets how stable the boat is (and, with strength by body position, where your body sits against the paddle). Your strength is the power you can hold; with strength
-          by position on (Paddler profile), also an assumed curve of how hard you can pull at each paddle
+          by position on (Model assumptions), also an assumed curve of how hard you can pull at each paddle
           angle or arm position. With gearing on, your arms also hold the most power moving at one speed,
           so the stroke rate and the stroke's length matter. The Fit tab searches seat height, paddle length
           and hand placement for the most speed at what you can hold, inside the limits of reach, the top
@@ -863,7 +871,7 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of each engine file (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. The fit builds on the stroke engine. -->
-<script src="stroke-sim.js?v=bda4805a6b"></script>
+<script src="stroke-sim.js?v=a8a8a44ff9"></script>
 <script src="fit-sim.js?v=c12c9edd44"></script>
 <script>
 (() => {
@@ -923,12 +931,13 @@ const BOATS = ["a", "b"], NAME = { a: "Boat A", b: "Boat B" };
 
 // ------------------------------------------------------------- presets
 const PRESETS = {
+  // Catch angles before the body's 12° (the defaults' rotation and hinge).
+  "Defaults": {},
   "Clean vertical": { leanDeg: 2, handOutM: 0.38, directionDeg: 0, sweepDeg: 0 },
   "Shaft leaning out": { leanDeg: 30, handOutM: 0.55 },
-  "Wide sweep": { leanDeg: 40, sweepDeg: 70, handOutM: 0.5, catchDeg: 25, exitDeg: 25 },
-  "Long reach": { catchDeg: 55, exitDeg: 45 },
-  "Short reach, pull behind": { catchDeg: 12, exitDeg: 45 },
-  "Defaults": {},
+  "Wide sweep": { leanDeg: 40, sweepDeg: 70, handOutM: 0.5, catchDeg: 13, exitDeg: 25 },
+  "Long reach": { catchDeg: 43, exitDeg: 45 },
+  "Short reach, pull behind": { catchDeg: 0, exitDeg: 45 },
 };
 // The paddler profile: who's paddling, not how. Presets never change it.
 const BODY = ["torsoM", "shoulderM", "upperArmM", "forearmM", "thighM", "shinM"];
@@ -944,7 +953,7 @@ const BOATS_KEY = "ppm.sim.boats";
 // Saves carry SAVE_VERSION. A default changed since a save was made: the
 // saved value that was the old default follows the new one (it was never
 // chosen); any other value is kept. Saves before versions were added are 1.
-const SAVE_VERSION = 6;
+const SAVE_VERSION = 7;
 const RETIRED_DEFAULTS = [
   { key: "switchLossS", was: 0.3, until: 2 },   // the default was 0.3 s before version 2
   { key: "armBestMs", was: 0.9, until: 3 },     // 0.9 m/s before arm speed counted only the pull (version 3)
@@ -952,6 +961,13 @@ const RETIRED_DEFAULTS = [
   { key: "armBestMs", was: 0.87, until: 5 },    // 0.87 m/s before the blade locked at the catch (version 5)
   { key: "trunkBestMs", was: 0.91, until: 5 },  // 0.91 m/s then too
   { key: "strengthOn", was: 0, until: 6 },      // strength by position was off before it defaulted to by body position (version 6)
+  { key: "rotation", was: 0, until: 7 },        // arms only before the body joined in by default (version 7)
+  { key: "hinge", was: 0, until: 7 },
+  { key: "legDrive", was: 0, until: 7 },
+  { key: "dropM", was: 0, until: 7 },
+  { key: "catchDeg", was: 35, until: 7 },       // 35° with the arms alone; the body's reach now adds 12° to 23°
+  { key: "armBestMs", was: 0.89, until: 7 },    // the best speeds are the default stroke's, which then moved the arms less
+  { key: "trunkBestMs", was: 0.92, until: 7 },
 ];
 // Whether saved value v of setting k, from a save of `version`, was the default then.
 const retiredIn = (version, k, v) => RETIRED_DEFAULTS.some((d) => d.key === k && version < d.until && Math.abs(v - d.was) < 1e-9);
@@ -985,46 +1001,61 @@ function presetName(p) {
 }
 
 // ------------------------------------------------------------- controls
-const cmIn = (v) => `${fmtNum(v * 100, 1)} cm (${fmtNum(v / 0.0254, 1)} in)`;
+// Lengths in cm, with inches (as paddlers often give them) in brackets.
+// The reach the body adds at the catch, as the engine adds it.
+const bodyReach = (p) => 15 * (p.rotation || 0) + 8 * (p.hinge || 0);
+const cmIn = (v, d = 1) => `${fmtNum(v * 100, d)} cm (${fmtNum(v / 0.0254, 1)} in)`;
 const CONTROLS = [
+  // Paddler
+  { group: "ctl-profile", key: "fitnessW", label: "Fitness", min: 80, max: 400, step: 5, unit: " W",
+    help: "The power you could hold for an hour using your whole body." },
+  { group: "ctl-profile", key: "massKg", label: "Body weight", min: 50, max: 150, step: 1, unit: "",
+    fmt: (v) => `${fmtNum(v - S.BOAT_KG, 0)} kg (${fmtNum((v - S.BOAT_KG) / 0.4536, 0)} lb)`,
+    help: "With the 11 kg boat. Heavier sits deeper, so more drag." },
+  { group: "ctl-body-size", key: "ageY", label: "Age", min: 16, max: 85, step: 1, unit: "", fmt: (v) => `${v}`,
+    help: "Past 40 the heat costs you more. Also sets the fitness suggestion." },
+  { group: "ctl-body-size", key: "heightM", label: "Height", min: 1.4, max: 2.1, step: 0.01, unit: "",
+    fmt: (v) => `${fmtNum(v * 100, 0)} cm (${Math.floor(v / 0.3048)}′${Math.round((v / 0.0254) % 12)}″)`, help: "Scales all the lengths below." },
+  { group: "ctl-body-len", key: "upperArmM", label: "Upper arm", min: 0.2, max: 0.42, step: 0.005, unit: "", fmt: (v) => cmIn(v),
+    help: "Shoulder to elbow." },
+  { group: "ctl-body-len", key: "forearmM", label: "Forearm", min: 0.2, max: 0.42, step: 0.005, unit: "", fmt: (v) => cmIn(v),
+    help: "Elbow to the middle of your grip." },
+  { group: "ctl-body-len", key: "torsoM", label: "Torso", min: 0.4, max: 0.7, step: 0.005, unit: "", fmt: (v) => cmIn(v),
+    help: "Hip to shoulder, sitting." },
+  { group: "ctl-body-len", key: "shoulderM", label: "Shoulder width", min: 0.3, max: 0.52, step: 0.005, unit: "", fmt: (v) => cmIn(v),
+    help: "Shoulder to shoulder." },
+  { group: "ctl-body-len", key: "thighM", label: "Thigh", min: 0.32, max: 0.58, step: 0.005, unit: "", fmt: (v) => cmIn(v),
+    help: "Hip to knee." },
+  { group: "ctl-body-len", key: "shinM", label: "Shin", min: 0.32, max: 0.58, step: 0.005, unit: "", fmt: (v) => cmIn(v),
+    help: "Knee to foot." },
+  // Rhythm and reach
+  { group: "ctl-stroke", key: "rateSpm", label: "Stroke rate", min: 30, max: 90, step: 1, unit: " spm",
+    help: "Same effort at a slower rate: bigger pulls, more surge." },
+  { group: "ctl-stroke", key: "driveFraction", label: "Time in the drive", min: 0.3, max: 0.8, step: 0.05, unit: "",
+    fmt: (v) => `${Math.round(v * 100)}% at 60 spm`,
+    help: "The share of each stroke from catch to exit, at 60 spm; the rest is the recovery. A longer drive moves more water more gently: lower peak force, less slip, but a quicker recovery. A quicker rate mostly shortens the recovery (rowers' drive time hardly changes with rate), so the drive's share rises with it: ×1.17 at 75 spm." },
   { group: "ctl-stroke", key: "catchDeg", label: "Reach at the catch", min: 0, max: 60, step: 1, unit: "°",
-    help: "Shaft angle forward of vertical when the blade goes in." },
+    fmt: (v, p) => { const add = bodyReach(p); return add ? `${v}° + ${fmtNum(add, 0)}° body = ${fmtNum(v + add, 0)}°` : `${v}°`; },
+    help: "Shaft angle forward of vertical when the blade goes in, reaching with the arms. Trunk rotation and a hinge reach further on top (15° and 8° at full): the total is the angle the blade goes in at." },
   { group: "ctl-stroke", key: "exitDeg", label: "Angle at the exit", min: 0, max: 60, step: 1, unit: "°",
     help: "Shaft angle behind vertical when the blade comes out." },
   { group: "ctl-stroke", key: "leanDeg", label: "Shaft lean outward", min: 0, max: 45, step: 1, unit: "°",
     help: "0° is a vertical shaft, blade tight to the hull." },
+  { group: "ctl-stroke", key: "handOutM", label: "Top hand from centreline", min: 0.15, max: 0.9, step: 0.01, unit: "", fmt: (v) => cmIn(v, 0),
+    help: "A C1 is about 17 in wide at the gunwale and 32 in at its widest." },
   { group: "ctl-stroke", key: "directionDeg", label: "Stroke direction vs keel", min: -30, max: 30, step: 1, unit: "°",
     help: "0° pulls straight back along the boat; + angles the pull outward." },
   { group: "ctl-stroke", key: "sweepDeg", label: "Sweep", min: 0, max: 90, step: 1, unit: "°",
     help: "How much the blade's path curves around you during the drive." },
-  { group: "ctl-paddle", key: "pivotFromGrip", label: "Pull ↔ push", min: 0, max: 0.5, step: 0.01, unit: " m",
-    fmt: (v) => `${v < 0.15 ? "pull" : v > 0.35 ? "push" : "pull and push"} (pivot ${fmtNum(v, 2)} m from the grip)`,
-    help: "Pull with the bottom hand, or push with the top: the point on the shaft that stays put." },
-  { group: "ctl-paddle", key: "paddleLenM", label: "Paddle length", min: 1.1, max: 1.5, step: 0.005, unit: "",
-    fmt: (v) => `${fmtNum(v / 0.0254, 1)} in (${fmtNum(v, 2)} m)`, help: "Grip to tip. A C1 paddle is typically about 51 in." },
-  { group: "ctl-paddle", key: "bladeLenM", label: "Blade length", min: 0.3, max: 0.6, step: 0.005, unit: "",
-    fmt: (v) => `${fmtNum(v / 0.0254, 1)} in`, help: "A ZRE Revolution is 17 in." },
-  { group: "ctl-paddle", key: "paddleKg", label: "Paddle weight", min: 0.2, max: 0.8, step: 0.01, unit: "",
-    fmt: (v) => `${fmtNum(v * 1000, 0)} g (${fmtNum(v / 0.02835, 1)} oz)`, help: "Most of it in the blade. A ZRE bent shaft is about 240–330 g. Only the recovery's cost sees it." },
-  { group: "ctl-paddle", key: "bladeWidthM", label: "Blade width", min: 0.15, max: 0.25, step: 0.0025, unit: "",
-    fmt: (v) => `${fmtNum(v / 0.0254, 2)} in`, help: "Bigger blades slip less but cost more force per stroke. ZRE: 7.5–8.5 in." },
-  { group: "ctl-paddle", key: "bendDeg", label: "Bent shaft", min: -14, max: 14, step: 1, unit: "°",
-    fmt: (v) => v === 0 ? "straight" : `${Math.abs(v)}° ${v > 0 ? "toward bow" : "toward power face"}`,
-    help: "Which way and how far the blade is angled off the shaft." },
-  { group: "ctl-paddle", key: "pitchDeg", label: "Blade pitch", min: -30, max: 30, step: 1, unit: "°",
-    fmt: (v) => v === 0 ? "square" : `${Math.abs(v)}° face turned ${v > 0 ? "out" : "in, toward the hull"}`,
-    help: "Square pushes straight back. Turned, the blade slices and uses lift." },
-  { group: "ctl-paddler", key: "handOutM", label: "Top hand from centreline", min: 0.15, max: 0.9, step: 0.01, unit: " m",
-    help: "A C1 is about 17 in wide at the gunwale and 32 in at its widest." },
-  { group: "ctl-paddler", key: "handTravelM", label: "Hand travel during the drive", min: 0, max: 0.4, step: 0.01, unit: " m",
+  // Hands
+  { group: "ctl-hands", key: "pivotFromGrip", label: "Pull ↔ push", min: 0, max: 0.5, step: 0.01, unit: "",
+    fmt: (v) => `${v < 0.15 ? "pull" : v > 0.35 ? "push" : "both"}, pivot ${fmtNum(v * 100, 0)} cm down`,
+    help: "Pull with the bottom hand, or push with the top (both: pull and push): the point on the shaft that stays put, measured down from the grip." },
+  { group: "ctl-hands", key: "lowerHandM", label: "Lower hand below the grip", min: 0.35, max: 0.85, step: 0.01, unit: "",
+    fmt: (v) => cmIn(v, 0), help: "Hands further apart: more leverage on the blade, and a longer reach for the lower arm." },
+  { group: "ctl-hands", key: "handTravelM", label: "Hand travel during the drive", min: 0, max: 0.4, step: 0.01, unit: "", fmt: (v) => cmIn(v, 0),
     help: "How far the pivot moves aft as you pull." },
-  { group: "ctl-paddler", key: "rateSpm", label: "Stroke rate", min: 30, max: 90, step: 1, unit: " spm",
-    help: "Same effort at a slower rate: bigger pulls, more surge." },
-  { group: "ctl-paddler", key: "driveFraction", label: "Time in the drive", min: 0.3, max: 0.8, step: 0.05, unit: "",
-    fmt: (v) => `${Math.round(v * 100)}% of each stroke at 60 spm`,
-    help: "Catch to exit; the rest is the recovery. A longer drive moves more water more gently: lower peak force, less slip, but a quicker recovery. A quicker rate mostly shortens the recovery (rowers' drive time hardly changes with rate), so the drive's share rises with it: ×1.17 at 75 spm." },
-  { group: "ctl-profile", key: "fitnessW", label: "Fitness", min: 80, max: 400, step: 5, unit: " W",
-    help: "The power you could hold for an hour using your whole body." },
+  // Body
   { group: "ctl-paddler", key: "rotation", label: "Trunk rotation", min: 0, max: 1, step: 0.05, unit: "", eff: true,
     fmt: (v) => (v ? `${Math.round(v * 100)}%` : "none"), help: "Turn your shoulders into the catch and unwind through the drive." },
   { group: "ctl-paddler", key: "hinge", label: "Hinge from the waist", min: 0, max: 1, step: 0.05, unit: "", eff: true,
@@ -1033,9 +1064,30 @@ const CONTROLS = [
     fmt: (v) => (v ? `${Math.round(v * 100)}%` : "none"), help: "Drive from the foot or knee on the paddle side through the drive." },
   { group: "ctl-paddler", key: "dropM", label: "Drop onto the paddle at the catch", min: 0, max: 0.1, step: 0.005, unit: "", eff: true,
     fmt: (v) => (v ? `${fmtNum(v * 100, 1)} cm` : "none"), help: "Your weight onto the shaft: loads the blade early, and bobs the boat." },
-  { group: "ctl-profile", key: "massKg", label: "Body weight", min: 50, max: 150, step: 1, unit: "",
-    fmt: (v) => `${fmtNum(v - S.BOAT_KG, 0)} kg (${fmtNum((v - S.BOAT_KG) / 0.4536, 0)} lb)`,
-    help: "With the 11 kg boat. Heavier sits deeper, so more drag." },
+  { group: "ctl-body", key: "swingM", label: "Body swing, fore–aft", min: 0, max: 0.2, step: 0.01, unit: "", eff: true,
+    fmt: (v) => (v ? `±${fmtNum(v * 100, 0)} cm` : "still"), help: "Your body moving pushes the boat the other way. A quiet body keeps the boat running." },
+  { group: "ctl-body", key: "heelDeg", label: "Heel the boat toward the paddle", min: 0, max: 12, step: 1, unit: "°", eff: true,
+    fmt: (v) => (v ? `${v}°` : "level"), help: "Brings the blade nearer the keel line, so each stroke turns the boat less." },
+  { group: "ctl-body", key: "hipRock", label: "Hip rock against the roll", min: 0, max: 1, step: 0.05, unit: "", eff: true,
+    fmt: (v) => (v ? `${Math.round(v * 100)}%` : "none"), help: "Rock your hips toward the paddle side as the blade lifts it." },
+  // Gear
+  { group: "ctl-paddle", key: "paddleLenM", label: "Paddle length", min: 1.1, max: 1.5, step: 0.005, unit: "",
+    fmt: (v) => cmIn(v), help: "Grip to tip. A C1 paddle is typically about 51 in." },
+  { group: "ctl-paddle", key: "bladeLenM", label: "Blade length", min: 0.3, max: 0.6, step: 0.005, unit: "",
+    fmt: (v) => cmIn(v), help: "A ZRE Revolution is 17 in." },
+  { group: "ctl-paddle", key: "bladeWidthM", label: "Blade width", min: 0.15, max: 0.25, step: 0.0025, unit: "",
+    fmt: (v) => cmIn(v), help: "Bigger blades slip less but cost more force per stroke. ZRE: 7.5–8.5 in." },
+  { group: "ctl-paddle", key: "bendDeg", label: "Bent shaft", min: -14, max: 14, step: 1, unit: "°",
+    fmt: (v) => v === 0 ? "straight" : `${Math.abs(v)}° ${v > 0 ? "toward bow" : "toward power face"}`,
+    help: "Which way and how far the blade is angled off the shaft." },
+  { group: "ctl-paddle", key: "pitchDeg", label: "Blade pitch", min: -30, max: 30, step: 1, unit: "°",
+    fmt: (v) => v === 0 ? "square" : `${Math.abs(v)}° face turned ${v > 0 ? "out" : "in, toward the hull"}`,
+    help: "Square pushes straight back. Turned, the blade slices and uses lift." },
+  { group: "ctl-paddle", key: "paddleKg", label: "Paddle weight", min: 0.2, max: 0.8, step: 0.01, unit: "",
+    fmt: (v) => `${fmtNum(v * 1000, 0)} g (${fmtNum(v / 0.02835, 1)} oz)`, help: "Most of it in the blade. A ZRE bent shaft is about 240–330 g. Only the recovery's cost sees it." },
+  { group: "ctl-paddle", key: "seatZM", label: "Seat height", min: 0, max: 0.3, step: 0.005, unit: "", eff: true, fmt: (v) => cmIn(v),
+    help: "Your hips above the water, sitting in the boat. Higher is less stable: the boat tips more easily and rolls more slowly. Any extra leverage from sitting higher isn't counted." },
+  // Model assumptions
   { group: "ctl-strength", key: "strengthPeakDeg", label: "Strongest at", min: -30, max: 30, step: 1, unit: "",
     fmt: (v) => (v === 0 ? "shaft vertical" : `${Math.abs(v)}° ${v < 0 ? "forward" : "behind"} vertical`),
     help: "The paddle angle you pull hardest at." },
@@ -1049,33 +1101,7 @@ const CONTROLS = [
     fmt: (v) => `${fmtNum(v, 2)} m/s`, help: "Your paddle-side shoulder's speed through the drive that your trunk holds the most power at with full rotation. Rotation and a hinge use different muscles, each best at its own speed, so with a hinge too the best is faster. Counts what trunk rotation and a hinge add." },
   { group: "ctl-gear", key: "trunkDrop", label: "Trunk weaker away from it", min: 0, max: 0.4, step: 0.01, unit: "",
     fmt: (v) => `${Math.round(v * 100)}% weaker`, help: "How much of what rotation and a hinge add you lose at half your best trunk speed; less going faster." },
-  { group: "ctl-paddler", key: "lowerHandM", label: "Lower hand on the shaft", min: 0.35, max: 0.85, step: 0.01, unit: "",
-    fmt: (v) => `${fmtNum(v * 100, 0)} cm below the grip`, help: "Hands further apart: more leverage on the blade, and a longer reach for the lower arm." },
-  { group: "ctl-body-size", key: "ageY", label: "Age", min: 16, max: 85, step: 1, unit: "", fmt: (v) => `${v}`,
-    help: "Past 40 the heat costs you more. Also sets the fitness suggestion." },
-  { group: "ctl-body-size", key: "heightM", label: "Height", min: 1.4, max: 2.1, step: 0.01, unit: "",
-    fmt: (v) => `${fmtNum(v * 100, 0)} cm (${Math.floor(v / 0.3048)}′${Math.round((v / 0.0254) % 12)}″)`, help: "Scales all the lengths below." },
-  { group: "ctl-body-size", key: "upperArmM", label: "Upper arm", min: 0.2, max: 0.42, step: 0.005, unit: "", fmt: (v) => cmIn(v),
-    help: "Shoulder to elbow." },
-  { group: "ctl-body-size", key: "forearmM", label: "Forearm", min: 0.2, max: 0.42, step: 0.005, unit: "", fmt: (v) => cmIn(v),
-    help: "Elbow to the middle of your grip." },
-  { group: "ctl-body-size", key: "torsoM", label: "Torso", min: 0.4, max: 0.7, step: 0.005, unit: "", fmt: (v) => cmIn(v),
-    help: "Hip to shoulder, sitting." },
-  { group: "ctl-body-size", key: "shoulderM", label: "Shoulder width", min: 0.3, max: 0.52, step: 0.005, unit: "", fmt: (v) => cmIn(v),
-    help: "Shoulder to shoulder." },
-  { group: "ctl-body-size", key: "thighM", label: "Thigh", min: 0.32, max: 0.58, step: 0.005, unit: "", fmt: (v) => cmIn(v),
-    help: "Hip to knee." },
-  { group: "ctl-body-size", key: "shinM", label: "Shin", min: 0.32, max: 0.58, step: 0.005, unit: "", fmt: (v) => cmIn(v),
-    help: "Knee to foot." },
-  { group: "ctl-body", key: "swingM", label: "Body swing, fore–aft", min: 0, max: 0.2, step: 0.01, unit: "", eff: true,
-    fmt: (v) => (v ? `±${fmtNum(v * 100, 0)} cm` : "still"), help: "Your body moving pushes the boat the other way. A quiet body keeps the boat running." },
-
-  { group: "ctl-body", key: "heelDeg", label: "Heel the boat toward the paddle", min: 0, max: 12, step: 1, unit: "°", eff: true,
-    fmt: (v) => (v ? `${v}°` : "level"), help: "Brings the blade nearer the keel line, so each stroke turns the boat less." },
-  { group: "ctl-body", key: "hipRock", label: "Hip rock against the roll", min: 0, max: 1, step: 0.05, unit: "", eff: true,
-    fmt: (v) => (v ? `${Math.round(v * 100)}%` : "none"), help: "Rock your hips toward the paddle side as the blade lifts it." },
-  { group: "ctl-body", key: "seatZM", label: "Seat height", min: 0, max: 0.3, step: 0.005, unit: "", eff: true, fmt: (v) => cmIn(v),
-    help: "Your hips above the water, sitting in the boat. Higher is less stable: the boat tips more easily and rolls more slowly. Any extra leverage from sitting higher isn't counted." },
+  // Switching sides
   { group: "ctl-switch", key: "switchStrokes", label: "Strokes per side", min: 0, max: 20, step: 1, unit: "",
     fmt: (v) => v === 0 ? "auto, by heading" : `${v} stroke${v === 1 ? "" : "s"}`,
     help: "Fewer: more time lost switching. More: a wider zigzag. In a crosswind it's the average; you take more on the windward side. 0 switches by heading." },
@@ -1084,12 +1110,16 @@ const CONTROLS = [
   { group: "ctl-switch", key: "switchLossS", label: "Time lost per switch", min: 0, max: 1.5, step: 0.05, unit: " s",
     fmt: (v) => `${v.toFixed(2)} s`, help: "No push while the paddle changes sides. About the same time at any rate, so it costs more at a higher rate." },
 ];
+// A slider's name and value, its help behind the "?" so the panel stays short.
+const tipAttr = (t) => t.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+const ctlLabel = (c, outId) => `<label class="top"><span>${c.label}<button type="button" class="info" data-tip="${tipAttr(c.help)}" aria-label="What is this?">?</button></span>` +
+  `<output id="${outId}"></output></label>`;
 for (const c of CONTROLS) {
   const wrap = document.createElement("div");
   wrap.className = "ctl";
-  wrap.innerHTML = `<label class="top"><span>${c.label}</span><output id="o-${c.key}"></output></label>
+  wrap.innerHTML = `${ctlLabel(c, `o-${c.key}`)}
     <input type="range" id="c-${c.key}" min="${c.min}" max="${c.max}" step="${c.step}" aria-label="${c.label}">
-    ${c.eff ? `<div class="eff" id="e-${c.key}"></div>` : ""}<div class="help">${c.help}</div>`;
+    ${c.eff ? `<div class="eff" id="e-${c.key}"></div>` : ""}`;
   $(c.group).append(wrap);
   wrap.querySelector("input").addEventListener("input", (ev) => {
     const v = parseFloat(ev.target.value), b = boats[editing];
@@ -1107,7 +1137,7 @@ const RECOVERIES = [["-1", "Cheapest"], ["0", "Lower hand swings"], ["0.5", "Eve
   const tip = ("How the paddle gets from the exit to the catch: about a point on the shaft that travels smoothly while the paddle swings around it. Lower hand swings: the top hand stays steady, a fulcrum in front of your face, and the lower hand swings the blade. Top hand swings: the lower hand stays and the top hand drops and swings over it. Cheapest: the one that costs least, from the arms' and paddle's kinetic energy (each arm ~5% of body mass, de Leva 1996), lifting them, and air drag on the blade, with negative work costing a quarter of positive work, inside reach and with the top hand in front of the face. The costs compare styles: the model starts and stops the hands at the exit and catch, so their size is an upper bound, and they don't change what you can hold.").replace(/"/g, "&quot;");
   wrap.innerHTML = `<div class="top"><span>Recovery<button type="button" class="info" data-tip="${tip}" aria-label="What is this?">?</button></span></div>` +
     `<div class="row chips" id="recovery-mode" role="group" aria-label="Recovery" style="margin-top:6px"></div><div class="help" id="recovery-read"></div>`;
-  $("c-driveFraction").closest(".ctl").after(wrap);
+  $("c-handTravelM").closest(".ctl").after(wrap);
 }
 function recoveryChips(el) {
   el.innerHTML = "";
@@ -1193,7 +1223,7 @@ function showBodyEffects() {
   $("e-seatZM").innerHTML = `Metacentric height <b>${fmtNum(c.GM * 100, 0)} cm</b>, rolling once every <b>${fmtNum(c.rollPeriod, 2)} s</b>: heel <b>±${fmtNum(c.heelStill * 180 / Math.PI, 1)}°</b> each stroke`;
   for (const k of ["swingM", "dropM", "heelDeg", "hipRock", "rotation", "legDrive", "hinge"]) $(`e-${k}`).hidden = !p[k];
 }
-const fmtValue = (c, v) => (c.fmt ? c.fmt(v) : `${+v.toFixed(c.step < 1 ? 2 : 0)}${c.unit}`);
+const fmtValue = (c, v, p = boats[editing]) => (c.fmt ? c.fmt(v, p) : `${+v.toFixed(c.step < 1 ? 2 : 0)}${c.unit}`);
 // A length in cm, to the mm where it has one: 10 cm, 22.5 cm.
 const cmTrim = (v) => `${fmtNum(+(v * 100).toFixed(1), Number.isInteger(+(v * 100).toFixed(1)) ? 0 : 1)} cm`;
 const showValue = (c) => { $(`o-${c.key}`).textContent = fmtValue(c, boats[editing][c.key]); };
@@ -1301,6 +1331,7 @@ function renderSwitchMode() {
     b.addEventListener("click", () => { boats[editing].noSwitching = +v; changed(editing); });
     el.append(b);
   }
+  $("switch-off").hidden = !off;
   for (const k of ["switchStrokes", "switchHeadingDeg", "switchLossS"]) $(`c-${k}`).disabled = off;
   if (off) for (const k of ["switchStrokes", "switchHeadingDeg", "switchLossS"]) $(`o-${k}`).textContent = "off (no switching)";
 }
@@ -4035,9 +4066,30 @@ function setTab(t) {
   for (const x of ["stroke", "boat", "race", "fit"]) $(`tab-${x}`).hidden = x !== t;
   document.querySelector(".layout").dataset.tab = t;
   $("ctxbar").dataset.tab = t;
+  openGroups(t);
   requestAnimationFrame(redrawShown);
 }
 for (const b of document.querySelectorAll("nav.tabs button")) b.addEventListener("click", () => setTab(b.dataset.tab));
+// The settings groups each tab opens: what that tab is about. Opening or
+// closing one is remembered for that tab, in this browser.
+const TAB_GROUPS = { stroke: ["rhythm", "hands", "body"], boat: ["body", "gear"], fit: ["paddler", "gear"], race: ["paddler", "switch"] };
+const GROUPS_KEY = "ppm.sim.groups";
+const groupEls = [...document.querySelectorAll("#controls details.group")];
+let tabGroups = Object.assign({}, TAB_GROUPS);
+try {
+  const g = JSON.parse(localStorage.getItem(GROUPS_KEY));
+  if (g && typeof g === "object") for (const t of Object.keys(TAB_GROUPS)) if (Array.isArray(g[t])) tabGroups[t] = g[t];
+} catch {}
+function openGroups(t) { for (const d of groupEls) d.open = tabGroups[t].includes(d.dataset.g); }
+// Toggle events arrive after a tab's groups are all set, so a tab switch
+// matches what's stored and changes nothing.
+for (const d of groupEls) d.addEventListener("toggle", () => {
+  const open = groupEls.filter((x) => x.open).map((x) => x.dataset.g);
+  if (open.join() === tabGroups[tab].join()) return;
+  tabGroups = Object.assign({}, tabGroups, { [tab]: open });
+  try { localStorage.setItem(GROUPS_KEY, JSON.stringify(tabGroups)); } catch {}
+});
+openGroups(tab);
 // On the hull: one part at a time.
 const HULL_PARTS = [["surge", "Through a stroke"], ["motion", "Bob, pitch, roll"], ["heading", "Heading"], ["power", "Power"], ["shallow", "Shallow water"]];
 let hullPart = "surge";
@@ -4073,7 +4125,7 @@ function showFitIntro() {
   const p = boats[editing];
   $("fit-sub").textContent = `For ${NAME[editing]}, as its sliders are set now.`;
   $("fit-flat").textContent = p.gearOn || p.strengthOn ? "" :
-    "Gearing and strength by position are off (Paddler profile), so setups inside the limits are about as fast. Turn them on to rank them; both are assumed curves until measured.";
+    "Gearing and strength by position are off (Model assumptions), so setups inside the limits are about as fast. Turn them on to rank them; both are assumed curves until measured.";
   $("fit-go").textContent = `Find a fit for ${NAME[editing]}`;
   $("fit-card").classList.toggle("editing-b", (fit ? fit.x : editing) === "b");
   m3Sync();
@@ -4111,13 +4163,14 @@ onTap($("fit-go"), async () => {
 const FIT_ROWS = ["seatZM", "paddleLenM", "lowerHandM", "handOutM", "catchDeg", "exitDeg"];
 // Short enough for two columns on a phone, and the same as the 3D model reads them.
 const FIT_LABEL = { lowerHandM: "Lower hand below the grip", handOutM: "Top hand from the centreline" };
-const fitValue = (k, v) => k === "paddleLenM" ? `${fmtNum(v / 0.0254, 1)} in` : k === "catchDeg" || k === "exitDeg" ? `${fmtNum(v, 0)}°` : cmTrim(v);
+// The catch with the body's reach, as the blade goes in.
+const fitValue = (k, v, q) => k === "paddleLenM" ? `${cmTrim(v)} (${fmtNum(v / 0.0254, 1)} in)` : k === "catchDeg" ? `${fmtNum(v + bodyReach(q), 0)}°` : k === "exitDeg" ? `${fmtNum(v, 0)}°` : cmTrim(v);
 const ctlOf = (k) => CONTROLS.find((c) => c.key === k);
 function showFit() {
   const { x, needs, found } = fit, now = found.current, best = found.best, s = best.setup, p = now.setup;
   const pct = (a, b) => `${a >= b ? "+" : "−"}${fmtNum(Math.abs(a / b - 1) * 100, 1)}%`;
   const row = (label, a, b) => `<tr><td>${label}</td><td class="v">${a}</td><td class="v s">${b}</td></tr>`;
-  $("fit-table").querySelector("tbody").innerHTML = FIT_ROWS.map((k) => row(FIT_LABEL[k] || ctlOf(k).label, fitValue(k, p[k]), fitValue(k, s[k]))).join("") +
+  $("fit-table").querySelector("tbody").innerHTML = FIT_ROWS.map((k) => row(FIT_LABEL[k] || ctlOf(k).label, fitValue(k, p[k], p), fitValue(k, s[k], s))).join("") +
     row("Speed at what you can hold", `${fmtNum(now.speed, 3)} m/s`, `${fmtNum(best.speed, 3)} m/s <small>${pct(best.speed, now.speed)}</small>`) +
     row("10 km", clock(10000 / now.speed), clock(10000 / best.speed)) +
     row("Metacentric height", `${fmtNum(now.GM * 100, 0)} cm`, `${fmtNum(best.GM * 100, 0)} cm`) +
@@ -4129,7 +4182,7 @@ function showFit() {
     ? `The seat is as high as ${needs.label.toLowerCase()} water allows: ${fmtNum(best.GM * 100, 0)} cm of metacentric height (${fmtNum(needs.gmMin * 100, 0)} cm needed).`
     : `The seat is at the top of the range searched; ${needs.label.toLowerCase()} water would allow more.`);
   if (Math.abs(s.paddleLenM - p.paddleLenM) > 1e-6)
-    why.push(`A ${fmtValue(ctlOf("paddleLenM"), s.paddleLenM)} paddle on the same blade path reaches ${fmtNum(s.catchDeg, 0)}° and exits at ${fmtNum(s.exitDeg, 0)}° (from ${fmtNum(p.catchDeg, 0)}° and ${fmtNum(p.exitDeg, 0)}°).`);
+    why.push(`A ${fmtValue(ctlOf("paddleLenM"), s.paddleLenM)} paddle on the same blade path reaches ${fmtNum(s.catchDeg + bodyReach(s), 0)}° and exits at ${fmtNum(s.exitDeg, 0)}° (from ${fmtNum(p.catchDeg + bodyReach(p), 0)}° and ${fmtNum(p.exitDeg, 0)}°).`);
   if (p.gearOn && Math.abs(best.armSpeed - now.armSpeed) > 0.01)
     why.push(`Your arms move ${fmtNum(best.armSpeed, 2)} m/s instead of ${fmtNum(now.armSpeed, 2)} (best ${fmtNum(S.armBest(p), 2)}): you hold ${fmtNum(best.watts, 0)} W instead of ${fmtNum(now.watts, 0)}.`);
   if (p.gearOn && (p.rotation || p.hinge) && Math.abs(best.trunkSpeed - now.trunkSpeed) > 0.02)
@@ -4539,8 +4592,8 @@ function m3Panel() {
   m3.panelKeys = m3KeysOf(part);
   $("m3-ctl").innerHTML = m3.panelKeys.map((key) => {
     const c = ctlOf(key);
-    return `<div class="ctl"><label class="top"><span>${c.label}</span><output id="m3-o-${key}"></output></label>` +
-      `<input type="range" data-key="${key}" min="${c.min}" max="${c.max}" step="${c.step}" aria-label="${c.label}"${ro ? " disabled" : ""}><div class="help">${c.help}</div></div>`;
+    return `<div class="ctl">${ctlLabel(c, `m3-o-${key}`)}` +
+      `<input type="range" data-key="${key}" min="${c.min}" max="${c.max}" step="${c.step}" aria-label="${c.label}"${ro ? " disabled" : ""}></div>`;
   }).join("") + (part.id === "path" && !ro ? `<div class="ctl"><div class="top"><span>Recovery</span></div><div class="row chips" id="m3-recovery" role="group" aria-label="Recovery" style="margin-top:6px"></div><div class="help" id="m3-recovery-read"></div></div>` : "") +
     (ro ? `<div class="help">The suggested setup. <b>Use it for ${NAME[editing]}</b> (above, in the fit) to set it from here.</div>` : "");
   for (const el of $("m3-ctl").querySelectorAll("input")) el.addEventListener("input", () => {
@@ -4562,7 +4615,7 @@ function m3SyncPanel() {
   for (const el of $("m3-ctl").querySelectorAll("input")) {
     const k = el.dataset.key;
     if (document.activeElement !== el) el.value = p[k];
-    $(`m3-o-${k}`).textContent = fmtValue(ctlOf(k), p[k]);
+    $(`m3-o-${k}`).textContent = fmtValue(ctlOf(k), p[k], p);
   }
 }
 // Live readings for the part picked, at this moment of the stroke.

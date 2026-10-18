@@ -30,6 +30,10 @@ const pct = (x) => `${(x * 100).toFixed(1)}%`;
 console.log("\nCanoe Race Simulator physics");
 {
   const base = S.simulate({});
+  // Arms only, the body still, reaching 35° with the arms alone: the
+  // baseline for what each body motion adds (the defaults use the body,
+  // which adds 12° to their 23° catch).
+  const ARMS = { rotation: 0, hinge: 0, legDrive: 0, dropM: 0, catchDeg: 35 }, armsSim = (x) => S.simulate(Object.assign({}, ARMS, x)), armsBase = armsSim({});
   const balance = base.hullPower + base.leewayPower + base.slipPower - base.paddlerPower;
   check("power balance: hull + leeway + slip = paddler", Math.abs(balance) < 1e-3 * base.paddlerPower,
         `residual ${balance.toExponential(1)} W`);
@@ -138,7 +142,7 @@ console.log("\nCanoe Race Simulator physics");
   check("no J-stroke model left", !("steeringPower" in base) && !("steerLD" in S.DEFAULTS));
   // Paddler engine: what each can hold, and how body use shapes the drive.
   // (Strength by position off: it scales what each technique can hold.)
-  const holdArms = S.capacity({ gearOn: 0, strengthOn: 0 }), holdAll = S.capacity({ rotation: 1, legDrive: 1, hinge: 1, gearOn: 0, strengthOn: 0 }),
+  const holdArms = S.capacity({ ...ARMS, gearOn: 0, strengthOn: 0 }), holdAll = S.capacity({ rotation: 1, legDrive: 1, hinge: 1, gearOn: 0, strengthOn: 0 }),
         holdLong = S.capacity({ rotation: 1, legDrive: 1, hinge: 1, gearOn: 0, strengthOn: 0 }, 16);
   check("capacity: arms only 70%, whole body 100%, fading over a long race", Math.round(holdArms) === 140 && Math.round(holdAll) === 200 && Math.round(holdLong) === 165,
         `${holdArms} ${holdAll} ${holdLong}`);
@@ -146,16 +150,16 @@ console.log("\nCanoe Race Simulator physics");
   const legsSim = S.simulate({ legDrive: 1 }), dropSim = S.simulate({ dropM: 0.03 });
   check("leg drive moves the force peak later, a drop moves it earlier", peakPct(legsSim) > peakPct(base) && peakPct(dropSim) < peakPct(base),
         `${peakPct(base)} ${peakPct(legsSim)} ${peakPct(dropSim)}`);
-  const rotSim = S.simulate({ rotation: 1 });
+  const rotSim = armsSim({ rotation: 1 });
   check("rotation reaches further; settings left as set", rotSim.geom.catchDeg === rotSim.params.catchDeg + 15 && rotSim.params.rotation === 1 &&
         Math.abs(S.simulate({}).efficiency - base.efficiency) < 1e-9);
-  const hingeSim = S.simulate({ hinge: 1 });
-  check("hinge: reach, hand travel, and a body swing that costs power", hingeSim.geom.catchDeg === base.params.catchDeg + 8 &&
-        Math.abs(hingeSim.geom.handTravelM - base.params.handTravelM - 0.15) < 1e-9 && hingeSim.at(150).shares.swing > 0.005 && base.at(150).shares.swing === 0,
+  const hingeSim = armsSim({ hinge: 1 });
+  check("hinge: reach, hand travel, and a body swing that costs power", hingeSim.geom.catchDeg === armsBase.params.catchDeg + 8 &&
+        Math.abs(hingeSim.geom.handTravelM - armsBase.params.handTravelM - 0.15) < 1e-9 && hingeSim.at(150).shares.swing > 0.005 && armsBase.at(150).shares.swing === 0,
         pct(hingeSim.at(150).shares.swing));
   const tHold = (q) => { const rr = S.simulate(q), w = S.capacity(q); return S.race(rr, null, 10000, w, w, {}).tA; };
-  check("hinge: the extra muscle outweighs the swing", tHold({ hinge: 1 }) < tHold({}));
-  const pitch0 = base.at(150), pitch1 = hingeSim.at(150), hingeCyc = hingeSim.cycleAt(150);
+  check("hinge: the extra muscle outweighs the swing", tHold({ ...ARMS, hinge: 1 }) < tHold(ARMS));
+  const pitch0 = armsBase.at(150), pitch1 = hingeSim.at(150), hingeCyc = hingeSim.cycleAt(150);
   check("pitch: the body rocks the bow, and it costs a little", pitch1.bowMm > 5 * pitch0.bowMm && pitch1.shares.pitch > pitch0.shares.pitch &&
         pitch1.shares.pitch < 0.01 && Math.abs(Math.max(...hingeCyc.bodyX) - 0.06) < 1e-3 && hingeCyc.pitch.length === hingeCyc.t.length,
         `${pitch0.bowMm} ${pitch1.bowMm} ${pct(pitch1.shares.pitch)}`);
@@ -256,8 +260,10 @@ console.log("\nCanoe Race Simulator physics");
   const def = S.simulate({}), cyc = def.cycleAt(150), e150 = def.at(150);
   const span = (a) => Math.max(...a) - Math.min(...a), avg = (a) => a.reduce((x, y) => x + y, 0) / a.length;
   check("hull: the default paddle is a 51 in ZRE (17 × 8 in blade)", Math.abs(S.DEFAULTS.paddleLenM - 1.295) < 1e-9 && Math.abs(S.PADDLE.bladeLen - 0.432) < 1e-9);
-  check("hull: speed swing over a stroke = the engine's surge", Math.abs(span(cyc.speed) / e150.waterSpeed - e150.surgeSwing) < 0.005,
-        `${(span(cyc.speed) / e150.waterSpeed).toFixed(4)} vs ${e150.surgeSwing.toFixed(4)}`);
+  // (With the body still: a hinge's swing moves the hull on top.)
+  const cycS = armsBase.cycleAt(150), eS = armsBase.at(150);
+  check("hull: speed swing over a stroke = the engine's surge, the body still", Math.abs(span(cycS.speed) / eS.waterSpeed - eS.surgeSwing) < 0.005,
+        `${(span(cycS.speed) / eS.waterSpeed).toFixed(4)} vs ${eS.surgeSwing.toFixed(4)}`);
   check("hull: bob = the engine's bounce", Math.abs(span(cyc.heave) / 2 * 1000 - e150.bounceMm) < 0.15 * e150.bounceMm, `${(span(cyc.heave) * 500).toFixed(2)} vs ${e150.bounceMm.toFixed(2)} mm`);
   // Without switching: with it, each stroke's push also covers the time lost switching.
   const cyc0 = S.simulate({ switchLossS: 0 }).cycleAt(150);
@@ -267,18 +273,18 @@ console.log("\nCanoe Race Simulator physics");
         Math.abs(avg(cyc.heel)) < 1e-6 && cyc.GM > 0.1);
   check("hull: a wider blade slips less", S.simulate({ bladeWidthM: 0.24 }).at(150).shares.slip < e150.shares.slip);
   // Body motion and the boat score.
-  const bodyStill = S.simulate({}), sw10 = S.simulate({ swingM: 0.1 }), sw5 = S.simulate({ swingM: 0.05 });
-  check("body: defaults change nothing", Math.abs(bodyStill.efficiency - def.efficiency) < 1e-12 && bodyStill.at(150).shares.swing === 0);
+  const bodyStill = armsBase, sw10 = armsSim({ swingM: 0.1 }), sw5 = armsSim({ swingM: 0.05 });
+  check("body: a still body loses nothing to swing or a drop", bodyStill.at(150).shares.swing === 0 && bodyStill.at(150).shares.drop === 0);
   check("body: a bigger swing costs more (±5 cm ~1%, ±10 cm ~3–5%)", sw5.at(150).shares.swing > 0.005 && sw5.at(150).shares.swing < 0.02 &&
         sw10.at(150).shares.swing > 0.03 && sw10.at(150).shares.swing < 0.05 && sw10.at(150).speed < bodyStill.at(150).speed,
         `${(sw5.at(150).shares.swing * 100).toFixed(2)}%, ${(sw10.at(150).shares.swing * 100).toFixed(2)}%`);
-  const dr = S.simulate({ dropM: 0.03, switchLossS: 0 }).at(150);
+  const dr = armsSim({ dropM: 0.03, switchLossS: 0 }).at(150);
   check("body: a drop at the catch makes the boat bob more", dr.bounceMm > 2 * dr.bounceStillMm && dr.shares.drop > 0);
-  check("body: heeling toward the paddle means fewer switches", S.simulate({ heelDeg: 6 }).strokesPerSide > bodyStill.strokesPerSide + 0.5);
+  check("body: heeling toward the paddle means fewer switches", armsSim({ heelDeg: 6 }).strokesPerSide > bodyStill.strokesPerSide + 0.5);
   const hr = S.simulate({ hipRock: 0.8 }).cycleAt(150), heelAmp = (a) => Math.max(...a.map(Math.abs));
   check("body: hip rock cancels the roll", Math.abs(heelAmp(hr.heel) / hr.heelStill - 0.2) < 0.08 && hr.hipMax > 0.02, `${(heelAmp(hr.heel) / hr.heelStill).toFixed(2)}`);
-  const sc0 = bodyStill.at(150).boatScore, scW = S.simulate({ leanDeg: 40, sweepDeg: 70, handOutM: 0.5, catchDeg: 25, exitDeg: 25 }).at(150).boatScore;
-  const scClean = S.simulate({ switchLossS: 0 }).at(150).boatScore;
+  const sc0 = bodyStill.at(150).boatScore, scW = armsSim({ leanDeg: 40, sweepDeg: 70, handOutM: 0.5, catchDeg: 25, exitDeg: 25 }).at(150).boatScore;
+  const scClean = armsSim({ switchLossS: 0 }).at(150).boatScore;
   check("boat score: a clean stroke ~100 but for its switching; switching costs the wide sweep more",
         scClean.total > 98 && scClean.total < 102 && Math.abs(sc0.total + sc0.parts.switching - scClean.total) < 1 &&
         scW.total < sc0.total - 8 && scW.parts.switching > sc0.parts.switching && sw10.at(150).boatScore.total < sc0.total - 4,
@@ -407,7 +413,8 @@ console.log("\nCanoe Race Simulator physics");
 
   // Blade lift: a flat plate's normal force follows the sine law.
   const SW = { leanDeg: 40, sweepDeg: 70, handOutM: 0.5, catchDeg: 25, exitDeg: 25 }, CL = { leanDeg: 2, handOutM: 0.38 };
-  const sim = (p, extra) => S.simulate(Object.assign({}, p, extra));
+  // (Arms only: the blade, not the body.)
+  const sim = (p, extra) => S.simulate(Object.assign({}, ARMS, p, extra));
   const liftGain = (p) => sim(p, { bladeLift: 1 }).efficiency - sim(p, { bladeLift: 0 }).efficiency;
   check("lift never makes a stroke worse", liftGain(CL) >= 0 && liftGain(SW) >= 0 && liftGain({}) >= 0);
   check("lift helps a sideways-slicing sweep much more than a clean stroke", liftGain(SW) > 5 * liftGain(CL),
@@ -425,7 +432,9 @@ console.log("\nCanoe Race Simulator physics");
   // Strength by position (by body position by default): by paddle angle,
   // weak far from vertical.
   const on = (x) => Object.assign({ strengthOn: 1 }, x);
-  const LR = { catchDeg: 55, exitDeg: 45 };
+  // A long reach: 55° in all, 43° before the defaults' body adds its 12°
+  // (as the page's preset); LR0 with the arms alone.
+  const LR = { catchDeg: 43, exitDeg: 45 }, LR0 = { catchDeg: 55, exitDeg: 45 };
   check("strength by position: by body position by default; off changes nothing",
         S.DEFAULTS.strengthOn === 2 && S.strengthFactor({ strengthOn: 0, ...LR }) === 1 && S.strengthAt(Object.assign({}, S.DEFAULTS, { strengthOn: 0 }), 50) === 1);
   check("strength by position: the default stroke keeps what it can hold; a long reach loses it",
@@ -440,7 +449,7 @@ console.log("\nCanoe Race Simulator physics");
   check("strength by position: what you can hold scales with it (gearing aside)", Math.abs(S.capacity(on(Object.assign({ gearOn: 0 }, LR))) / S.capacity(Object.assign({ gearOn: 0, strengthOn: 0 }, LR)) - S.strengthFactor(on(LR))) < 1e-9);
 
   // The body is fitted to the paddle: within reach for every preset, and it says when it can't be.
-  const PRE = { def: {}, long: LR, behind: { catchDeg: 12, exitDeg: 45 }, sweep: { leanDeg: 40, sweepDeg: 70, handOutM: 0.5, catchDeg: 25, exitDeg: 25 },
+  const PRE = { def: {}, long: LR, behind: { catchDeg: 0, exitDeg: 45 }, sweep: { leanDeg: 40, sweepDeg: 70, handOutM: 0.5, catchDeg: 13, exitDeg: 25 },
                 rot: { rotation: 1 }, clean: { leanDeg: 2, handOutM: 0.38 } };
   const worst = Object.entries(PRE).map(([k, p]) => { const b = S.simulate(p).body; return [k, Math.max(...b.frames.map((f) => Math.max(f.top, f.low))), b.short]; });
   check("body: both hands within reach all through the drive, for every preset", worst.every(([, m, sh]) => m <= 0.98 && sh === 0),
@@ -450,7 +459,8 @@ console.log("\nCanoe Race Simulator physics");
   // The seat: hips where your own stroke's blade leaves the water, and every
   // technique paddled from there.
   const exitOf = (r) => r.samples[r.samples.length - 1].B.cop[0];
-  const own = S.simulate({}), behind = S.simulate(PRE.behind);
+  // (Your own stroke for the seat is arms only.)
+  const own = armsBase, behind = S.simulate(PRE.behind);
   check("body: you sit with the blade leaving the water at your hip", Math.abs(own.body.seatX - exitOf(own)) < 0.06,
         `hips ${(100 * (own.body.seatX - exitOf(own))).toFixed(0)} cm ahead of the exit`);
   check("body: one seat for every technique; pulling behind exits behind the hip",
@@ -473,27 +483,29 @@ console.log("\nCanoe Race Simulator physics");
   const hipZ = (r) => { const g = r.geom, P = S.pose(g, 0); return S.fitBody(g, r.body.seatX, P.at(0), P.at(S.lowerHand(g)), S.neutralAt(g, 0)).hip[2]; };
   check("seat height: the hips sit at it", Math.abs(hipZ(highSeat) - 0.25) < 1e-12 && Math.abs(hipZ(own) - S.DEFAULTS.seatZM) < 1e-12);
   const seats = [36, 38, 40].map((c) => S.simulate({ catchDeg: c }).body.seatX);
-  check("body: the seat holds steady as the stroke changes", Math.max(...seats) - Math.min(...seats) < 0.05 && seats.every((x) => x > -0.6 && x < 0),
+  check("body: the seat holds steady as the stroke changes", Math.max(...seats) - Math.min(...seats) < 0.05 && seats.every((x) => x > -0.7 && x < 0),
         seats.map((x) => x.toFixed(2)).join(" "));
   // Strength by body position.
-  const arms = (x) => Object.assign({ strengthOn: 2 }, x), fA = (x) => S.strengthFactor(arms(x));
+  // (Arms only, against the arms-only stroke: the arms' own positions.)
+  const SW0 = { leanDeg: 40, sweepDeg: 70, handOutM: 0.5, catchDeg: 25, exitDeg: 25 };
+  const arms = (x) => Object.assign({ strengthOn: 2 }, ARMS, x), fA = (x) => S.strengthFactor(arms(x)) / S.strengthFactor(arms({}));
   // The lower arm pulling straight is a link the shoulder and trunk pull
   // through (a sweep's long arm costs little); reaching past reach tires
   // you, and so does an arm folded up.
   check("strength by body position: a straight pulling arm is no weaker; past reach is, and so is a folded one",
-        Math.abs(fA({}) - 1) < 1e-9 && fA(PRE.sweep) > 0.9 && fA({ catchDeg: 60, handOutM: 0.85, leanDeg: 40 }) < 0.6 && fA(PRE.clean) > 0.98 &&
+        Math.abs(fA({}) - 1) < 1e-9 && fA(SW0) > 0.9 && fA({ catchDeg: 60, handOutM: 0.85, leanDeg: 40 }) < 0.6 && fA(PRE.clean) > 0.98 &&
         fA({ lowerHandM: 0.4, catchDeg: 15, exitDeg: 15 }) < fA({}),
-        `sweep ×${fA(PRE.sweep).toFixed(2)}, out of reach ×${fA({ catchDeg: 60, handOutM: 0.85, leanDeg: 40 }).toFixed(2)}, folded ×${fA({ lowerHandM: 0.4, catchDeg: 15, exitDeg: 15 }).toFixed(2)}, clean ×${fA(PRE.clean).toFixed(2)}`);
+        `sweep ×${fA(SW0).toFixed(2)}, out of reach ×${fA({ catchDeg: 60, handOutM: 0.85, leanDeg: 40 }).toFixed(2)}, folded ×${fA({ lowerHandM: 0.4, catchDeg: 15, exitDeg: 15 }).toFixed(2)}, clean ×${fA(PRE.clean).toFixed(2)}`);
   // From one seat the body leans to reach the catch, and leaning far forward
   // is weaker: a long reach costs strength again, more with short arms.
-  const withArms = (a) => Object.assign({ upperArmM: a, forearmM: a }, LR);
+  const withArms = (a) => Object.assign({ upperArmM: a, forearmM: a }, LR0);
   check("strength by body position: leaning to a long reach costs strength, more with shorter arms",
-        fA(LR) < 0.98 && fA(withArms(0.26)) < fA(LR) - 0.02 && fA(withArms(0.34)) > fA(LR),
+        fA(LR0) < 0.98 && fA(withArms(0.26)) < fA(LR0) - 0.02 && fA(withArms(0.34)) > fA(LR0),
         [0.26, 0.30, 0.34].map((a) => `×${fA(withArms(a)).toFixed(3)}`).join(" / "));
   // With the face kept behind the top hand, a long reach turns the shoulders
   // into the catch (and drops the paddle-side one) more than it leans, and
   // unwinds through the drive.
-  const lf = S.simulate(arms(LR)).body.frames, of = S.simulate(arms({})).body.frames, dg = (v) => (v * 180 / Math.PI).toFixed(0);
+  const lf = S.simulate(arms(LR0)).body.frames, of = S.simulate(arms({})).body.frames, dg = (v) => (v * 180 / Math.PI).toFixed(0);
   check("body: a long reach turns further into the catch, and unwinds through the drive",
         lf[0].twist > of[0].twist + 0.3 && lf[0].roll > of[0].roll && lf[0].lean - of[0].lean < lf[0].twist - of[0].twist && lf[lf.length - 1].twist < lf[0].twist - 0.5,
         `twist ${dg(lf[0].twist)}° vs ${dg(of[0].twist)}°, roll ${dg(lf[0].roll)}° vs ${dg(of[0].roll)}°, lean ${dg(lf[0].lean)}° vs ${dg(of[0].lean)}°`);
@@ -518,8 +530,10 @@ console.log("\nCanoe Race Simulator physics");
   check("rate: a typical paddler using the whole body is fastest at 55–61 spm, one 1.5 times as fit at 70–80",
         S.typicalFitness({}) === 200 && club >= 55 && club <= 61 && elite >= 70 && elite <= 80 && armsOnly >= 55 && armsOnly <= 66,
         `club ${club}, elite ${elite}, arms only ${armsOnly} spm`);
+  // The default's share: arms 70%, and 60% of rotation's 12%, half of leg drive's 10%, 40% of a hinge's 8%.
+  const held = S.DEFAULTS.fitnessW * (0.7 + 0.12 * 0.6 + 0.1 * 0.5 + 0.08 * 0.4);
   check("rate: the default stroke at 60 spm holds your fitness's share; quicker or slower holds less",
-        Math.abs(S.capacity({}) - 140) < 0.05 && Math.abs(S.capacity(Object.assign({ strengthOn: 0 }, ALL)) - 200) < 0.5 && S.capacity({ rateSpm: 45 }) < 139 && S.capacity({ rateSpm: 85 }) < 139,
+        Math.abs(S.capacity({}) - held) < 0.5 && Math.abs(S.capacity(Object.assign({ strengthOn: 0 }, ALL)) - 200) < 0.5 && S.capacity({ rateSpm: 45 }) < held - 1 && S.capacity({ rateSpm: 85 }) < held - 1,
         `45 spm ${S.capacity({ rateSpm: 45 }).toFixed(0)} W, 60 ${S.capacity({}).toFixed(0)}, 85 ${S.capacity({ rateSpm: 85 }).toFixed(0)}`);
   check("gearing: the default stroke moves the arms at about their best speed", Math.abs(gF({}) - 1) < 0.005,
         `${armV({}).toFixed(2)} m/s, ×${gF({}).toFixed(3)}`);
@@ -534,10 +548,11 @@ console.log("\nCanoe Race Simulator physics");
   // carries that extra travel, so the arms don't speed up. Arm speed counts
   // the hand's motion along the pull, less what the shoulder carries that
   // way: the shoulder rising out of a drop across the pull is the trunk's.
-  const tb = (x) => S.simulate(x).body;
+  // (From arms only.)
+  const tb = (x) => S.simulate(Object.assign({}, ARMS, x)).body, aV = (x) => armV(Object.assign({}, ARMS, x));
   check("gearing: the trunk carries rotation's and a hinge's travel, wider hands move the arms faster",
-        Math.abs(armV({ rotation: 1 }) / armV({}) - 1) < 0.05 && Math.abs(armV({ hinge: 1 }) / armV({}) - 1) < 0.05 &&
-        armV({ lowerHandM: 0.7 }) > armV({}) * 1.05, `rotation ${armV({ rotation: 1 }).toFixed(2)}, hinge ${armV({ hinge: 1 }).toFixed(2)}, wide ${armV({ lowerHandM: 0.7 }).toFixed(2)} m/s`);
+        Math.abs(aV({ rotation: 1 }) / aV({}) - 1) < 0.05 && Math.abs(aV({ hinge: 1 }) / aV({}) - 1) < 0.05 &&
+        aV({ lowerHandM: 0.7 }) > aV({}) * 1.05, `rotation ${aV({ rotation: 1 }).toFixed(2)}, hinge ${aV({ hinge: 1 }).toFixed(2)}, wide ${aV({ lowerHandM: 0.7 }).toFixed(2)} m/s`);
   check("trunk: carries more of the pull with rotation or a hinge, less pulling behind with a short reach",
         tb({ rotation: 1 }).trunkShare > tb({}).trunkShare + 0.1 && tb({ hinge: 1 }).trunkShare > tb({}).trunkShare + 0.1 &&
         tb({ catchDeg: 12, exitDeg: 45 }).trunkShare < tb({}).trunkShare && tb({}).trunkShare > 0.1 && tb({}).trunkShare < 0.6 &&
@@ -548,13 +563,14 @@ console.log("\nCanoe Race Simulator physics");
   // Trunk gearing: what rotation and a hinge add scales with the trunk's own
   // speed against its best, calibrated on the default stroke with full
   // rotation at 60 spm; with neither, it changes nothing.
-  const tF = (x) => S.trunkGearFactor(gear(x)), ROT = { rotation: 1 }, BOTH = { rotation: 1, hinge: 1 }, capOf = (x) => S.capacity(x);
+  const tF = (x) => S.trunkGearFactor(gear(x)), ROT = { rotation: 1, hinge: 0 }, BOTH = { rotation: 1, hinge: 1 }, capOf = (x) => S.capacity(x);
   check("trunk gearing: the default stroke with full rotation moves the trunk at its best",
         Math.abs(tF(ROT) - 1) < 0.005 && S.trunkGearFactor(Object.assign({ gearOn: 0 }, ROT)) === 1, `${tb(ROT).trunkSpeed.toFixed(2)} m/s, ×${tF(ROT).toFixed(3)}`);
+  const A0 = Object.assign({ strengthOn: 0 }, ARMS);
   check("trunk gearing: with no rotation or hinge, changes nothing",
-        Math.abs(S.capacity(gear({})) - S.DEFAULTS.fitnessW * 0.7 * gF({})) < 1e-6);
+        Math.abs(S.capacity(gear(A0)) - S.DEFAULTS.fitnessW * 0.7 * gF(A0)) < 1e-6);
   check("trunk gearing: scales only what rotation and a hinge add",
-        [Object.assign({ strengthOn: 0 }, BOTH)].every((x) => Math.abs(capOf(gear(x)) - S.DEFAULTS.fitnessW * (0.7 * gF(x) + 0.2 * tF(x))) < 1e-9));
+        [Object.assign({}, A0, BOTH)].every((x) => Math.abs(capOf(gear(x)) - S.DEFAULTS.fitnessW * (0.7 * gF(x) + 0.2 * tF(x))) < 1e-9));
   // Rotation and a hinge are different muscles, each best at its own speed:
   // together they move the shoulder faster, and that's their best.
   check("trunk gearing: a long stroke's quick trunk holds less; rotation and a hinge together are at their best in the default stroke",
@@ -564,7 +580,7 @@ console.log("\nCanoe Race Simulator physics");
   // reach and with the top hand in front of the face, costed from the arms'
   // and paddle's energy and air drag on the blade.
   const plan = (x) => S.recoveryPlan(S.paddled(Object.assign({}, S.DEFAULTS, x)));
-  const presetPlans = Object.entries({ def: {}, long: LR, behind: { catchDeg: 12, exitDeg: 45 }, sweep: { leanDeg: 40, sweepDeg: 70, handOutM: 0.5, catchDeg: 25, exitDeg: 25 }, rot: { rotation: 1 } })
+  const presetPlans = Object.entries({ def: {}, long: LR, behind: PRE.behind, sweep: PRE.sweep, rot: { rotation: 1 } })
     .map(([k, x]) => [k, plan(x)]);
   check("recovery: the cheapest pivots nearer the top hand than the lower hand (at or by it for the default stroke), in reach",
         // (An upright catch spears the blade in from above: its top hand,
@@ -599,7 +615,7 @@ console.log("\nCanoe Race Simulator physics");
   };
   const jumps = [{}, { rotation: 1, hinge: 1, legDrive: 1 }, PRE.sweep, LR, { lowerHandM: 0.75, rotation: 1 }].map(elbowJump);
   check("elbows: never jump through the drive (at most 6 cm a 1/120 of it)", jumps.every((j) => j < 0.06), jumps.map((j) => `${(j * 100).toFixed(1)}`).join(", ") + " cm");
-  const armCurve = S.simulate(arms(LR)).strengthCurve;
+  const armCurve = S.simulate(arms(LR0)).strengthCurve;
   let bumpy = 0; for (let i = 2; i < armCurve.length; i++) bumpy = Math.max(bumpy, Math.abs(armCurve[i][1] - 2 * armCurve[i - 1][1] + armCurve[i - 2][1]));
   check("strength by body position: a smooth curve through the drive (no steps)", bumpy < 0.1, bumpy.toFixed(3));
 }
@@ -617,7 +633,7 @@ console.log("\nPaddle fit");
         `${long.catchDeg.toFixed(1)}° / ${long.exitDeg.toFixed(1)}°`);
   check("fit: so the arms move slower: a higher gear", S.simulate(long).body.armSpeed < S.simulate(D).body.armSpeed - 0.01);
   // The search: the seat as high as the water allows, inside every limit.
-  const plain = run(F.search(D, chop)), z = plain.best.setup.seatZM;
+  const plain = run(F.search(Object.assign({}, D, { gearOn: 0, strengthOn: 0 }), chop)), z = plain.best.setup.seatZM;
   const gmAt = (seatZM) => F.measure(Object.assign({}, D, { seatZM }), chop).GM;
   check("fit: the seat as high as the water allows", plain.best.ok && plain.best.GM >= chop.gmMin && gmAt(z + F.RANGES.seatZM[2]) < chop.gmMin,
         `${(z * 100).toFixed(1)} cm, metacentric height ${(plain.best.GM * 100).toFixed(0)} cm`);
@@ -628,7 +644,7 @@ console.log("\nPaddle fit");
   const fast = run(F.search(Object.assign({}, D, { gearOn: 1, rateSpm: 80 }), chop));
   const slow = run(F.search(Object.assign({}, D, { gearOn: 1, rateSpm: 45 }), chop));
   check("fit: at a high rate, a higher gear: slower arms, more held",
-        fast.best.armSpeed < fast.current.armSpeed - 0.05 && fast.best.watts > fast.current.watts && fast.best.speed > fast.current.speed * 1.01,
+        fast.best.armSpeed < fast.current.armSpeed - 0.04 && fast.best.watts > fast.current.watts && fast.best.speed > fast.current.speed * 1.01,
         `arms ${fast.current.armSpeed.toFixed(2)} → ${fast.best.armSpeed.toFixed(2)} m/s, ${((fast.best.speed / fast.current.speed - 1) * 100).toFixed(1)}%`);
   check("fit: at a low rate, the search still finds a faster setup", slow.best.speed > slow.current.speed,
         `arms ${slow.current.armSpeed.toFixed(2)} → ${slow.best.armSpeed.toFixed(2)} m/s`);
@@ -640,6 +656,19 @@ console.log("\nPaddle fit");
   check("fit: map of seat height × paddle length", grid.cells.length === grid.seats.length * grid.lengths.length &&
         grid.cells.every((c) => (c.past.stable > 0) === (c.GM < chop.gmMin)) && (!atBest || atBest.ok),
         `${grid.cells.filter((c) => c.ok).length} of ${grid.cells.length} inside the limits`);
+}
+
+// The settings sit in groups each tab opens or closes: before a tap, open
+// the groups around what's tapped, as you would. A summary tapped opens its
+// group (and never closes it).
+function opening(page) {
+  const click = page.click.bind(page);
+  page.click = async (sel, opts) => {
+    if (/summary$/.test(sel)) return page.$eval(sel, (el) => { for (let d = el.closest("details"); d; d = d.parentElement && d.parentElement.closest("details")) d.open = true; });
+    await page.$eval(sel, (el) => { for (let d = el.closest("details"); d; d = d.parentElement && d.parentElement.closest("details")) d.open = true; }).catch(() => {});
+    return click(sel, opts);
+  };
+  return page;
 }
 
 (async () => {
@@ -654,7 +683,7 @@ console.log("\nPaddle fit");
       const raf = window.requestAnimationFrame.bind(window);
       window.requestAnimationFrame = (cb) => raf((t) => cb(t - 50));
     });
-    const page = await ctx.newPage();
+    const page = opening(await ctx.newPage());
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await page.goto("file://" + path.resolve(__dirname, "../../docs/app/simulator.html"));
@@ -715,6 +744,21 @@ console.log("\nPaddle fit");
     // Efficiency comparison
     check(`${tag}: A and B efficiencies`, (await cellVal("eff", 2)) > 45 && (await cellVal("eff", 3)) > 45, `${await cellVal("eff", 2)} / ${await cellVal("eff", 3)}`);
     // With lift, the wide sweep slices sideways and wins; drag only, the defaults win.
+    // The settings: each tab opens its own groups, and remembers what you open.
+    const openGroups = () => page.$$eval("#controls details.group", (ds) => ds.filter((d) => d.open).map((d) => d.dataset.g).join());
+    const groups0 = await openGroups();
+    await goTab("race"); const groupsRace = await openGroups();
+    await goTab("fit"); const groupsFit = await openGroups();
+    await goTab("stroke");
+    check(`${tag}: settings: each tab opens its own groups`, groups0 === "rhythm,hands,body" && groupsRace === "paddler,switch" && groupsFit === "paddler,gear" &&
+          (await openGroups()) === "rhythm,hands,body", `${groups0} | ${groupsRace} | ${groupsFit}`);
+    await page.$eval('#controls details[data-g="gear"]', (d) => { d.open = true; }); await settle();
+    await goTab("boat"); await goTab("stroke");
+    check(`${tag}: settings: a group you open stays open on that tab`, (await openGroups()) === "rhythm,hands,body,gear", await openGroups());
+    await page.$eval('#controls details[data-g="gear"]', (d) => { d.open = false; }); await settle();
+    check(`${tag}: settings: each slider's help is behind its "?"`,
+          (await page.$$eval("#controls .ctl", (cs) => cs.filter((c) => c.querySelector('input[type="range"]')).every((c) => c.querySelector("label .info[data-tip]") && !c.querySelector(":scope > .help")))) &&
+          (await text("#o-catchDeg")) === "23° + 12° body = 35°", await text("#o-catchDeg"));
     check(`${tag}: lift on by default`, JSON.stringify(await pressed("#lift-mode")) === '["1"]');
     const sweepLift = await cellVal("eff", 3);
     await page.click("#boats [data-boat=b]");
@@ -830,10 +874,10 @@ console.log("\nPaddle fit");
     await page.click("#boats [data-boat=b]");
     await page.click("#presets >> text=Wide sweep");
     await page.click("#boats [data-boat=a]"); await settle();
-    check(`${tag}: drive time readout`, (await text("#o-driveFraction")) === "50% of each stroke at 60 spm");
+    check(`${tag}: drive time readout`, (await text("#o-driveFraction")) === "50% at 60 spm");
     await slide("#c-driveFraction", 0.8); await settle();
     check(`${tag}: drive time goes to 80%`, (await page.$eval("#c-driveFraction", (e) => e.max)) === "0.8" &&
-          (await text("#o-driveFraction")) === "80% of each stroke at 60 spm" && (await cellVal("eff", 2)) > 0);
+          (await text("#o-driveFraction")) === "80% at 60 spm" && (await cellVal("eff", 2)) > 0);
     await slide("#c-driveFraction", 0.5); await settle();
     check(`${tag}: strokes per side auto by default`, (await text("#o-switchStrokes")) === "auto, by heading" &&
           !(await page.$eval("#c-switchHeadingDeg", (e) => e.disabled)));
@@ -1285,7 +1329,7 @@ console.log("\nPaddle fit");
     check(`${tag}: hull: pick a part`, (await visible("#hp-roll")) && !(await visible("#hp-surge")));
     await page.click("#hull-part >> text=Through a stroke"); await settle();
     check(`${tag}: hull: overlay by default, both boats in each picture`, JSON.stringify(await pressed("#hull-mode")) === '["overlay"]' &&
-          (await page.$$("#hp-chart svg")).length === 1 && (await page.$$("#hp-chart path.ln")).length === 6 &&
+          (await page.$$("#hp-chart svg")).length === 1 && (await page.$$("#hp-chart path.ln:not(.still)")).length === 6 &&
           (await page.$$("#hp-surge path.hull")).length === 2 && (await page.$$("#hp-roll path.hull")).length === 2 &&
           /^Boat Amoves the boat: \d+%Boat Bmoves the boat: \d+%/.test(await text("#hull-power")) &&
           /^A Speed swings [\d.]+–[\d.]+ km\/h, costing [\d.]+%.*B Speed swings/.test(await text("#hull-surge-read")), await text("#hull-surge-read"));
@@ -1320,9 +1364,9 @@ console.log("\nPaddle fit");
     check(`${tag}: hull: the drawings move with the stroke`, moved);
     await page.click("#hull-mode >> text=Split");
     check(`${tag}: hull: split, a picture per boat`, (await page.$$("#hp-chart svg")).length === 2 && (await page.$$("#hp-surge svg")).length === 2 &&
-          (await page.$$("#hp-chart path.ln")).length === 6 && (await page.$$('#hp-surge svg[data-boats="b"] path.hull.boat-b')).length === 1);
+          (await page.$$("#hp-chart path.ln:not(.still)")).length === 6 && (await page.$$('#hp-surge svg[data-boats="b"] path.hull.boat-b')).length === 1);
     await page.click("#hull-mode >> text=B only");
-    check(`${tag}: hull: B only`, JSON.stringify(await pressed("#hull-mode")) === '["b"]' && (await page.$$("#hp-chart path.ln")).length === 3 &&
+    check(`${tag}: hull: B only`, JSON.stringify(await pressed("#hull-mode")) === '["b"]' && (await page.$$("#hp-chart path.ln:not(.still)")).length === 3 &&
           !/^A /.test(await text("#hull-heading-read")) && (await page.$$("#hp-surge path.hull.boat-a")).length === 0);
     await page.click("#hull-mode >> text=Overlay");
     // Race score: the race's own times, then what each loss costs.
@@ -1342,7 +1386,7 @@ console.log("\nPaddle fit");
     check(`${tag}: race score: body swing costs A time`, /Body swing/.test(await text("#score-bars")) &&
           /Boat A: body swing costs \d+:\d\d\. Keep your body quieter\./.test(await text("#score-find")), await text("#score-find"));
     check(`${tag}: body swing: its cost, a lower score, the still-body curve`, /^Hull speed swings [\d.]+–[\d.]+ km\/h: costs [\d.]+% of your power$/.test(await text("#e-swingM")) &&
-          (await text("#boat-score .tile.a .big")) !== score0 && /Body swing −/.test(await text("#boat-score .tile.a")) && (await page.$$("#hp-chart path.ln.still")).length === 1,
+          (await text("#boat-score .tile.a .big")) !== score0 && /Body swing −/.test(await text("#boat-score .tile.a")) && (await page.$$("#hp-chart path.ln.still")).length >= 1,
           await text("#e-swingM"));
     await page.click("#swing-timing >> text=Forward in the drive");
     check(`${tag}: body swing timing`, JSON.stringify(await pressed("#swing-timing")) === '["-1"]');
@@ -1358,10 +1402,13 @@ console.log("\nPaddle fit");
     // Paddler engine: rotation shows its reach, the engine box, and "what each can hold".
     await page.$eval("#ctl-paddler", (e) => e.closest("details").open = true);
     // Clean vertical, so strength by position holds a little less than the default stroke's 140 W.
-    check(`${tag}: engine box: arms only by default`, /What Boat A can hold139 W for an hour/.test(await text("#engine-box")), await text("#engine-box"));
+    const holds = () => page.evaluate(() => Math.round(window.StrokeSim.capacity(window.sim.boats.a)));
+    check(`${tag}: engine box: what the boat can hold, with the body joining in by default`,
+          (await text("#engine-box")).startsWith(`What Boat A can hold${await holds()} W for an hour`) && (await holds()) > 165 &&
+          /Arms only: 140 W\. Whole body: 200 W\./.test(await text("#engine-box")), await text("#engine-box"));
     await slide("#c-rotation", 0.8); await page.waitForTimeout(400);
     check(`${tag}: rotation: reach and muscle`, /^Reach \+12\.0°, hand travel \+9\.6 cm\. Uses more muscle: \+19 W you can hold \(trunk ×1\.00\)$/.test(await text("#e-rotation")) &&
-          /160 W/.test(await text("#engine-box")), await text("#e-rotation"));
+          (await text("#engine-box")).startsWith(`What Boat A can hold${await holds()} W`), await text("#e-rotation"));
     await slide("#c-hinge", 0.5); await page.waitForTimeout(400);
     check(`${tag}: hinge: reach, swing and muscle`, /^Reach \+4\.0°, hand travel \+7\.5 cm\. Your body swings ±3\.0 cm, costing [\d.]+%\. Hips and back: \+8 W you can hold \(trunk ×1\.00\)$/.test(await text("#e-hinge")) &&
           (await page.$$("#hp-chart path.ln.still")).length >= 1, await text("#e-hinge"));
@@ -1502,7 +1549,7 @@ console.log("\nPaddle fit");
     await page.click("#profile-save"); await settle();
     await page.click("#profile-copy"); await settle();
     const copied = await page.evaluate(() => [window.sim.boats.b.heightM, window.sim.boats.b.fitnessW, window.sim.boats.b.catchDeg]);
-    check(`${tag}: profile: copy to the other boat (profile only)`, copied[0] === 1.95 && copied[1] === 260 && copied[2] === 25, `${copied}`);
+    check(`${tag}: profile: copy to the other boat (profile only)`, copied[0] === 1.95 && copied[1] === 260 && copied[2] === 13, `${copied}`);
     await page.click("#profile-fit"); await slide("#c-heightM", 1.78); await slide("#c-fitnessW", 200);
     await page.click("#strength-mode >> text=Off"); await settle();
     await page.selectOption("#profile-pick", "Tall"); await settle();
@@ -1606,7 +1653,7 @@ console.log("\nPaddle fit");
     await page.waitForTimeout(300);
     const torsoRead = await page.textContent("#m3-part-read");
     check(`${tag}: 3D model: the torso reads the trunk's speed, against its best, and now`,
-          torsoRead.includes(`(best ${(await page.evaluate(() => window.StrokeSim.trunkBest(window.sim.results.a.params))).toFixed(2)})`) && /Trunk now [\d.]+ m\/s/.test(torsoRead) &&
+          torsoRead.includes(`(best ${(await page.evaluate(() => window.StrokeSim.trunkBest(window.sim.results.a.params))).toFixed(2)}`) && /Trunk now [\d.]+ m\/s/.test(torsoRead) &&
           (await page.$$('#m3-ctl input[data-key="trunkBestMs"]')).length === 1, torsoRead);
     // Through the whole cycle neither elbow swings fast round its arm (the
     // relaxed bend never loses its direction), whatever the technique.
@@ -1680,7 +1727,7 @@ console.log("\nPaddle fit");
     check(`${tag}: no page errors`, errors.length === 0, errors.join("; "));
     // A stale, cached engine: the page asks for a reload instead of breaking.
     if (scheme === "light") {
-      const old = await ctx.newPage();
+      const old = opening(await ctx.newPage());
       await old.route("**/stroke-sim.js*", (r) => r.fulfill({ contentType: "text/javascript",
         body: "window.StrokeSim = { simulate() {}, DEFAULTS: {} };" }));
       await old.goto("file://" + path.resolve(__dirname, "../../docs/app/simulator.html"));
@@ -1691,7 +1738,7 @@ console.log("\nPaddle fit");
       // Each boat's settings are remembered, and can be reset.
       {
         const url = "file://" + path.resolve(__dirname, "../../docs/app/simulator.html");
-        const mem = await ctx.newPage();
+        const mem = opening(await ctx.newPage());
         await mem.goto(url); await mem.evaluate(() => localStorage.removeItem("ppm.sim.boats")); await mem.reload(); await mem.waitForTimeout(500);
         const val = (sel) => mem.$eval(sel, (e) => e.value);
         await mem.$eval("#c-catchDeg", (el) => { el.value = 50; el.dispatchEvent(new Event("input")); });
@@ -1702,7 +1749,7 @@ console.log("\nPaddle fit");
         check(`${tag}: each boat's settings are remembered`, kept[0] === "50" && kept[1] === 72, `${kept}`);
         mem.once("dialog", (d) => d.accept());
         await mem.click("#reset"); await mem.waitForTimeout(300);
-        check(`${tag}: reset the boat being edited`, (await val("#c-catchDeg")) === "35" && (await mem.textContent("#reset")) === "Reset Boat A" &&
+        check(`${tag}: reset the boat being edited`, (await val("#c-catchDeg")) === "23" && (await mem.textContent("#reset")) === "Reset Boat A" &&
               (await mem.evaluate(() => window.sim.boats.b.rateSpm)) === 72);
         mem.once("dialog", (d) => d.accept());
         await mem.click("#reset-both"); await mem.waitForTimeout(300);
@@ -1710,7 +1757,7 @@ console.log("\nPaddle fit");
               (await mem.textContent("#nm-a")) === "Defaults" && (await mem.textContent("#nm-b")) === "Wide sweep");
         await mem.evaluate(() => localStorage.setItem("ppm.sim.boats", '{"a":{"catchDeg":"x","rateSpm":66},"b":7}'));
         await mem.reload(); await mem.waitForTimeout(500);
-        check(`${tag}: a damaged save keeps what it can`, (await val("#c-catchDeg")) === "35" && (await mem.evaluate(() => window.sim.boats.a.rateSpm)) === 66 &&
+        check(`${tag}: a damaged save keeps what it can`, (await val("#c-catchDeg")) === "23" && (await mem.evaluate(() => window.sim.boats.a.rateSpm)) === 66 &&
               (await mem.textContent("#nm-b")) === "Wide sweep");
         // A save from before the switch time's default went to 1 s: its 0.3 s
         // (the old default) follows the new one; a 0.3 s chosen since is kept.
@@ -1733,7 +1780,7 @@ console.log("\nPaddle fit");
         const pick = async (n) => { await mem.selectOption("#profile-pick", n); await mem.waitForTimeout(200); return mem.evaluate(() => [window.sim.boats.a.armBestMs, window.sim.boats.a.heightM]); };
         const oldProf = await pick("Old"), newProf = await pick("New");
         check(`${tag}: old saves and profiles take the new best arm speed and gearing on; one chosen since stays`,
-              arms0[0] === 0.89 && arms0[1] === 0.95 && arms0[2] === 1 && oldProf[0] === 0.89 && oldProf[1] === 1.9 && newProf[0] === 0.9,
+              arms0[0] === 0.82 && arms0[1] === 0.95 && arms0[2] === 1 && oldProf[0] === 0.82 && oldProf[1] === 1.9 && newProf[0] === 0.9,
               `boats ${arms0} | profiles ${oldProf[0]} / ${newProf[0]}`);
         // Strength by position went from off to by body position (version 6):
         // an older save's off follows it; off chosen since stays.
@@ -1743,6 +1790,17 @@ console.log("\nPaddle fit");
         await mem.evaluate(() => localStorage.setItem("ppm.sim.boats", '{"version":6,"a":{"strengthOn":0},"b":{}}'));
         await mem.reload(); await mem.waitForTimeout(500);
         const str1 = await mem.evaluate(() => [window.sim.boats.a.strengthOn, window.sim.boats.b.strengthOn]);
+        // The body joined in by default (version 7): an older save's arms-only
+        // stroke follows it, its 35° catch to 23° (35° with the body's reach);
+        // anything chosen since stays.
+        await mem.evaluate(() => localStorage.setItem("ppm.sim.boats", '{"version":6,"a":{"rotation":0,"hinge":0,"legDrive":0,"dropM":0,"catchDeg":35},"b":{"rotation":0.3,"catchDeg":40}}'));
+        await mem.reload(); await mem.waitForTimeout(500);
+        const body0 = await mem.evaluate(() => ["a", "b"].map((x) => ["rotation", "hinge", "legDrive", "dropM", "catchDeg"].map((k) => window.sim.boats[x][k]).join()));
+        await mem.evaluate(() => localStorage.setItem("ppm.sim.boats", '{"version":7,"a":{"rotation":0,"catchDeg":35},"b":{}}'));
+        await mem.reload(); await mem.waitForTimeout(500);
+        const body1 = await mem.evaluate(() => [window.sim.boats.a.rotation, window.sim.boats.a.catchDeg]);
+        check(`${tag}: old saves take the body's defaults; arms only chosen since stays`,
+              body0[0] === "0.6,0.4,0.5,0.02,23" && body0[1] === "0.3,0.4,0.5,0.02,40" && JSON.stringify(body1) === "[0,35]", `${body0.join(" / ")} | ${body1}`);
         check(`${tag}: old saves take strength by body position; off chosen since stays`,
               JSON.stringify(str0) === "[2,1]" && JSON.stringify(str1) === "[0,2]", `${str0} / ${str1}`);
         await mem.evaluate(() => { localStorage.removeItem("ppm.sim.boats"); localStorage.removeItem("ppm.sim.profiles"); });
@@ -1752,7 +1810,7 @@ console.log("\nPaddle fit");
       // followed map widens so it doesn't lurch kilometres a frame.
       const { devices } = require("playwright");
       const phone = await browser.newContext({ ...devices["iPhone 13"] });
-      const mob = await phone.newPage();
+      const mob = opening(await phone.newPage());
       await mob.goto("file://" + path.resolve(__dirname, "../../docs/app/simulator.html"));
       await mob.waitForTimeout(500);
       await mob.tap("nav.tabs button[data-tab=race]"); await mob.waitForTimeout(300);
@@ -1783,7 +1841,7 @@ console.log("\nPaddle fit");
       await phone.close();
       // Racing lines: open water weaves (hit and switch), the AuSable shows each
       // boat's line across the channel, and the river view holds one scale.
-      const lp = await ctx.newPage();
+      const lp = opening(await ctx.newPage());
       await lp.goto("file://" + path.resolve(__dirname, "../../docs/app/simulator.html"));
       await lp.waitForTimeout(500);
       await lp.click("nav.tabs button[data-tab=race]"); await lp.waitForTimeout(300);

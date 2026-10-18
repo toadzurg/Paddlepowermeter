@@ -226,7 +226,7 @@ Hull drag comes from a coast-down test of a USCA C-1. The rest follows
 standard hydrodynamics. It's a simplified model: use it to compare
 strokes, not to predict exact times.
 
-**The body model and its evidence.** With gearing on (Paddler profile),
+**The body model and its evidence.** With gearing on (Model assumptions),
 your arms and your trunk each hold the most power at one speed, from Hill's
 force–velocity relation: power peaks at an optimal shortening speed, and
 where it peaks depends on fibre type. The arms' speed is the lower hand's
