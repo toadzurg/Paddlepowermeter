@@ -172,13 +172,11 @@
     // Gearing: the arms hold the most power at one speed.
     gearOn: 1,
     armBestMs: 0.82,           // the lower hand's speed against its shoulder (along the pull) you hold the most power at, m/s: the default stroke's at 60 spm
-    gearDrop: 0.15,            // share of the arms' power lost at half its best speed (less going faster)
+    gearDrop: 0.15,            // share of the power lost at half the best speed (less going faster), the arms' and the trunk's alike
     // The trunk's own (with gearing on): its paddle-side shoulder's speed
     // through the drive it holds the most power at (the default stroke with
-    // full rotation, at 60 spm), and the share of the power rotation and a
-    // hinge add that it loses at half that.
+    // full rotation, at 60 spm).
     trunkBestMs: 0.80,
-    trunkDrop: 0.15,
     paddleKg: 0.3,             // the paddle's mass (a ZRE bent shaft: ~0.24–0.33 kg), most of it in the blade
     recoveryPivot: -1,         // the recovery: -1 the cheapest; 0 the lower hand swings, 1 the top hand drops and swings, between a mix
     // The paddler's body, m, fitted to the paddle each moment (see fitBody).
@@ -201,7 +199,7 @@
 
   // Who's paddling, as opposed to how.
   const PROFILE_KEYS = ["heightM", "torsoM", "shoulderM", "upperArmM", "forearmM", "thighM", "shinM", "massKg", "fitnessW",
-                        "strengthOn", "strengthPeakDeg", "strengthDrop", "gearOn", "armBestMs", "gearDrop", "trunkBestMs", "trunkDrop"];
+                        "strengthOn", "strengthPeakDeg", "strengthDrop", "gearOn", "armBestMs", "gearDrop", "trunkBestMs"];
   const rad = (d) => (d * Math.PI) / 180;
   const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
   const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -1041,8 +1039,8 @@
   // length and the hands' spacing) is from its best, losing gearDrop at
   // half of it (Hill's curve, below). It sets the arms' share of what you hold.
   // The trunk has its own: what rotation and a hinge add scales the same way
-  // with the trunk's speed (trunkSpeed) against trunkBestMs, losing
-  // trunkDrop. Its muscles are mostly slow fibres (erector spinae and the
+  // with the trunk's speed (trunkSpeed) against trunkBestMs, losing the
+  // same gearDrop (one curve's shape until measured). Its muscles are mostly slow fibres (erector spinae and the
   // abdominals about 55–58% type I, against 32–40% in the triceps), and a
   // slow fibre's power peaks at a lower speed, so its best needn't be the
   // arms'. The legs move at their own speed. Assumed until measured: the
@@ -1108,7 +1106,7 @@
   }
   function trunkGearFactor(p) {
     const q = Object.assign({}, DEFAULTS, p);
-    return q.gearOn ? parabola(bodyThroughDrive(paddled(q)).trunkSpeed, trunkBest(q), q.trunkDrop) : 1;
+    return q.gearOn ? parabola(bodyThroughDrive(paddled(q)).trunkSpeed, trunkBest(q), q.gearDrop) : 1;
   }
   // The stroke rate that's fastest for this stroke at what you can hold:
   // the water (a quicker rate, more of each stroke in the drive) and the
@@ -1824,9 +1822,9 @@
 
   // Bumped when the page needs something new from the engine, so a page
   // that meets an old, cached engine can say so instead of breaking.
-  const API_LEVEL = 56;
+  const API_LEVEL = 57;
   const PADDLE = paddleOf(DEFAULTS);
-  const api = { API_LEVEL, driveShareAt, fastestRate, shaftDir, typicalFitness, armBest, trunkBest, paddled, paddleOf, gearFactor, trunkGearFactor, recoveryPlan, recoveryPose, recoveryCost, recoveryClear, elbowAt, handForces, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
+  const api = { API_LEVEL, HINGE_SWING_M, driveShareAt, fastestRate, shaftDir, typicalFitness, armBest, trunkBest, paddled, paddleOf, gearFactor, trunkGearFactor, recoveryPlan, recoveryPose, recoveryCost, recoveryClear, elbowAt, handForces, fitBody, lowerHand, neutralAt, simulate, race, capacity, strengthAt, strengthFactor, BOAT_KG, shallowFactor, riverSegments, pose, blade, DEFAULTS, PADDLE, BOAT_HALF_BEAM, DRIVE_FRACTION, MAX_STROKES_PER_SIDE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.StrokeSim = api;
 })(typeof window !== "undefined" ? window : globalThis);

@@ -93,7 +93,6 @@
   @media (min-width: 760px) { .ctxbar { grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); align-items: center; } }
   .ctx-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
   .ctxbar .ctl { margin: 4px 0; }
-  .ctxbar[data-tab="race"] .ctx-power:not(.race-power), .ctxbar:not([data-tab="race"]) .race-power,
   .ctxbar[data-tab="fit"] .ctx-power { display: none; }
   /* Fit */
   .fit-go { align-items: center; gap: 10px; margin-top: 12px; }
@@ -447,14 +446,8 @@
         <button class="b" data-boat="b"><span><span class="b-dot"></span>Boat B</span><span class="nm" id="nm-b"></span></button>
       </div>
     </div>
-    <div class="ctx-power" data-tabs="stroke boat">
-          <div class="ctl">
-            <label class="top"><span>Power<button type="button" class="info" data-tip="The paddler power used for the speed and force numbers, so both strokes are compared at the same effort." aria-label="What is this?">?</button></span><output id="o-effortW"></output></label>
-            <input type="range" id="c-effortW" min="50" max="400" step="10" value="150" aria-label="Effort for comparing">
-          </div>
-    </div>
-    <div class="ctx-power race-power" data-tabs="race">
-      <div class="sub ctx-head"><span>Race power<button type="button" class="info" data-tip="What each can hold: fitness × the muscle used × the race's length. Arms alone give 70% of fitness; full trunk rotation adds 12%, leg drive 10% and a hinge from the waist 8%. Races over an hour fade it: 95% at 2 h, 82% at 16 h. Set by hand: pick each boat's power." aria-label="What is this?">?</button></span></div>
+    <div class="ctx-power race-power" data-tabs="stroke boat race">
+      <div class="sub ctx-head"><span>Power<button type="button" class="info" data-tip="The power each boat paddles at, on every tab: its speed, forces and race. What each can hold: fitness × the muscle used × the race's length. Arms alone give 70% of fitness; full trunk rotation adds 12%, leg drive 10% and a hinge from the waist 8%. Races over an hour fade it: 95% at 2 h, 82% at 16 h. Set by hand: pick each boat's power (the same for both to compare strokes at one effort). The race takes the heat off it." aria-label="What is this?">?</button></span></div>
             <div class="row chips" id="effort-mode" role="group" aria-label="Effort" style="margin-top:6px"></div>
             <div class="ctl"><label class="top"><span><span class="a-dot"></span>Boat A effort</span><output id="o-effA"></output></label>
               <input type="range" id="effA" min="50" max="400" step="10" value="150" aria-label="Boat A effort"></div>
@@ -817,6 +810,8 @@
       <details class="group" data-g="gear"><summary>Gear</summary><div id="ctl-paddle"></div></details>
       <details class="group" data-g="switch"><summary>Switching sides</summary>
         <div class="help" id="switch-off" hidden>Off: Run straight (ideal) is on, under Model assumptions.</div>
+        <div class="ctl"><div class="top"><span>When to switch<button type="button" class="info" data-tip="By heading: switch once the boat has turned off course by the angle you set, so it adapts to wind and effort. Every N strokes: a fixed count; it starts at what switching by heading gives." aria-label="What is this?">?</button></span></div>
+          <div class="row chips" id="switch-by" role="group" aria-label="When to switch" style="margin-top:6px"></div></div>
         <div id="ctl-switch"></div></details>
       <details class="group" data-g="model"><summary>Model assumptions<button type="button" class="info" data-tip="How the simulator treats the paddler and the blade. Assumed, not measured: change them to see how much a result depends on them." aria-label="What is this?">?</button></summary>
         <h4 class="sub-h">Strength by position<button type="button" class="info" data-tip="Off: you can pull equally hard all through the stroke. By paddle angle: strongest at one angle, weaker toward the catch and exit. By body position (the default): your body follows the paddle. Your lower arm pulls: weaker folded past a right angle, where your elbow bends the pull, but no weaker from there to straight, where your shoulder and trunk pull through it as a link; weaker reaching past your reach. Your top arm pushes: strongest nearly straight. And weaker leaning, turning or dropping a shoulder far to reach the catch. Where you're weak the paddle moves slower, so the force bunches where you're strong, and what you can hold drops. Assumed curves, not measured." aria-label="What is this?">?</button></h4>
@@ -871,7 +866,7 @@
 <div id="tip" role="tooltip" hidden></div>
 <!-- ?v= is a hash of each engine file (test/web/sim.test.cjs checks it), so a
      changed engine is never served from a stale cache. The fit builds on the stroke engine. -->
-<script src="stroke-sim.js?v=a8a8a44ff9"></script>
+<script src="stroke-sim.js?v=74aa1b6f31"></script>
 <script src="fit-sim.js?v=c12c9edd44"></script>
 <script>
 (() => {
@@ -915,7 +910,7 @@ function shown(el) {
 }
 const S = window.StrokeSim;
 // An old engine from a stale cache can't run this page: say so plainly.
-const NEEDS_API = 56;
+const NEEDS_API = 57;
 if (!S || !(S.API_LEVEL >= NEEDS_API)) {
   const bar = document.createElement("div");
   bar.className = "card";
@@ -941,7 +936,7 @@ const PRESETS = {
 };
 // The paddler profile: who's paddling, not how. Presets never change it.
 const BODY = ["torsoM", "shoulderM", "upperArmM", "forearmM", "thighM", "shinM"];
-const PROFILE = ["ageY", "female", "heightM", ...BODY, "massKg", "fitnessW", "strengthOn", "strengthPeakDeg", "strengthDrop", "gearOn", "armBestMs", "gearDrop", "trunkBestMs", "trunkDrop"];
+const PROFILE = ["ageY", "female", "heightM", ...BODY, "massKg", "fitnessW", "strengthOn", "strengthPeakDeg", "strengthDrop", "gearOn", "armBestMs", "gearDrop", "trunkBestMs"];
 // Presets set the technique; the profile, the paddle, the seat and the blade force model stay.
 const KEEP = ["effortW", ...PROFILE, "bladeLift", "paddleLenM", "bladeLenM", "bladeWidthM", "seatZM"];
 // Each boat's settings are remembered in this browser; Reset goes back to these.
@@ -991,7 +986,9 @@ function saveBoats() {
   try { localStorage.setItem(BOATS_KEY, JSON.stringify({ version: SAVE_VERSION, a: boats.a, b: boats.b })); } catch {}
 }
 const boats = loadBoats();
-let editing = "a", effortW = 150;
+let editing = "a";
+// A result's numbers at the power it was simulated at (powerOf, below).
+const atW = (r) => r.at(r.params.effortW);
 function presetName(p) {
   for (const [name, pre] of Object.entries(PRESETS)) {
     const want = Object.assign({}, S.DEFAULTS, pre);
@@ -1002,8 +999,11 @@ function presetName(p) {
 
 // ------------------------------------------------------------- controls
 // Lengths in cm, with inches (as paddlers often give them) in brackets.
-// The reach the body adds at the catch, as the engine adds it.
+// What the body adds as the engine adds it: reach at the catch and hand
+// travel (rotation and a hinge), and heel bringing the top hand in.
 const bodyReach = (p) => 15 * (p.rotation || 0) + 8 * (p.hinge || 0);
+const bodyTravel = (p) => 0.12 * (p.rotation || 0) + 0.15 * (p.hinge || 0);
+const heelIn = (p) => 0.9 * Math.sin((p.heelDeg || 0) * Math.PI / 180);
 const cmIn = (v, d = 1) => `${fmtNum(v * 100, d)} cm (${fmtNum(v / 0.0254, 1)} in)`;
 const CONTROLS = [
   // Paddler
@@ -1032,8 +1032,8 @@ const CONTROLS = [
   { group: "ctl-stroke", key: "rateSpm", label: "Stroke rate", min: 30, max: 90, step: 1, unit: " spm",
     help: "Same effort at a slower rate: bigger pulls, more surge." },
   { group: "ctl-stroke", key: "driveFraction", label: "Time in the drive", min: 0.3, max: 0.8, step: 0.05, unit: "",
-    fmt: (v) => `${Math.round(v * 100)}% at 60 spm`,
-    help: "The share of each stroke from catch to exit, at 60 spm; the rest is the recovery. A longer drive moves more water more gently: lower peak force, less slip, but a quicker recovery. A quicker rate mostly shortens the recovery (rowers' drive time hardly changes with rate), so the drive's share rises with it: ×1.17 at 75 spm." },
+    fmt: (v, p) => { const sh = S.driveShareAt({ driveFraction: v, rateSpm: p.rateSpm }); return `${Math.round(sh * 100)}% · ${fmtNum(sh * 60 / p.rateSpm, 2)} s`; },
+    help: "The share of each stroke from catch to exit at your stroke rate, and how long that is; the rest is the recovery. Set at 60 spm: a quicker rate mostly shortens the recovery (rowers' drive time hardly changes with rate), so the share shown rises with the rate. A longer drive moves more water more gently: lower peak force, less slip, but a quicker recovery, whose cost isn't counted in what you can hold." },
   { group: "ctl-stroke", key: "catchDeg", label: "Reach at the catch", min: 0, max: 60, step: 1, unit: "°",
     fmt: (v, p) => { const add = bodyReach(p); return add ? `${v}° + ${fmtNum(add, 0)}° body = ${fmtNum(v + add, 0)}°` : `${v}°`; },
     help: "Shaft angle forward of vertical when the blade goes in, reaching with the arms. Trunk rotation and a hinge reach further on top (15° and 8° at full): the total is the angle the blade goes in at." },
@@ -1041,7 +1041,8 @@ const CONTROLS = [
     help: "Shaft angle behind vertical when the blade comes out." },
   { group: "ctl-stroke", key: "leanDeg", label: "Shaft lean outward", min: 0, max: 45, step: 1, unit: "°",
     help: "0° is a vertical shaft, blade tight to the hull." },
-  { group: "ctl-stroke", key: "handOutM", label: "Top hand from centreline", min: 0.15, max: 0.9, step: 0.01, unit: "", fmt: (v) => cmIn(v, 0),
+  { group: "ctl-stroke", key: "handOutM", label: "Top hand from centreline", min: 0.15, max: 0.9, step: 0.01, unit: "",
+    fmt: (v, p) => { const h = heelIn(p); return h ? `${fmtNum(v * 100, 0)} − ${fmtNum(h * 100, 0)} heel = ${fmtNum(Math.max(0.1, v - h) * 100, 0)} cm` : cmIn(v, 0); },
     help: "A C1 is about 17 in wide at the gunwale and 32 in at its widest." },
   { group: "ctl-stroke", key: "directionDeg", label: "Stroke direction vs keel", min: -30, max: 30, step: 1, unit: "°",
     help: "0° pulls straight back along the boat; + angles the pull outward." },
@@ -1053,8 +1054,9 @@ const CONTROLS = [
     help: "Pull with the bottom hand, or push with the top (both: pull and push): the point on the shaft that stays put, measured down from the grip." },
   { group: "ctl-hands", key: "lowerHandM", label: "Lower hand below the grip", min: 0.35, max: 0.85, step: 0.01, unit: "",
     fmt: (v) => cmIn(v, 0), help: "Hands further apart: more leverage on the blade, and a longer reach for the lower arm." },
-  { group: "ctl-hands", key: "handTravelM", label: "Hand travel during the drive", min: 0, max: 0.4, step: 0.01, unit: "", fmt: (v) => cmIn(v, 0),
-    help: "How far the pivot moves aft as you pull." },
+  { group: "ctl-hands", key: "handTravelM", label: "Hand travel", min: 0, max: 0.4, step: 0.01, unit: "",
+    fmt: (v, p) => { const add = bodyTravel(p); return add ? `${fmtNum(v * 100, 0)} + ${fmtNum(add * 100, 0)} body = ${fmtNum((v + add) * 100, 0)} cm` : cmIn(v, 0); },
+    help: "How far the pivot moves aft through the drive, with the arms. Trunk rotation and a hinge carry it further on top (12 and 15 cm at full)." },
   // Body
   { group: "ctl-paddler", key: "rotation", label: "Trunk rotation", min: 0, max: 1, step: 0.05, unit: "", eff: true,
     fmt: (v) => (v ? `${Math.round(v * 100)}%` : "none"), help: "Turn your shoulders into the catch and unwind through the drive." },
@@ -1064,10 +1066,12 @@ const CONTROLS = [
     fmt: (v) => (v ? `${Math.round(v * 100)}%` : "none"), help: "Drive from the foot or knee on the paddle side through the drive." },
   { group: "ctl-paddler", key: "dropM", label: "Drop onto the paddle at the catch", min: 0, max: 0.1, step: 0.005, unit: "", eff: true,
     fmt: (v) => (v ? `${fmtNum(v * 100, 1)} cm` : "none"), help: "Your weight onto the shaft: loads the blade early, and bobs the boat." },
-  { group: "ctl-body", key: "swingM", label: "Body swing, fore–aft", min: 0, max: 0.2, step: 0.01, unit: "", eff: true,
-    fmt: (v) => (v ? `±${fmtNum(v * 100, 0)} cm` : "still"), help: "Your body moving pushes the boat the other way. A quiet body keeps the boat running." },
+  { group: "ctl-body", key: "swingM", label: "Extra body swing", min: 0, max: 0.2, step: 0.01, unit: "", eff: true,
+    fmt: (v, p) => { const h = S.HINGE_SWING_M * (p.hinge || 0), hs = h ? ` (hinge ±${fmtNum(h * 100, 1)})` : ""; return (v ? `±${fmtNum(v * 100, 0)} cm` : "none") + hs; },
+    help: "Fore and aft on top of the hinge's own swing (±6 cm at a full hinge). Your body moving pushes the boat the other way. A quiet body keeps the boat running." },
   { group: "ctl-body", key: "heelDeg", label: "Heel the boat toward the paddle", min: 0, max: 12, step: 1, unit: "°", eff: true,
-    fmt: (v) => (v ? `${v}°` : "level"), help: "Brings the blade nearer the keel line, so each stroke turns the boat less." },
+    fmt: (v) => (v ? `${v}° · top hand ${fmtNum(heelIn({ heelDeg: v }) * 100, 0)} cm in` : "level"),
+    help: "Brings the blade nearer the keel line, so each stroke turns the boat less: the top hand, about 90 cm up, works that much nearer the centreline (shown on Top hand from centreline)." },
   { group: "ctl-body", key: "hipRock", label: "Hip rock against the roll", min: 0, max: 1, step: 0.05, unit: "", eff: true,
     fmt: (v) => (v ? `${Math.round(v * 100)}%` : "none"), help: "Rock your hips toward the paddle side as the blade lifts it." },
   // Gear
@@ -1095,18 +1099,16 @@ const CONTROLS = [
     fmt: (v) => `${Math.round(v * 100)}% weaker`, help: "By paddle angle: how much weaker 45° from your strongest angle. By body position: how much weaker with the lower arm folded up, the top arm bent or either reaching past its reach." },
   { group: "ctl-gear", key: "armBestMs", label: "Best arm speed", min: 0.5, max: 1.5, step: 0.01, unit: "",
     fmt: (v) => `${fmtNum(v, 2)} m/s`, help: "Your lower hand's speed against its shoulder that you hold the most power at." },
-  { group: "ctl-gear", key: "gearDrop", label: "Weaker away from it", min: 0, max: 0.4, step: 0.01, unit: "",
-    fmt: (v) => `${Math.round(v * 100)}% weaker`, help: "How much of your arms' power you lose at half your best arm speed. Faster, less is lost (Hill's curve: about half as much at 1.5 times)." },
   { group: "ctl-gear", key: "trunkBestMs", label: "Best trunk speed", min: 0.3, max: 1.8, step: 0.01, unit: "",
     fmt: (v) => `${fmtNum(v, 2)} m/s`, help: "Your paddle-side shoulder's speed through the drive that your trunk holds the most power at with full rotation. Rotation and a hinge use different muscles, each best at its own speed, so with a hinge too the best is faster. Counts what trunk rotation and a hinge add." },
-  { group: "ctl-gear", key: "trunkDrop", label: "Trunk weaker away from it", min: 0, max: 0.4, step: 0.01, unit: "",
-    fmt: (v) => `${Math.round(v * 100)}% weaker`, help: "How much of what rotation and a hinge add you lose at half your best trunk speed; less going faster." },
+  { group: "ctl-gear", key: "gearDrop", label: "Weaker away from best", min: 0, max: 0.4, step: 0.01, unit: "",
+    fmt: (v) => `${Math.round(v * 100)}% weaker`, help: "How much power you lose at half your best speed, the arms' and what rotation and a hinge add alike. Faster, less is lost (Hill's curve: about half as much at 1.5 times)." },
   // Switching sides
-  { group: "ctl-switch", key: "switchStrokes", label: "Strokes per side", min: 0, max: 20, step: 1, unit: "",
-    fmt: (v) => v === 0 ? "auto, by heading" : `${v} stroke${v === 1 ? "" : "s"}`,
-    help: "Fewer: more time lost switching. More: a wider zigzag. In a crosswind it's the average; you take more on the windward side. 0 switches by heading." },
+  { group: "ctl-switch", key: "switchStrokes", label: "Strokes per side", min: 1, max: 20, step: 1, unit: "",
+    fmt: (v) => `${v} stroke${v === 1 ? "" : "s"}`,
+    help: "Fewer: more time lost switching. More: a wider zigzag. In a crosswind it's the average; you take more on the windward side." },
   { group: "ctl-switch", key: "switchHeadingDeg", label: "Switch when off course by", min: 1, max: 10, step: 0.5, unit: "°",
-    fmt: (v) => `±${v}°`, help: "How far you let the boat turn before switching sides (auto)." },
+    fmt: (v) => `±${v}°`, help: "How far you let the boat turn before switching sides." },
   { group: "ctl-switch", key: "switchLossS", label: "Time lost per switch", min: 0, max: 1.5, step: 0.05, unit: " s",
     fmt: (v) => `${v.toFixed(2)} s`, help: "No push while the paddle changes sides. About the same time at any rate, so it costs more at a higher rate." },
 ];
@@ -1134,7 +1136,7 @@ const RECOVERIES = [["-1", "Cheapest"], ["0", "Lower hand swings"], ["0.5", "Eve
 {
   const wrap = document.createElement("div");
   wrap.className = "ctl";
-  const tip = ("How the paddle gets from the exit to the catch: about a point on the shaft that travels smoothly while the paddle swings around it. Lower hand swings: the top hand stays steady, a fulcrum in front of your face, and the lower hand swings the blade. Top hand swings: the lower hand stays and the top hand drops and swings over it. Cheapest: the one that costs least, from the arms' and paddle's kinetic energy (each arm ~5% of body mass, de Leva 1996), lifting them, and air drag on the blade, with negative work costing a quarter of positive work, inside reach and with the top hand in front of the face. The costs compare styles: the model starts and stops the hands at the exit and catch, so their size is an upper bound, and they don't change what you can hold.").replace(/"/g, "&quot;");
+  const tip = ("How the paddle gets from the exit to the catch: about a swing point on the shaft (not the pull's pivot) that travels smoothly while the paddle swings around it. Lower hand swings: the top hand stays steady, a fulcrum in front of your face, and the lower hand swings the blade. Top hand swings: the lower hand stays and the top hand drops and swings over it. Cheapest: the one that costs least, from the arms' and paddle's kinetic energy (each arm ~5% of body mass, de Leva 1996), lifting them, and air drag on the blade, with negative work costing a quarter of positive work, inside reach and with the top hand in front of the face. The costs compare styles: the model starts and stops the hands at the exit and catch, so their size is an upper bound, and they don't change what you can hold.").replace(/"/g, "&quot;");
   wrap.innerHTML = `<div class="top"><span>Recovery<button type="button" class="info" data-tip="${tip}" aria-label="What is this?">?</button></span></div>` +
     `<div class="row chips" id="recovery-mode" role="group" aria-label="Recovery" style="margin-top:6px"></div><div class="help" id="recovery-read"></div>`;
   $("c-handTravelM").closest(".ctl").after(wrap);
@@ -1172,7 +1174,7 @@ function recoveryStyles(r) {
 function recoveryText(r) {
   const pl = planOf(r), c = pl.cost, J = (v) => `${fmtNum(v, 0)} J`;
   const styles = recoveryStyles(r).map((q, i) => `${["lower hand swings", "even mix", "top hand swings"][i]} ${J(q.cost.joules)}${q.cost.past > 0.15 ? " (out of reach)" : ""}`);
-  return `${r.params.recoveryPivot >= 0 ? "Set" : "Cheapest"}: pivot ${fmtNum(pl.q * 100, 0)}% of the way to the lower hand, lifted ${fmtNum(pl.lift * 100, 0)} cm and brought in ${fmtNum(pl.in * 100, 0)} cm mid-carry; ` +
+  return `${r.params.recoveryPivot >= 0 ? "Set" : "Cheapest"}: swing point ${fmtNum(pl.q * 100, 0)}% of the way to the lower hand, lifted ${fmtNum(pl.lift * 100, 0)} cm and brought in ${fmtNum(pl.in * 100, 0)} cm mid-carry; ` +
     `the blade swings ${fmtNum(c.wide * 100, 0)} cm out. Costs <b>${J(c.joules)}</b> a stroke (arms and paddle ${J(c.pos + 0.25 * c.neg)}, air ${J(c.air)}). Styles: ${styles.join(", ")}.`;
 }
 // When the body swings: aft through the drive, or forward.
@@ -1198,14 +1200,14 @@ let bodyRef = { a: null, b: null };   // the same boat with a level hull, for "f
 function showBodyEffects() {
   const r = results[editing];
   if (!r) return;
-  const p = r.params, e = r.at(effortW), c = r.cycleAt(effortW), kmh = (v) => fmtNum(v * 3.6, 1);
+  const p = r.params, e = atW(r), c = r.cycleAt(r.params.effortW), kmh = (v) => fmtNum(v * 3.6, 1);
   $("e-swingM").innerHTML = p.swingM ? `Hull speed swings <b>${kmh(Math.min(...c.speed))}–${kmh(Math.max(...c.speed))} km/h</b>: costs <b>${fmtNum(e.shares.swing * 100, 1)}%</b> of your power` : "";
   const peak = (rr) => { const sm = rr.samples, Td = sm[sm.length - 1].t; let m = 0, t = 0; for (const q of sm) if (q.thrust[0] > m) { m = q.thrust[0]; t = q.t; } return Math.round((t / Td) * 100); };
   const flat = peak(simOf(Object.assign({}, p, { legDrive: 0, dropM: 0 })));
   $("e-dropM").innerHTML = p.dropM ? `Loads the blade early: force peaks at <b>${peak(r)}%</b> of the drive (from ${flat}%). Bob <b>±${fmtNum(e.bounceMm, 1)} mm</b> (from ±${fmtNum(e.bounceStillMm, 1)}), costing ${fmtNum(e.shares.drop * 100, 1)}%` : "";
   $("e-rotation").innerHTML = p.rotation ? `Reach <b>+${fmtNum(15 * p.rotation, 1)}°</b>, hand travel <b>+${fmtNum(12 * p.rotation, 1)} cm</b>. Uses more muscle: <b>+${fmtNum(0.12 * p.fitnessW * p.rotation * S.trunkGearFactor(p), 0)} W</b> you can hold${p.gearOn ? ` (trunk ×${fmtNum(S.trunkGearFactor(p), 2)})` : ""}` : "";
   $("e-legDrive").innerHTML = p.legDrive ? `Force holds later: it peaks at <b>${peak(r)}%</b> of the drive (from ${flat}%). <b>+${fmtNum(0.1 * p.fitnessW * p.legDrive, 0)} W</b> you can hold` : "";
-  const hingeSwing = p.hinge ? e.shares.swing - simOf(Object.assign({}, p, { hinge: 0 })).at(effortW).shares.swing : 0;
+  const hingeSwing = p.hinge ? e.shares.swing - simOf(Object.assign({}, p, { hinge: 0 })).at(p.effortW).shares.swing : 0;
   $("e-hinge").innerHTML = p.hinge ? `Reach <b>+${fmtNum(8 * p.hinge, 1)}°</b>, hand travel <b>+${fmtNum(15 * p.hinge, 1)} cm</b>. Your body swings <b>±${fmtNum(6 * p.hinge, 1)} cm</b>, costing ${fmtNum(hingeSwing * 100, 1)}%. ` +
     `Hips and back: <b>+${fmtNum(0.08 * p.fitnessW * p.hinge * S.trunkGearFactor(p), 0)} W</b> you can hold${p.gearOn ? ` (trunk ×${fmtNum(S.trunkGearFactor(p), 2)})` : ""}` : "";
   const hours = raceHours[editing] || 1;
@@ -1254,10 +1256,6 @@ function syncControls() {
   $("profile-copy").textContent = `Copy profile to ${NAME[other(editing)]}`;
   showBodyEffects();
   renderSwitchMode();
-  // A fixed stroke count replaces switching by heading.
-  const fixed = boats[editing].switchStrokes > 0;
-  $("c-switchHeadingDeg").disabled = fixed || !!boats[editing].noSwitching;
-  if (fixed && !boats[editing].noSwitching) $("o-switchHeadingDeg").textContent = "off (fixed count)";
   $("controls").classList.toggle("editing-b", editing === "b");
   $("editing-name").textContent = NAME[editing];
   $("presets").classList.toggle("b", editing === "b");
@@ -1298,7 +1296,6 @@ $("swap").addEventListener("click", () => {
   [results.a, results.b] = [results.b, results.a];
   changed();
 });
-$("c-effortW").addEventListener("input", (ev) => { effortW = parseFloat(ev.target.value); changed(); });
 
 // ------------------------------------------------------- paddler profile
 const STRENGTH_MODES = [["0", "Off"], ["1", "By paddle angle"], ["2", "By body position"]];
@@ -1332,6 +1329,23 @@ function renderSwitchMode() {
     el.append(b);
   }
   $("switch-off").hidden = !off;
+  // By heading (0 strokes) or every N strokes: only that one's slider.
+  const by = $("switch-by"), byCount = boats[editing].switchStrokes > 0;
+  by.innerHTML = "";
+  by.classList.toggle("b", editing === "b");
+  for (const [v, label] of [["heading", "By heading"], ["count", "Every N strokes"]]) {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = label; b.dataset.value = v; b.disabled = off;
+    b.setAttribute("aria-pressed", String(byCount === (v === "count")));
+    b.addEventListener("click", () => {
+      const r = results[editing];
+      boats[editing].switchStrokes = v === "heading" ? 0 : Math.max(1, Math.round(r ? r.strokesPerSide : 6));
+      changed(editing);
+    });
+    by.append(b);
+  }
+  $("c-switchStrokes").closest(".ctl").hidden = !byCount;
+  $("c-switchHeadingDeg").closest(".ctl").hidden = byCount;
   for (const k of ["switchStrokes", "switchHeadingDeg", "switchLossS"]) $(`c-${k}`).disabled = off;
   if (off) for (const k of ["switchStrokes", "switchHeadingDeg", "switchLossS"]) $(`o-${k}`).textContent = "off (no switching)";
 }
@@ -1510,7 +1524,7 @@ function changed(x) {
   pending = true;
   requestAnimationFrame(() => {
     pending = false;
-    for (const b of dirty) results[b] = S.simulate(Object.assign({}, boats[b], { effortW }));
+    for (const b of dirty) results[b] = S.simulate(Object.assign({}, boats[b], { effortW: powerOf(b) }));
     dirty.clear();
     saveBoats();
     showEfficiency();
@@ -1546,27 +1560,27 @@ function refreshNoSwitch() {
   }, 60);
 }
 const switchSlip = (x) => {
-  const sh = results[x].at(effortW).shares;
-  return noSwitch[x] ? Math.min(sh.slip, Math.max(0, sh.slip - noSwitch[x].at(effortW).shares.slip)) : 0;
+  const sh = atW(results[x]).shares;
+  return noSwitch[x] ? Math.min(sh.slip, Math.max(0, sh.slip - noSwitch[x].at(results[x].params.effortW).shares.slip)) : 0;
 };
 function showPowerBreakdown() {
-  const power = (x) => { const sh = results[x].at(effortW).shares, sw = switchSlip(x);
+  const power = (x) => { const sh = atW(results[x]).shares, sw = switchSlip(x);
     return [sh.hull, sh.slip - sw, sw, sh.zigzag, sh.leeway, sh.surge + sh.bounce + sh.pitch + sh.swing + sh.drop + Math.max(0, sh.sink)].map((v) => v * 100); };
   breakdown("power", ["moves the boat", "slip", "switching", "zigzag", "sideways drag", "surge & bounce"], power("a"), power("b"), 1,
             ["s1", "s2", "s5", "s6", "s3", "s4"]);
 }
 function summary(r) {
-  const at = r.at(effortW);
+  const at = atW(r);
   return {
     eff: r.efficiency * 100, speed: at.speed, fwd: r.forceShare.forward * 100,
-    side: r.strokesPerSide, straight: !!r.params.noSwitching, wander: r.headingWanderDeg, yaw: Math.abs(r.yawAt(effortW)),
-    peak: r.peakForce * Math.pow(effortW / Math.max(1e-9, r.paddlerPower), 2 / 3), at,
+    side: r.strokesPerSide, straight: !!r.params.noSwitching, wander: r.headingWanderDeg, yaw: Math.abs(r.yawAt(r.params.effortW)),
+    peak: r.peakForce * Math.pow(r.params.effortW / Math.max(1e-9, r.paddlerPower), 2 / 3), at,
   };
 }
 // What each table row and breakdown entry means.
 const HELP = {
   eff: "Share of your power that moves you down the course. The rest is lost to blade slip, switching, sideways drag, the zigzag between switches, and the boat surging, bobbing and pitching (the breakdown below).",
-  speed: "Boat speed along the course at the Compare at effort.",
+  speed: "Boat speed along the course at its power (on top: what each can hold, or set by hand).",
   fwd: "How much of the blade's push points straight ahead.",
   side: "Strokes on one side before you switch to keep straight.",
   wander: "How far the bow swings either side of straight between switches. More zigzag, more distance.",
@@ -1594,7 +1608,6 @@ const ROWS = [
 ];
 function showEfficiency() {
   const A = summary(results.a), B = summary(results.b);
-  $("o-effortW").textContent = `${effortW} W`;
   const cell = (s, k, unit, d, cls) => {
     const v = s[k];
     if (k === "side" && s.straight) return `<td class="v ${cls}">never</td>`;
@@ -1673,7 +1686,7 @@ function renderCurveModes() {
     $("curve-mode").append(b);
   }
 }
-function curveOf(r, watts = effortW) {
+function curveOf(r, watts = r.params.effortW) {
   const scale = Math.pow(watts / Math.max(1e-9, r.paddlerPower), 2 / 3);
   const Td = (60 / r.params.rateSpm) * r.geom.driveFraction, Td0 = r.samples[r.samples.length - 1].t || 1;
   const pts = r.samples.map((q) => ({ t: (q.t / Td0) * Td, force: q.F * scale, forward: Math.max(0, q.thrust[0]) * scale }));
@@ -1695,7 +1708,7 @@ function drawCurve() {
   const same = C.a.pts.length === C.b.pts.length && Math.abs(C.a.Td - C.b.Td) < 1e-9 &&
     C.a.pts.every((p, i) => Math.abs(p[k] - C.b.pts[i][k]) < 0.5);
   $("curve-sub").textContent = k === "force"
-    ? `The water's push on the blade face, from the catch through the drive, at ${effortW} W and each boat's stroke rate.`
+    ? `The water's push on the blade face, from the catch through the drive, at ${powerText()} and each boat's stroke rate.`
     : `The part of that push along the boat. The area under each curve is the stroke's impulse.`;
   const peakKey = k === "force" ? "peakForce" : "peakForward";
   $("curve-legend").innerHTML = BOATS.map((x) =>
@@ -1794,7 +1807,7 @@ function breakdown(id, names, a, b, digits, cls = names.map((_, i) => `s${i + 1}
     names.map((n, i) => `<tr><td><i class="${cls[i]}"></i>${n}${HELP[n] ? info(HELP[n]) : ""}</td><td class="n">${f(a[i])}</td><td class="n">${f(b[i])}</td></tr>`).join("");
 }
 function why(r, at) {
-  const yaw = r.yawAt(effortW), sh = at.shares, lift = at.meanLift;
+  const yaw = r.yawAt(r.params.effortW), sh = at.shares, lift = at.meanLift;
   const turn = r.params.noSwitching ? "Held straight without switching (ideal): no time lost to switches and no zigzag." :
     Math.abs(yaw) < 1 ? "Practically no turning, so no need to switch sides to steer." :
     `Turns the bow ${yaw > 0 ? "away from" : "toward"} the paddle side (${fmtNum(Math.abs(yaw))} N·m), so you switch about ` +
@@ -1893,11 +1906,18 @@ const raceHours = { a: 0, b: 0 };
 const EFFORT_MODES = [["hold", "What each can hold"], ["hand", "Set by hand"]];
 function raceWatts(x, metres) {
   if (effortMode === "hand") return parseFloat($(`eff${x.toUpperCase()}`).value);
-  const p = results[x].params;
+  const p = Object.assign({}, S.DEFAULTS, boats[x]);
   let h = raceHours[x];
-  if (!h) { const v = results[x].at(S.capacity(p)).speed || 2.5; h = (metres || (cb ? cb.L : 10000)) / v / 3600; }
+  if (!h) { const v = (results[x] && results[x].at(S.capacity(p)).speed) || 2.5; h = (metres || (cb ? cb.L : 10000)) / v / 3600; }
   return Math.round(S.capacity(p, h) * 10) / 10;
 }
+// The power each boat paddles at on every tab: as the race has it, on a
+// cool day (the race takes the heat off).
+const powerOf = (x) => raceWatts(x, water === "map" ? 0 : parseFloat($("dist").value) * 1000);
+const powerText = () => {
+  const a = results.a.params.effortW, b = results.b.params.effortW;
+  return Math.abs(a - b) < 0.5 ? `${fmtNum(a, 0)} W` : `A ${fmtNum(a, 0)} W, B ${fmtNum(b, 0)} W`;
+};
 // Heat: the power each can hold falls by `heatLoss` % per °C of heat index
 // (WBGT) over 10 °C, where race results and lab trials put endurance at its
 // best (El Helou 2012, Galloway & Maughan 1997). WBGT from temperature and
@@ -1929,6 +1949,8 @@ function updateRace() {
   // The effort sliders are a cool day's power; the race is at that less the heat.
   const baseA = raceWatts("a", mapIn ? 0 : kmIn * 1000), baseB = raceWatts("b", mapIn ? 0 : kmIn * 1000);
   const effA = baseA * heatA, effB = baseB * heatB;
+  const moved = BOATS.filter((x) => Math.abs(results[x].params.effortW - (x === "a" ? baseA : baseB)) > 0.05);
+  if (moved.length) { for (const x of moved) dirty.add(x); changed(); }
   for (const id of ["effA", "effB"]) $(id).disabled = effortMode === "hold";
   const km = parseFloat($("dist").value), depth = parseFloat($("depth").value);
   const wind = parseFloat($("wind").value), dir = parseFloat($("windDir").value), current = parseFloat($("current").value);
@@ -2876,17 +2898,17 @@ function layoutHull() {
 }
 function updateHull() {
   if (!results.a || !results.b) return;
-  for (const x of BOATS) hullCyc[x] = results[x].cycleAt(effortW);
+  for (const x of BOATS) hullCyc[x] = results[x].cycleAt(results[x].params.effortW);
   chips("hull-mode", HULL_MODES, () => hullMode, (v) => { hullMode = v; layoutHull(); updateHull(); });
   if (!document.querySelector("#hp-surge svg")) layoutHull();
-  $("hull-sub").textContent = `What the stroke and the water do to the boat, at ${effortW} W.`;
+  $("hull-sub").textContent = `What the stroke and the water do to the boat, at ${powerText()}.`;
   drawScore(); drawSurgeChart(); drawHeading(); drawPower(); drawShallow(); hullReadouts(); drawHullLive(phase);
 }
 // Each boat's score, and the biggest things costing it points.
 const SCORE_NAMES = { switching: "Switching", zigzag: "Zigzag", swing: "Body swing", drop: "Drop", surge: "Speed swings", bob: "Bob", pitch: "Pitch", crab: "Crab", riding: "Riding higher" };
 function drawScore() {
   $("boat-score").innerHTML = BOATS.map((x) => {
-    const sc = results[x].at(effortW).boatScore;
+    const sc = atW(results[x]).boatScore;
     const rows = Object.entries(sc.parts).filter(([, v]) => Math.abs(v) >= 0.05).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 5);
     return `<div class="tile ${x}"><div class="lab">${NAME[x]}</div><div class="big">${fmtNum(sc.total, 0)}<small> / 100</small></div>` +
       `<ul>${rows.map(([k, v]) => `<li>${SCORE_NAMES[k]} <b>${v > 0 ? "−" : "+"}${fmtNum(Math.abs(v), 1)}</b></li>`).join("")}</ul></div>`;
@@ -3014,7 +3036,7 @@ function drawSurgeChart() {
 // One line per boat shown, each starting with its letter.
 function hullReadouts() {
   const bs = hullShown(), tag = (x) => (bs.length > 1 ? `<b style="color:${COL[x]}">${x.toUpperCase()}</b> ` : "");
-  const lines = (f) => bs.map((x) => `<span>${tag(x)}${f(x, hullCyc[x], results[x].at(effortW), results[x])}</span>`).join("");
+  const lines = (f) => bs.map((x) => `<span>${tag(x)}${f(x, hullCyc[x], atW(results[x]), results[x])}</span>`).join("");
   $("hull-surge-read").innerHTML = lines((x, c, e) => `Speed swings <b>${fmtNum(Math.min(...c.speed) * 3.6, 1)}–${fmtNum(Math.max(...c.speed) * 3.6, 1)} km/h</b>, costing <b>${fmtNum(e.shares.surge * 100, 1)}%</b>; peak push <b>${fmtNum(Math.max(...c.push), 0)} N</b> against <b>${fmtNum(e.hullK * e.waterSpeed ** 2, 0)} N</b> of drag`);
   $("hull-bob-read").innerHTML = lines((x, c, e) => `Rides <b>${fmtNum(Math.abs(e.sinkMm), 1)} mm ${e.sinkMm < 0 ? "higher" : "lower"}</b> (${fmtNum(Math.abs(e.shares.sink) * 100, 1)}% ${e.shares.sink < 0 ? "less" : "more"} drag), bobs <b>±${fmtNum(e.bounceMm, 1)} mm</b> (${fmtNum(e.shares.bounce * 100, 1)}%)`);
   $("hull-pitch-read").innerHTML = lines((x, c, e) => `Pitches <b>±${fmtNum(e.pitchDeg, 2)}°</b>, the bow moving <b>±${fmtNum(e.bowMm, 1)} mm</b>, costing <b>${fmtNum(e.shares.pitch * 100, 1)}%</b>`);
@@ -3055,7 +3077,7 @@ function drawHeading() {
 function drawPower() {
   const W = 360, x0 = 8, bw = W - 16;
   const parts = (x) => {
-    const e = results[x].at(effortW), sh = e.shares, wave = 0.23 * Math.pow(e.waterSpeed / 2.5, 4);
+    const e = atW(results[x]), sh = e.shares, wave = 0.23 * Math.pow(e.waterSpeed / 2.5, 4);
     return [["Hull: friction", sh.hull * (1 - wave), "var(--cat-useful)"], ["Hull: waves", sh.hull * wave, "color-mix(in srgb, var(--cat-useful) 50%, var(--surface-1))"],
             ["Zigzag", sh.zigzag, "color-mix(in srgb, var(--cat-useful) 25%, var(--surface-1))"],
             ["Blade slip", sh.slip - switchSlip(x), "var(--cat-slip)"],
@@ -3080,7 +3102,7 @@ function drawPower() {
       `<text x="${vA}" y="${ty}" text-anchor="end" style="fill:var(--text-primary);font-weight:600">${pct(v)}</text>` +
       `<text x="${vB}" y="${ty}" text-anchor="end" style="fill:var(--text-primary);font-weight:600">${pct(pb[i][1])}</text>`;
   });
-  const noteY = y0 + 14 + pa.length * row + 4, sink = (x) => results[x].at(effortW).shares.sink;
+  const noteY = y0 + 14 + pa.length * row + 4, sink = (x) => atW(results[x]).shares.sink;
   const riding = (x) => `${x.toUpperCase()} ${sink(x) < 0 ? "saves" : "costs"} ${fmtNum(Math.abs(sink(x)) * 100, 1)}%`;
   // Under the legend, however many rows it has; the drawing grows to fit.
   g += `<text x="${x0}" y="${noteY}">Riding higher or lower: ${riding("a")}, ${riding("b")} more.</text>`;
@@ -3122,12 +3144,12 @@ function drawShallow() {
   // Each boat's pace; the depth it's racing in, if shallow.
   const depth = water === "map" && cb ? Math.min(...cb.sections.filter((s) => s.kind !== "portage").map((s) => s.depth)) : parseFloat($("depth").value);
   BOATS.forEach((x, k) => {
-    const v = results[x].at(effortW).waterSpeed, px = shallowX(v), cl = x === "a" ? "--series-1" : "--series-2";
+    const v = atW(results[x]).waterSpeed, px = shallowX(v), cl = x === "a" ? "--series-1" : "--series-2";
     g += `<line x1="${px}" x2="${px}" y1="${m.t}" y2="${m.t + ph}" stroke="var(${cl})" stroke-width="1.5"/><text x="${px + (k ? -4 : 4)}" y="${m.t + 12}" text-anchor="${k ? "end" : "start"}" style="fill:var(${cl})">${x.toUpperCase()}</text>`;
     if (depth < SHALLOW_DEEP) g += `<circle cx="${px}" cy="${shallowY(depth)}" r="5" fill="var(${cl})" stroke="var(--surface-1)" stroke-width="2"/>`;
   });
   if (depth < SHALLOW_DEEP) {
-    const v = results[hullFocus()].at(effortW).waterSpeed, px = shallowX(v);
+    const v = atW(results[hullFocus()]).waterSpeed, px = shallowX(v);
     g += `<rect x="${px - 128}" y="${shallowY(depth) - 13}" width="120" height="17" rx="4" fill="var(--surface-1)" opacity=".9"/>` +
       `<text class="strong" x="${px - 10}" y="${shallowY(depth) + 1}" text-anchor="end">${fmtNum(depth, 1)} m deep: +${fmtNum(extraDragPct(v, depth), 0)}%</text>`;
   }
@@ -4144,7 +4166,7 @@ async function stepThrough(gen, run, onProgress) {
   }
 }
 onTap($("fit-go"), async () => {
-  const x = editing, p = Object.assign({}, boats[x], { effortW }), run = ++fitRun, needs = fitWater;
+  const x = editing, p = Object.assign({}, boats[x], { effortW: results[x].params.effortW }), run = ++fitRun, needs = fitWater;
   const bar = (f) => { $("fit-bar").style.width = `${Math.round(f * 100)}%`; };
   $("fit-go").disabled = true;
   try {
@@ -4346,15 +4368,15 @@ const m3 = {
 const cycles = new WeakMap();
 function cycleOf(r) {
   const c = cycles.get(r);
-  if (c && c.effortW === effortW) return c.c;
-  const cc = r.cycleAt(effortW);
-  cycles.set(r, { effortW, c: cc });
+  if (c) return c;
+  const cc = r.cycleAt(r.params.effortW);
+  cycles.set(r, cc);
   return cc;
 }
 // The suggested setup from the last fit, if it's for the boat being edited.
 function m3Suggested() {
   if (!fit || fit.x !== editing) return null;
-  if (!m3.sug || m3.sug.fit !== fit) m3.sug = { fit, r: S.simulate(Object.assign({}, boats[fit.x], fitSettings(), { effortW })) };
+  if (!m3.sug || m3.sug.fit !== fit) m3.sug = { fit, r: S.simulate(Object.assign({}, boats[fit.x], fitSettings(), { effortW: results[fit.x].params.effortW })) };
   return m3.sug.r;
 }
 // Everything to draw for one result: polys, capsules (seg), balls and lines
@@ -4605,7 +4627,7 @@ function m3Panel() {
   m3SyncPanel();
 }
 // A part's sliders: the torso's add the trunk's gearing while it's on.
-const m3KeysOf = (part) => part.id === "torso" && boats[editing].gearOn ? [...part.keys, "trunkBestMs", "trunkDrop"] : part.keys;
+const m3KeysOf = (part) => part.id === "torso" && boats[editing].gearOn ? [...part.keys, "trunkBestMs", "gearDrop"] : part.keys;
 function m3SyncPanel() {
   if ($("m3-panel").hidden) return;
   const part = M3_PARTS.find((q) => q.id === m3.sel);
@@ -4660,7 +4682,7 @@ function m3Arm(J, r) {
 }
 function m3Reads({ J, r }) {
   const p = r.params, st = J.st, cm = (v) => `${fmtNum(v * 100, 0)} cm`, deg = (v) => `${fmtNum(v * 180 / Math.PI, 0)}°`, c = cycleOf(r);
-  const shaftDeg = Math.atan2(st.P.d[0], -st.P.d[2]), speed = ["Speed", `${fmtNum(r.speedAt(effortW), 2)} m/s at ${effortW} W`];
+  const shaftDeg = Math.atan2(st.P.d[0], -st.P.d[2]), speed = ["Speed", `${fmtNum(r.speedAt(r.params.effortW), 2)} m/s at ${fmtNum(r.params.effortW, 0)} W`];
   return {
     hull: [["Metacentric height", cm(c.GM)], speed],
     seat: [["Seat", cmTrim(p.seatZM)], ["Hips", `${cm(Math.abs(r.body.seatX))} ${r.body.seatX < 0 ? "behind" : "ahead of"} the pivot`], ["Metacentric height", cm(c.GM)], ["Rolls every", `${fmtNum(c.rollPeriod, 2)} s`]],
