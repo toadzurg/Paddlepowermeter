@@ -701,6 +701,9 @@ function opening(page) {
     // The race starts at what each can hold; the tests below set efforts by hand.
     check(`${tag}: race effort starts at what each can hold`, (await pressed("#effort-mode"))[0] === "hold" &&
           (await page.$eval("#effA", (e) => e.disabled)) && /what A can hold/.test(await text("#o-effA")), await text("#o-effA"));
+    // Every tab's numbers are at that power to start with.
+    check(`${tag}: every tab starts at what each can hold`, await page.evaluate(() => ["a", "b"].every((x) =>
+          Math.abs(window.sim.results[x].params.effortW - window.StrokeSim.capacity(window.sim.boats[x])) < 2 && window.sim.results[x].params.effortW > 140)));
     await page.$eval('#effort-mode button[data-value="hand"]', (b) => b.click()); await settle();
 
     // Layout: one tab at a time; phones put the sliders after it, wide screens beside it.
@@ -721,16 +724,18 @@ function opening(page) {
     check(`${tag}: race power explains what each can hold`, /fitness × the muscle used/.test(await text("#tip")) &&
           (await page.$eval("#tip", (e) => !e.hidden)));
     await page.click(".race-power button.info");
-    check(`${tag}: race tab: boat picker and race power on top`, (await visible("#boats")) && (await visible("#effA")) &&
-          (await visible("#effB")) && !(await visible("#c-effortW")));
+    check(`${tag}: race tab: boat picker and power on top`, (await visible("#boats")) && (await visible("#effA")) && (await visible("#effB")));
+    // One power on every tab: the boat tab's numbers are at the race's.
     await goTab("boat");
-    await slide("#c-effortW", 250); await settle();
-    check(`${tag}: boat tab: power set right there`, (await visible("#c-effortW")) && (await visible("#boats")) &&
-          /at 250 W/.test(await text("#hull-sub")) && !(await visible("#effA")), await text("#hull-sub"));
+    for (const id of ["#effA", "#effB"]) await slide(id, 250); await settle();
+    check(`${tag}: boat tab: the same power, set right there`, (await visible("#effA")) && (await visible("#boats")) &&
+          /at 250 W/.test(await text("#hull-sub")), await text("#hull-sub"));
     await page.click("#boats [data-boat=b]"); await settle();
     check(`${tag}: boat tab: pick the boat to edit`, (await text("#editing-name")) === "Boat B");
     await page.click("#boats [data-boat=a]");
-    await slide("#c-effortW", 150); await settle();
+    for (const id of ["#effA", "#effB"]) await slide(id, 150); await settle();
+    await goTab("fit");
+    check(`${tag}: fit tab: no power control`, !(await visible("#effA")));
     await goTab("stroke");
 
     // Resizing the window redraws the charts at their new width, so their text keeps its size.
@@ -759,6 +764,10 @@ function opening(page) {
     check(`${tag}: settings: each slider's help is behind its "?"`,
           (await page.$$eval("#controls .ctl", (cs) => cs.filter((c) => c.querySelector('input[type="range"]')).every((c) => c.querySelector("label .info[data-tip]") && !c.querySelector(":scope > .help")))) &&
           (await text("#o-catchDeg")) === "23° + 12° body = 35°", await text("#o-catchDeg"));
+    // What the body adds shows where it lands; one gearing fall-off.
+    check(`${tag}: settings: the body's hand travel and swing shown`, (await text("#o-handTravelM")) === "15 + 13 body = 28 cm" &&
+          (await text("#o-swingM")) === "none (hinge ±2.4)" && !(await page.$("#c-trunkDrop")) && !!(await page.$("#c-gearDrop")),
+          `${await text("#o-handTravelM")} | ${await text("#o-swingM")}`);
     check(`${tag}: lift on by default`, JSON.stringify(await pressed("#lift-mode")) === '["1"]');
     const sweepLift = await cellVal("eff", 3);
     await page.click("#boats [data-boat=b]");
@@ -792,9 +801,9 @@ function opening(page) {
     await slide("#c-swingM", 0); await settle();
     check(`${tag}: details for both boats`, /switch|turning/i.test(await text("#why-a")) && /B:/.test(await text("#why-b")));
     const s150 = await cellVal("speed", 2);
-    await slide("#c-effortW", 300); await settle();
-    check(`${tag}: compare-at effort raises speed`, (await cellVal("speed", 2)) > s150 && (await text("#o-effortW")) === "300 W");
-    await slide("#c-effortW", 150); await settle();
+    await slide("#effA", 300); await settle();
+    check(`${tag}: more power raises speed`, (await cellVal("speed", 2)) > s150 && (await text("#o-effA")) === "300 W");
+    await slide("#effA", 150); await settle();
 
     // Help tips: tap (or click) shows, again or elsewhere hides; mouse hover shows.
     const tipShown = () => page.$eval("#tip", (e) => !e.hidden);
@@ -874,19 +883,26 @@ function opening(page) {
     await page.click("#boats [data-boat=b]");
     await page.click("#presets >> text=Wide sweep");
     await page.click("#boats [data-boat=a]"); await settle();
-    check(`${tag}: drive time readout`, (await text("#o-driveFraction")) === "50% at 60 spm");
+    check(`${tag}: drive time readout`, (await text("#o-driveFraction")) === "50% · 0.50 s");
     await slide("#c-driveFraction", 0.8); await settle();
     check(`${tag}: drive time goes to 80%`, (await page.$eval("#c-driveFraction", (e) => e.max)) === "0.8" &&
-          (await text("#o-driveFraction")) === "80% at 60 spm" && (await cellVal("eff", 2)) > 0);
+          (await text("#o-driveFraction")) === "80% · 0.80 s" && (await cellVal("eff", 2)) > 0);
     await slide("#c-driveFraction", 0.5); await settle();
-    check(`${tag}: strokes per side auto by default`, (await text("#o-switchStrokes")) === "auto, by heading" &&
-          !(await page.$eval("#c-switchHeadingDeg", (e) => e.disabled)));
+    // At a quicker rate the drive's share rises, its time hardly shorter.
+    await slide("#c-rateSpm", 80); await settle();
+    check(`${tag}: drive time at your rate`, (await text("#o-driveFraction")) === "61% · 0.46 s", await text("#o-driveFraction"));
+    await slide("#c-rateSpm", 60); await settle();
+    const shown = (sel) => page.$eval(sel, (e) => !e.closest(".ctl").hidden);
+    check(`${tag}: switching by heading by default, only its slider`, JSON.stringify(await pressed("#switch-by")) === '["heading"]' &&
+          (await shown("#c-switchHeadingDeg")) && !(await shown("#c-switchStrokes")));
+    const auto = await page.evaluate(() => Math.round(window.sim.results.a.strokesPerSide));
+    await page.click("#switch-by >> text=Every N strokes"); await settle();
+    check(`${tag}: every N strokes starts at what heading gives`, (await text("#o-switchStrokes")) === `${auto} strokes` &&
+          (await shown("#c-switchStrokes")) && !(await shown("#c-switchHeadingDeg")), await text("#o-switchStrokes"));
     await slide("#c-switchStrokes", 10); await settle();
-    check(`${tag}: fixed strokes per side`, (await text("#o-switchStrokes")) === "10 strokes" &&
-          (await page.$eval("#c-switchHeadingDeg", (e) => e.disabled)) && (await cellVal("side", 2)) === 10 &&
-          (await text("#o-switchHeadingDeg")) === "off (fixed count)");
+    check(`${tag}: fixed strokes per side`, (await text("#o-switchStrokes")) === "10 strokes" && (await cellVal("side", 2)) === 10);
     check(`${tag}: wander shown`, /^±[\d.]+°$/.test(await page.$eval('#cmp tr[data-row="wander"] td:nth-child(2)', (e) => e.textContent)));
-    await slide("#c-switchStrokes", 0); await settle();
+    await page.click("#switch-by >> text=By heading"); await settle();
     {
       const eff0 = await cellVal("eff", 2);
       await page.$eval("#switch-mode button:nth-child(2)", (b) => b.click()); await settle();
@@ -936,10 +952,10 @@ function opening(page) {
     check(`${tag}: crosswind slows and makes switching lopsided`, secs(await text("#t-a")) > secs(t0) &&
           /crab; switching [\d.]+ strokes windward, [\d.]+ lee/.test(await text("#c-a")), await text("#c-a"));
     await page.click("#boats [data-boat=a]");
-    await slide("#c-switchStrokes", 10); await settle();
+    await page.click("#switch-by >> text=Every N strokes"); await slide("#c-switchStrokes", 10); await settle();
     check(`${tag}: fixed count in a crosswind holds course`, /switching [\d.]+ strokes windward, [\d.]+ lee to hold course, wandering ±[\d.]+°/.test(await text("#c-a")),
           await text("#c-a"));
-    await slide("#c-switchStrokes", 0); await settle();
+    await page.click("#switch-by >> text=By heading"); await settle();
     // Heat: WBGT from temperature and humidity; power falls 0.2% per °C over 10 °C.
     await slide("#wind", 0);
     await slide("#temp", 5); await slide("#humid", 50); await page.waitForTimeout(150);
@@ -1391,6 +1407,8 @@ function opening(page) {
     await page.click("#swing-timing >> text=Forward in the drive");
     check(`${tag}: body swing timing`, JSON.stringify(await pressed("#swing-timing")) === '["-1"]');
     await slide("#c-heelDeg", 6); await page.waitForTimeout(400);
+    check(`${tag}: heel: the top hand works further in`, (await text("#o-heelDeg")) === "6° · top hand 9 cm in" &&
+          /^\d+ − 9 heel = \d+ cm$/.test(await text("#o-handOutM")), `${await text("#o-heelDeg")} | ${await text("#o-handOutM")}`);
     check(`${tag}: heel: fewer switches`, /^Switch every [\d.]+ strokes \(from [\d.]+\), [\d.]+% less time lost switching$/.test(await text("#e-heelDeg")), await text("#e-heelDeg"));
     await slide("#c-hipRock", 0.8); await slide("#c-dropM", 0.03); await page.waitForTimeout(400);
     check(`${tag}: hip rock and drop`, /^Heel ±[\d.]+° instead of ±[\d.]+°, hips moving up to \d+ mm$/.test(await text("#e-hipRock")) &&
@@ -1698,8 +1716,8 @@ function opening(page) {
     await page.click('#m3-recovery button[data-value="1"]'); await page.waitForTimeout(400);
     const rec1 = await page.textContent("#m3-recovery-read"), piv = await page.evaluate(() => window.sim.boats.a.recoveryPivot);
     await page.click('#m3-recovery button[data-value="-1"]'); await page.waitForTimeout(400);
-    check(`${tag}: 3D model: the recovery's styles, set from the stroke`, piv === 1 && /^Set: pivot 100%.*top hand swings \d+ J/.test(rec1) &&
-          /^Cheapest: pivot \d+%/.test(await page.textContent("#m3-recovery-read")) && (await pressed("#recovery-mode")).join() === "-1", rec1);
+    check(`${tag}: 3D model: the recovery's styles, set from the stroke`, piv === 1 && /^Set: swing point 100%.*top hand swings \d+ J/.test(rec1) &&
+          /^Cheapest: swing point \d+%/.test(await page.textContent("#m3-recovery-read")) && (await pressed("#recovery-mode")).join() === "-1", rec1);
     await page.click("#m3-play");
     await page.click("#m3-done");
     const aPaddle = await page.evaluate(() => window.sim.boats.a.paddleLenM);
