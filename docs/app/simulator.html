@@ -654,8 +654,8 @@
           </section>
         </div>
         <div id="builder" hidden>
-          <h3>Your course<button type="button" class="info" data-tip="Load the AuSable or import a GPX track. Dams in waypoint names become portages. Each section gets its own width, current and depth; bends and heading come from the track. Your file stays on your device." aria-label="What is this?">?</button></h3>
-          <div class="row"><button id="cb-preset">AuSable Marathon</button><button id="cb-import">Import GPX</button>
+          <h3>Your course<button type="button" class="info" data-tip="Load the AuSable or the Canton race, or import a GPX track. Dams in waypoint names become portages. Each section gets its own width, current and depth, and which way its river flows (Canton runs up and down the river); bends and heading come from the track. Your file stays on your device." aria-label="What is this?">?</button></h3>
+          <div class="row"><button id="cb-preset">AuSable Marathon</button><button id="cb-canton">Canton Grasse River</button><button id="cb-import">Import GPX</button>
             <input type="file" id="cb-file" accept=".gpx,application/gpx+xml" hidden></div>
           <div class="sub" id="cb-info" style="margin-top:6px">Loading the AuSable…</div>
           <div class="row" style="margin-top:8px"><button id="cb-gauges">Current from gauges</button>
@@ -665,15 +665,16 @@
           <table class="secs" id="cb-gauge-list" hidden><tbody></tbody></table>
           <div class="row" style="margin-top:8px"><button id="cb-weather">Weather on the course</button>
             <input type="datetime-local" id="cb-weather-time" aria-label="Hour for the weather, local time on the course (empty: now)">
-            <button type="button" class="info" data-tip="Uses Open-Meteo's weather at the middle of the course: now, the forecast, or the record for a past hour (local time there). Sets wind, temperature and humidity. A course loads with its race's: the AuSable's 2023 race from its start (July 29, 9 pm), a GPX from its race start (the track's first time), hour by hour through the race; else now. The gauges follow the same day. Moving a weather slider sets one value for the whole race. Its wind is measured 10 m up; near the water it's about 80% of that." aria-label="What is this?">?</button></div>
+            <button type="button" class="info" data-tip="Uses Open-Meteo's weather at the middle of the course: now, the forecast, or the record for a past hour (local time there). Sets wind, temperature and humidity. A course loads with its race's: the AuSable's 2023 race from its start (July 29, 9 pm), Canton's 2019 race from its (May 4, 12:24 pm), a GPX from its race start (the track's first time), hour by hour through the race; else now. The gauges follow the same day. Moving a weather slider sets one value for the whole race. Its wind is measured 10 m up; near the water it's about 80% of that." aria-label="What is this?">?</button></div>
           <div class="sub" id="cb-weather-info">Weather is set by hand.</div>
           <svg class="cmap" id="cb-map" role="img" aria-label="Course map: tap a section to edit it"></svg>
-          <div class="note">Colour: current. Tap a section to edit it.</div>
+          <div class="note">Colour: current, blue with you, orange against you. Tap a section to edit it.</div>
           <svg class="strip" id="cb-strip" role="img" aria-label="Current and depth along the course"></svg>
           <div class="cb-editor" id="cb-editor">
             <div class="head"><b id="cb-sec-name"></b><span class="row chips"><button type="button" id="cb-split">Split</button><button type="button" id="cb-merge">Merge ▸</button></span></div>
             <div class="sub" id="cb-sec-km"></div>
             <div class="row chips" id="cb-kind" role="group" aria-label="Section kind" style="margin-top:6px"></div>
+            <div class="row chips" id="cb-flow" role="group" aria-label="Which way the river flows" style="margin-top:6px"></div>
             <div class="sub" id="cb-sec-geo" style="margin-top:6px"></div>
             <div class="ctl paddled" id="cb-width-ctl"><label class="top"><span>Width</span><output id="o-cb-width"></output></label>
               <input type="range" id="cb-width" min="10" max="200" step="5" aria-label="Section width"></div>
@@ -848,7 +849,7 @@
             the blade pushes the boat up or down, and your body's motion (swing, drop, hinge) rocks and
             bobs the boat.</li>
           <li><b>Race:</b> wind (a crosswind turns the bow), current, shallow water, portages, and in a
-            river the current across the channel and the inside of bends. Load the AuSable or your own
+            river the current across the channel and the inside of bends. Load the AuSable, the Canton race (up and down its river) or your own
             GPX, with current from USGS gauges and weather from Open-Meteo. Heat and humidity cut the power you can hold.</li>
         </ul>
         <p>A simplified model for comparing strokes. It treats the flow as steady and ignores chop and
@@ -2390,6 +2391,9 @@ const KIND_DEFAULTS = { river: { width: 30, current: 2.8, depth: 1.2 }, pond: { 
 // of up to 20 km (an eighth of a short course) so there's something to edit.
 function autoSections(c) {
   const L = c.L, cuts = [];
+  // A course that comes in its own sections (one that runs up and down a river).
+  if (c.sections && c.sections.length)
+    return c.sections.map((s, i, all) => Object.assign({}, KIND_DEFAULTS[s.kind], s, i ? {} : { d0: 0 }, i === all.length - 1 ? { d1: L } : {}));
   for (const p of c.ponds || []) cuts.push({ d0: p.d0, d1: p.d1, kind: "pond", name: p.name });
   for (const p of c.portages || []) {
     const h = (p.carry || 200) / 2;
@@ -2431,17 +2435,18 @@ function loadCourse(c, info) {
   updateRace();
   autoConditions();
 }
-// The AuSable preset is a separate script, loaded the first time it's needed.
-function loadPreset() {
+// Each preset (the AuSable, Canton) is a separate script, loaded the first time it's needed.
+const COURSE_NAMES = { ausable: "the AuSable", canton: "the Canton" };
+function loadPreset(key = "ausable") {
   const go = () => {
-    const c = JSON.parse(JSON.stringify(window.COURSES.ausable));
-    loadCourse(c, `${c.name} · ${fmtNum(prepCourse(c).L / 1000, 1)} km · ${c.portages.length} portages · ponds from race speed`);
+    const c = JSON.parse(JSON.stringify(window.COURSES[key]));
+    loadCourse(c, `${c.name} · ${fmtNum(prepCourse(c).L / 1000, 1)} km · ${c.blurb || `${c.portages.length} portages · ponds from race speed`}`);
   };
-  if (window.COURSES && window.COURSES.ausable) return go();
-  if ($("cb-preset-js")) return;
+  if (window.COURSES && window.COURSES[key]) return go();
+  if ($(`cb-preset-${key}-js`)) return;
   const s = document.createElement("script");
-  s.id = "cb-preset-js"; s.src = "courses/ausable.js"; s.onload = go;
-  s.onerror = () => { $("cb-info").textContent = "Couldn't load the AuSable course."; };
+  s.id = `cb-preset-${key}-js`; s.src = `courses/${key}.js`; s.onload = go;
+  s.onerror = () => { $("cb-info").textContent = `Couldn't load ${COURSE_NAMES[key]} course.`; };
   document.head.append(s);
 }
 // The race's legs: each section in ~2 km pieces (a portage is one carry).
@@ -2452,7 +2457,7 @@ function courseLegs() {
     const n = Math.max(1, Math.round((s.d1 - s.d0) / 2000));
     for (let j = 0; j < n; j++) {
       const a = s.d0 + ((s.d1 - s.d0) * j) / n, b = s.d0 + ((s.d1 - s.d0) * (j + 1)) / n;
-      legs.push({ len: b - a, kind: s.kind, section: i, name: s.name, heading: cb.heading(a, b), current: s.current / 3.6,
+      legs.push({ len: b - a, kind: s.kind, section: i, name: s.name, heading: cb.heading(a, b), current: (s.against && s.kind === "river" ? -s.current : s.current) / 3.6,
                   depth: s.depth >= 5 ? (s.kind === "river" ? 5 : Infinity) : s.depth, width: s.width,
                   bendsDegPerKm: s.kind === "river" ? cb.bendsPerKm(a, b) : 0 });
     }
@@ -2465,10 +2470,14 @@ function courseNote(legs) {
   const km = (k) => fmtNum(by(k).reduce((a, l) => a + l.len, 0) / 1000, 0);
   const carry = by("portage").reduce((a, l) => a + l.t, 0), river = by("river");
   const u = river.length ? river.reduce((a, l) => a + l.river.line * l.len, 0) / river.reduce((a, l) => a + l.len, 0) : 0;
-  return `river ${km("river")} km (${lineName(u)}) · ponds ${km("pond")} km · ${by("portage").length} portages, ${clock(carry)} carrying`;
+  const up = river.filter((l) => l.current < 0).reduce((a, l) => a + l.len, 0);
+  return [`river ${km("river")} km (${lineName(u)})`, up ? `${fmtNum(up / 1000, 0)} km of it upstream` : "",
+    by("pond").length ? `ponds ${km("pond")} km` : "", by("portage").length ? `${by("portage").length} portages, ${clock(carry)} carrying` : ""].filter(Boolean).join(" · ");
 }
 const secColor = (s) => s.kind === "portage" ? "var(--muted)" :
-  `color-mix(in srgb, var(--series-1) ${Math.round(22 + Math.min(1, s.current / 5) * 78)}%, var(--surface-1))`;
+  `color-mix(in srgb, var(${s.against && s.kind === "river" ? "--series-2" : "--series-1"}) ${Math.round(22 + Math.min(1, s.current / 5) * 78)}%, var(--surface-1))`;
+// A river section flows with you (downstream) or against you (upstream).
+const FLOWS = [["down", "With you"], ["up", "Against you"]];
 const kmText = (d) => fmtNum(d / 1000, d < 10000 ? 1 : 0);
 // Map, strip, editor and table for the course being built.
 function renderBuilder() {
@@ -2506,8 +2515,11 @@ function drawBuilderMap() {
     g += `<path d="${line(s.d0, s.d1)}" fill="none" stroke="${secColor(s)}" stroke-width="${s.kind === "pond" ? 6 : 4}" stroke-linejoin="round"${s.kind === "portage" ? ' stroke-dasharray="3 2"' : ""}/>`;
   });
   const a = P(cb.at(0)), z = P(cb.at(cb.L)), m = P(cb.at((sel.d0 + sel.d1) / 2));
-  g += `<circle cx="${a[0]}" cy="${a[1]}" r="4" fill="var(--text-primary)"/><text class="strong" x="${a[0]}" y="${a[1] + 18}" text-anchor="${a[0] > W / 2 ? "end" : "start"}">Start</text>` +
-    `<rect x="${z[0] - 4}" y="${z[1] - 4}" width="8" height="8" fill="var(--text-primary)"/><text class="strong" x="${z[0]}" y="${z[1] + 18}" text-anchor="${z[0] > W / 2 ? "end" : "start"}">Finish</text>` +
+  // A course that comes back to its start (up and down a river) gets one label.
+  const loop = Math.hypot(a[0] - z[0], a[1] - z[1]) < 24;
+  g += `<circle cx="${a[0]}" cy="${a[1]}" r="4" fill="var(--text-primary)"/><text class="strong" x="${a[0]}" y="${a[1] + 18}" text-anchor="${a[0] > W / 2 ? "end" : "start"}">${loop ? "Start and finish" : "Start"}</text>` +
+    `<rect x="${z[0] - 4}" y="${z[1] - 4}" width="8" height="8" fill="var(--text-primary)"/>` +
+    (loop ? "" : `<text class="strong" x="${z[0]}" y="${z[1] + 18}" text-anchor="${z[0] > W / 2 ? "end" : "start"}">Finish</text>`) +
     `<circle class="numbg" cx="${m[0]}" cy="${m[1] - 16}" r="9"/><text class="num" x="${m[0]}" y="${m[1] - 12}" text-anchor="middle">${cbSel + 1}</text>`;
   for (const gg of cb.gauges || []) {
     const q = P(cb.at(gg.d));
@@ -2543,6 +2555,8 @@ function drawEditor() {
   $("cb-sec-name").textContent = `${cbSel + 1}. ${s.name}`;
   $("cb-sec-km").textContent = `${kmText(s.d0)}–${kmText(s.d1)} km`;
   chips("cb-kind", KINDS, () => s.kind, (v) => { Object.assign(s, KIND_DEFAULTS[v], { kind: v, width: s.width }); });
+  chips("cb-flow", FLOWS, () => (s.against ? "up" : "down"), (v) => { s.against = v === "up"; });
+  $("cb-flow").toggleAttribute("hidden", s.kind !== "river");
   const bends = cb.bendsPerKm(s.d0, s.d1);
   $("cb-sec-geo").textContent = s.kind === "portage" ? `Carry ${fmtNum(len, 0)} m, about ${clock(len / 2 + 30)} at a jog` :
     `${fmtNum(len / 1000, 1)} km heading ${compass(cb.heading(s.d0, s.d1))}` + (s.kind === "river" ? ` · ${fmtNum(bends / 90, 1)} bends per km` : "");
@@ -2550,7 +2564,7 @@ function drawEditor() {
   $("cb-width-ctl").toggleAttribute("hidden", s.kind !== "river");
   $("cb-width").value = s.width; $("cb-current").value = s.current; $("cb-depth").value = Math.min(5, s.depth);
   $("o-cb-width").textContent = `${s.width} m`;
-  $("o-cb-current").textContent = s.current === 0 ? "none" : `${fmtNum(s.current, 1)} km/h`;
+  $("o-cb-current").textContent = s.current === 0 ? "none" : `${fmtNum(s.current, 1)} km/h${s.against && s.kind === "river" ? " against you" : ""}`;
   const g = s.gauge && cb.gauges.find((x) => x.id === s.gauge);
   $("cb-sec-gauge").textContent = s.kind !== "river" ? "" : g ? `Current from ${g.name}: ${flowText(g.q)}` +
       (gaugeRef(g.id) ? `, ${flowLabel(g).toLowerCase()} for race week (${fmtNum(s.base, 1)} km/h in a typical year)` :
@@ -2565,12 +2579,13 @@ function drawSecTable() {
   $("cb-secs").tBodies[0].innerHTML = cb.sections.map((s, i) =>
     `<tr data-sec="${i}" class="${i === cbSel ? "on" : ""}"><td><span class="sw" style="background:${secColor(s)}"></span>${i + 1}</td>` +
     `<td>${kmText(s.d0)}–${kmText(s.d1)}</td><td>${s.name}</td>` +
-    `<td>${s.kind === "portage" ? "carry" : s.current === 0 ? "—" : fmtNum(s.current, 1)}</td>` +
+    `<td>${s.kind === "portage" ? "carry" : s.current === 0 ? "—" : `${s.against && s.kind === "river" ? "−" : ""}${fmtNum(s.current, 1)}`}</td>` +
     `<td class="${s.kind !== "portage" && s.depth < 1 ? "warn" : ""}">${s.kind === "portage" ? `${fmtNum(s.d1 - s.d0, 0)} m` : s.depth >= 5 ? "deep" : fmtNum(s.depth, 1)}</td></tr>`).join("");
 }
 function selectSection(i) { cbSel = i; renderBuilder(); }
 function editSection() { renderBuilder(); updateSoon(); }
-$("cb-preset").addEventListener("click", loadPreset);
+$("cb-preset").addEventListener("click", () => loadPreset("ausable"));
+$("cb-canton").addEventListener("click", () => loadPreset("canton"));
 $("cb-import").addEventListener("click", () => $("cb-file").click());
 $("cb-file").addEventListener("change", async (e) => {
   const f = e.target.files[0];
