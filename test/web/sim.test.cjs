@@ -1251,6 +1251,30 @@ function opening(page) {
     for (let i = 0; i < 12 && !(await page.$eval("#zoom-out", (e) => e.disabled)); i++) await page.click("#zoom-out");
     check(`${tag}: real course: zoomed out, the whole course`, /Whole course/.test(await text("#course-view")));
     await page.click("#zoom-fit");
+    // Canton: a course that runs up and down its river, in its own sections.
+    await page.route("https://*.open-meteo.com/**", meteoReply);
+    await page.route("https://waterservices.usgs.gov/**", noGauges);
+    await page.click("#cb-canton");
+    await page.waitForFunction(() => /^Canton/.test(document.getElementById("cb-info").textContent) &&
+      /No USGS gauges/.test(document.getElementById("cb-gauge-info").textContent), null, { timeout: 10000 });
+    const cantonCur = () => page.$$eval("#cb-secs tbody tr td:nth-child(4)", (ts) => ts.map((t) => t.textContent).join(" "));
+    check(`${tag}: Canton: six legs, upstream ones against you`, (await rows()) === 6 &&
+          /^Canton Grasse River Race · 23\.0 km · 6 legs up and down the river/.test(await text("#cb-info")) &&
+          (await cantonCur()) === "1.9 −1.9 1.9 −1.1 1.1 −1.9" &&
+          (await page.$eval("#cb-weather-time", (e) => e.value)) === "2019-05-04T12:24" &&
+          /^river 23 km \(.+\) · 11 km of it upstream$/.test(await text("#c-a")), `${await text("#cb-info")} | ${await cantonCur()} | ${await text("#c-a")}`);
+    await page.click("#cb-secs tbody tr:nth-child(2)");
+    check(`${tag}: Canton: a leg upstream says so`, (await text("#o-cb-current")) === "1.9 km/h against you" &&
+          (await pressed("#cb-flow"))[0] === "up", await text("#o-cb-current"));
+    const tUp = secs(await text("#t-a"));
+    await page.click("#cb-flow >> text=With you"); await page.waitForTimeout(250);
+    check(`${tag}: Canton: turn a leg downstream, faster`, secs(await text("#t-a")) < tUp && (await cantonCur()).startsWith("1.9 1.9 "));
+    await page.click("#cb-preset");
+    await page.waitForFunction(() => document.querySelectorAll("#cb-secs tbody tr").length > 10 &&
+      /No USGS gauges/.test(document.getElementById("cb-gauge-info").textContent), null, { timeout: 10000 });
+    await page.unroute("https://*.open-meteo.com/**");
+    await page.unroute("https://waterservices.usgs.gov/**");
+    await page.fill("#cb-weather-time", ""); await page.fill("#cb-gauge-date", "");
     // Current from USGS gauges (replies mocked): two on the course, one up a tributary.
     const pts = await page.evaluate(() => [window.COURSES.ausable.points[200], window.COURSES.ausable.points[2000]]);
     const series = (id, name, p, cfs, stat = "00000") => ({ name: `USGS:${id}:00060:${stat}`, sourceInfo: { siteName: name, siteCode: [{ value: id }],
